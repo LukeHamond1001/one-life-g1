@@ -1,0 +1,2 @@
+# The test runner (the tests are plain functions; pytest collects them)
+pytest>=8

@@ -1,0 +1,433 @@
+# THE LANGUAGE BODY'S PINNED DIGESTS (docs/SIM_DESIGN.md 8.3; taken in the core refactor's step R1, 2026-09-23 20:35-21:00 CDT)
+# Recorded on main's unchanged body/ (commit c39836d); every refactor commit must reproduce every line exactly. Never re-pinned, except
+# when a language core fix is rebased in from main (8.3 item 5), with the pins re-taken at that commit.
+#
+# How each is run: from the MAIN tree's directory (the flags name data/stories_valid.txt relatively), the check of the tree under test
+# (it imports that tree's body; with no --flags it reads that tree's own ops/BASE_FLAGS.txt, and a relative --cfg is read from that
+# tree too), at nice -n 19. Pass no --flags: main's flags may change during the refactor, the branch's copy stays as at c39836d (a flags
+# change brought in by a rebase from main moves these pins as a core fix does, and they are re-taken at that commit):
+#   cd <repo> && nice -n 19 python3 <tree>/tools/determinism_check.py <args>                                  (threaded)
+#   cd <repo> && OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 nice -n 19 python3 <tree>/tools/determinism_check.py <args>  (pinned)
+# threaded = torch's default (4 threads on this Mac, as the served body runs); the digest depends on the thread count.
+# Lines of the check that begin 'load: ' are the loader's notes and are not part of the result.
+#
+# served_cfg.pkl: the cfg dict of the served save data/watch2.pt (written 2026-09-23 18:39), read as the check reads a save (no tensor
+# read), 217 keys, pickle protocol 4,
+# sha256 637a19959cca9d59d266adfc8b4093a1b81394be32acb0d237a27bf281c05fcb.
+# With the tree's ops/BASE_FLAGS.txt it gives the constants 458595067029 (served) and 81de6471d00b (switches), as the live save did;
+# the default profile reads the flags alone (constants 92e828037353).
+# Taken with python 3.14.3, torch 2.12.0, tokenizers 0.22.2 (macOS, arm64).
+#
+# digest  <profile> <threads> <digest> consts <consts> | <args>
+digest  default               threaded 7c54199e3c72cf77d45a8e94 consts 92e828037353 | (none)
+digest  served                threaded fc81c03dec606afb62c3fc35 consts 458595067029 | --profile served --cfg tools/pins/served_cfg.pkl
+digest  switches              threaded ab1ab46751b11b314dfc78c2 consts 81de6471d00b | --profile switches --cfg tools/pins/served_cfg.pkl
+digest  served_full_roundtrip threaded c4730b232091fe229ee286dc consts 458595067029 | --profile served --full --roundtrip --cfg tools/pins/served_cfg.pkl
+digest  default               pinned   fbe9e6b330f44e7424f113f3 consts 92e828037353 | (none)
+digest  served                pinned   f507fb9c6c55649ddd39f917 consts 458595067029 | --profile served --cfg tools/pins/served_cfg.pkl
+digest  switches              pinned   14de2b131ce4b2874ca0ad95 consts 81de6471d00b | --profile switches --cfg tools/pins/served_cfg.pkl
+digest  served_full_roundtrip pinned   823431e80a08f197ee086884 consts 458595067029 | --profile served --full --roundtrip --cfg tools/pins/served_cfg.pkl
+#
+# the --full section digests of served --full --roundtrip (a moved digest is placed by the section that moved)
+full    served_full_roundtrip threaded organs 8414b8e3ed5c store 7289e42bf9eb saved d944f2d765ca optim e2950bfff042 rng fe1a46550557 work 04b573d4d5a1
+full    served_full_roundtrip pinned   organs 95ec3c662b36 store 4170ab1c13bc saved 10ca0e063529 optim ded9b1951a94 rng fe1a46550557 work f94f538e4a21
+#
+# the round trip's fixed point (known: a newborn store under store_sat 1 is never marked converted, so its first reload compresses it once)
+lost    served_full_roundtrip threaded store.S, store.sat
+lost    served_full_roundtrip pinned   store.S, store.sat
+#
+# THE SIM PROFILE (the core refactor's step R8d; SIM_DESIGN.md 8: "after the plumbing run, a sim profile joins the check"): tools/determinism_check.py
+# --profile sim runs tools/sim_profile.py, a tiny G1 (SimAnatomy under SIM_CFG, d 32) in a stub of its world, a day of 225 ticks and R8's whole
+# night (the episodes, the frames' dreams, REM on frames, a live night of 120 ticks with its twitches), 300 ticks in all; its digest is over the
+# whole state's sections, each on the full line (organs with their gradients, store, optimizers, random streams, working attributes, constants).
+# Run as the language digests are (from the main tree's directory, importing the tree under test). A commit that changes the sim's life
+# (SIM_CFG, the core under the sim's switches) re-pins it and says so; a commit that must not change it keeps it. Each pin the same under
+# PYTHONHASHSEED 1 and 4242.
+# Pinned at R8d (2026-09-25, fc152f9): threaded 7e76fe0c4b6f975c59ca1f3b, one-thread 44d7f62b27584bf596241f19 (consts 2ad019e8abba).
+# Re-pinned at A71 (2026-09-25: SIM_CFG born at the served values, amyg_pav's weight earned; the lead's decision on the PFC-maturation study):
+# (was: threaded 9f0e343e471530a65a008b17, one-thread 32163810db656e3d0f76e529.)
+# Re-pinned at S5a (2026-09-25, on branch sim: the flexor withdrawal moved from the world's zones into the anatomy's Limb.reflex on
+# the joints' pain, 3.7 and A37; the stub's two pain ticks now withdraw a limb for 2 ticks). The committed tree before it reproduced
+# the A71 pins exactly; the anatomy's reflex alone moves them. Each the same under PYTHONHASHSEED 1 and 4242:
+# Re-pinned at A88 (2026-09-26, on branch sim: the owner's decision, one reward: the charge channel gone from SimAnatomy (8 channels),
+# ChargeRelief gone, JointPain a cortisol source (dopamine off: its term never in the reward, |term| to stress), the amygdala's heads
+# 5 -> 3, the cry's charge line gone; the profile's scripted frames carry no charge). The constants digest is unchanged (c61b44d6eef1):
+# SIM_CFG did not move. The language pins (above) reproduced exactly at this build. (was: threaded b171489467d8bc321e3ef168,
+# one-thread 1950c5d205b90fd521dc8d2d.)
+# Re-pinned at A91 (2026-09-26: pain pays -1 again, the owner's reversal of A88's cortisol-only pain; the constants digest unchanged;
+# was: threaded 83a37937b6d942637a59507f, one-thread 55377f8c9f9352381860a49c.)
+# Re-pinned at A93 (2026-09-26: the reverse value sweep in the frames' night, SIM_CFG night_reverse 1; the constants digest moves with the
+# new key; was: threaded 984531dd4e3739df21ff06cc, one-thread 888e88651232bdad4ebb6775, consts c61b44d6eef1.)
+# Re-pinned at A97+A98 (2026-09-26: a limb's decisiveness earned by its inverse model's kappa, the cord's pattern summed and never
+# cancelled, the gaze's inverse model; the constants digest unchanged: SIM_CFG did not move. The language default digest reproduced
+# exactly at this build (7c54199e3c72cf77d45a8e94), and served_full_roundtrip threaded (c4730b232091fe229ee286dc, every section, the
+# known lost store.S and store.sat) after A98's loader (persistence._moments_aligned: the identity on the same recipe). Was: threaded
+# 0cd508ec66bc43b3837c9d6a, one-thread 4251a12065013840a34be2f0.)
+# Re-pinned at A104 (2026-09-27: a limb's decisiveness on kappa's own scale, s^rel with rel between "fair" 0.2 and "almost perfect"
+# 0.8; the constants digest unchanged; the language default digest reproduced exactly (7c54199e3c72cf77d45a8e94). Was: threaded
+# 34e2ff847d45ef29dafddca9, one-thread 70a89ce8093f0a8bc63ecc49.)
+# Re-pinned at A106 (2026-09-27: the night's ticks pass for the body's slow states (stress, mood, fatigue fall by their half-lives over
+# the live night); the constants digest unchanged; the language default digest reproduced exactly (7c54199e3c72cf77d45a8e94). Was:
+# threaded 0fd8682c4e0352b6ef20611b, one-thread 82c58538f82f4d331bea8c3e.)
+# Re-pinned at A113 (2026-09-27 13:25, branch actor on a109): SIM_CFG actor=1 (the striatal actor on; C87's day copy); the language default reproduced 7c54199e3c72cf77d45a8e94.
+# Re-pinned at A127 (2026-09-28 13:30, branch a127: the novelty drive as a switch of the body, SIM_CFG novelty=0 and the physiology's
+# key; the frames' new-write flag a working attribute). The organs, store, optimizers and random streams reproduced the A113 pins
+# exactly in both runs (fc7be0bd7c7c/d364be30c88f/0757502a5393 threaded, 4fa1a3503829/0b7fce84adf8/8bce1f21c794 one-thread); only
+# the constants (the new key) and the working attributes (the flag) moved. Was: threaded 18c33a72cbe083532a9aeb73, one-thread
+# 39bd93b65937c9293ec6a667, consts 44ef6a276ad3.
+# Re-pinned at A130 (2026-09-28 13:45, branch a130: the held word as a recall key, a switch of the body, SIM_CFG goal_key=0 and the
+# physiology's key; the held trace a working attribute let go at the night). The organs, store, optimizers and random streams reproduced
+# the A127 pins exactly in both runs (fc7be0bd7c7c/d364be30c88f/0757502a5393 threaded, 4fa1a3503829/0b7fce84adf8/8bce1f21c794
+# one-thread); only the constants (the new key) and the working attributes moved. Was: threaded c1e7164946168252f536e69f, one-thread
+# 0fd09597957c215025ff5d7f, consts e0c85c774d91.
+# Re-pinned at A128 (2026-09-28 13:45, branch a128: the held context as a recall key, a switch of the body, SIM_CFG ctx_key=0 and the
+# physiology's key; the context a working attribute let go at the night). The organs, store, optimizers and random streams reproduced
+# the A127 pins exactly in both runs; only the constants (the new key) and the working attributes moved. Was: threaded
+# 3dd49d79c5697f9f85c97585, one-thread 069305dec3c4b3d97838a87b, consts b77b4d429900.
+# Re-pinned at dawn 24 (2026-09-28 13:58, branch a128: SIM_CFG novelty, goal_key and ctx_key 1 at birth, the owner's all-in word;
+# the life restarted with the three --set flags at 13:56, these defaults make the flags the tree's own). A born body now pays for
+# the new and keys its frames on the held word and the held context, so every section moved (organs, store, optimizers, the random
+# streams: the novelty source draws). Was: threaded 6afa1ffacca665b76fc79eac, one-thread 4e9bc0b0b23d07030c44ffd7, consts c5b0ecd43f56.
+# Re-pinned at A132 (2026-09-28 14:20, branch a128: the limbs dream in REM, SIM_CFG rem_limbs 1 at birth; the born night's REM draws
+# the effectors' imagined acts, so the organs, store, optimizers and random streams moved). Was: threaded 36753538ad620bd3f35f515c,
+# one-thread 5621285819cb4cae3cdf2235, consts c12b7431a436.
+# Re-pinned at A127b (2026-09-28 16:26, branch a133: the novelty drive paid by the frame's mismatch, 1 - its nearest stored key's
+# cosine, in place of the gain for every kept frame; no constant changed, consts unmoved). The born body's payments differ from the
+# first tick a frame resembles another, so the organs, store, optimizers and random streams moved. Was: threaded
+# e23bca657e29fd11ce513dc6, one-thread 4a109a9bd17c271ffe1bcf71.
+# Re-pinned at A137 (2026-09-28 18:18, branch a136: the inner word, SIM_CFG inner_speech 1 at birth and the physiology's key; the voice's
+# sure unsounded choice held as the goal word and given the frame's value, so a born body's keys and frames move). Was: threaded
+# 38831933eaca0ba388b1bac2, one-thread 41bf37d9c5cdb8f02b194180, consts eb16f49013ae.
+# Re-pinned at A138 (2026-09-28 18:43, branch a138: waking imagination, SIM_CFG imagine_key and imagine_pav 1 at birth and the
+# physiology's keys; the born body runs its stream free at every event's end, drawing its words from the life's random stream, and holds
+# the imagined future in its key and its gates, so every section moved). Was: threaded 939403f009b6152ad20ee679, one-thread
+# ec02bfab1b9c968862109499, consts 58c46b2d8c8b.
+# Re-taken at A138's triggers (2026-09-28 19:18): the imagination also at every frame kept as new and at a pause of the effectors, so
+# the born body imagines far more often (12% of ticks) and every section moved again. Was: threaded a8db487d3bc61bed02e0982c,
+# one-thread 473614e4c173b84dba0a128f (the event-end trigger alone).
+# Checked at A139 (2026-09-28 22:19, branch a139: the tendon organ's inhibition at the cord, a born reflex): the born 300 ticks load no
+# gear to its line, so the digests are unmoved (threaded 58b14a2405b48f72a5870c6d, one-thread ceafc8053f4290bcff977927, the full
+# digests equal); not re-pinned.
+# Re-pinned at A140 (2026-09-29 01:26, branch a140: sharp_per_joint, a switch of the body declared in physiology's defaults and set 1 by the
+# G1): the cfg digest moved with the new key; the born body's organs, store, optimizers, random streams and work are UNMOVED (the born
+# 300 ticks earn no joint a kappa past "fair", so no readout changes). Was: threaded 58b14a2405b48f72a5870c6d, one-thread
+# ceafc8053f4290bcff977927, consts ca9064aa1d5d, cfg ac2db7fa3fd4.
+# Re-pinned at C148 (2026-09-30 13:52, on branch t148: the proposal's certainty earned by the same exponent as its sharpness, SIM_CFG
+# sharp_earned_norm 1; in the profile's 300 ticks no joint has earned anything, so every limb draws from its unit forecast's cosines and the
+# whole state moves; the language default digest 7c54199e3c72cf77d45a8e94 kept). Was: threaded 575117e71e4f31ad8868eee2, one-thread
+# cca44630092131e560dcf6c4, consts 39cd08fe698e.
+# Re-pinned at A141/C149 (2026-09-30 14:25, on branch t149: the day's habit lesson weighted by dopamine's credit as the night's is, SIM_CFG
+# habit_by_credit 1; the profile's pain ticks un-weight the acts before them and the draws move with the weights; the language default digest
+# 7c54199e3c72cf77d45a8e94 kept). Was: threaded 520ee0e841d062f08144e5d4, one-thread be470a576af9b14714c9130e, consts ae63f448455e.
+# Re-pinned at A142/C151 (2026-09-30 15:32, on branch t151: the actor's synaptic tag captured by the long critic's error, SIM_CFG actor_slow_lr
+# 1e-4; the language default digest 7c54199e3c72cf77d45a8e94 kept). Was: threaded 4d6a6f8c2d1b201c7841f103, one-thread 40d6fdb08910e18c343fa7ce,
+# consts c537271fd70a.
+# Re-pinned at C153 (2026-09-30 18:04, on branch t153: the actor's tag decays at the tag's reach (64 ticks) and is captured by phasic dopamine,
+# SIM_CFG actor_slow_lr 1e-3; the language default digest 7c54199e3c72cf77d45a8e94 kept). Was: threaded 96d2e55dca5b9790c7e42e6f, one-thread
+# dd95d9b07cb170ddff9c0cd0, consts 74b1b1c13c03.
+# Re-pinned at C156 (2026-09-30 18:52, on branch t154: the act weights' credit begins at the position's own row (sleep.credit_of, k from 0), by day
+# (A141) and by night; SIM_CFG unchanged; the body/core consts digest unchanged (C159's HABIT_KEEP is the lang layer's); the language default
+# digest 7c54199e3c72cf77d45a8e94 kept). Was: threaded 016a8876d297b9c181677ef3, one-thread 8217248e5cab5fc966f7d96b, consts c9755b913294.
+# Re-taken at A143 (2026-09-30 20:10, on branch t157: the passive end-range stiffness in the world's physics): UNCHANGED, threaded
+# 70242aba83dc89ce3b391683, one-thread e3f82db9c5bfac64b09889a0, consts c9755b913294 (the profile's 300 supine ticks never carry a joint's
+# angle through the margin past the encoder's step); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-taken at C163 (2026-09-30 20:22, on branch t158: PASSIVE_FRAC 1.0, the hand's joints left out): UNCHANGED again (threaded 70242aba83dc89ce3b391683,
+# one-thread e3f82db9c5bfac64b09889a0, consts c9755b913294); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-pinned at A144 (2026-09-30 21:40, on branch t159: an unearned joint explores small, UNEARNED_SMALL 2.0 in ActTable.logits; the language
+# default digest 7c54199e3c72cf77d45a8e94 kept). Was: threaded 70242aba83dc89ce3b391683, one-thread e3f82db9c5bfac64b09889a0, consts c9755b913294.
+# Re-pinned at C169/C170 (2026-09-30 23:09, on branch t165: the coffee table moved to the room's north-west corner, her need tries 6 to 24;
+# the language default digest 7c54199e3c72cf77d45a8e94 kept). Was: threaded 62c2a8ddf72b1c68ca9c5573, one-thread 5b494f3c5763d300c222e88a, consts c9755b913294.
+# Re-pinned at A146 (2026-10-01 00:10, on branch t169: the ladder's value heads forget, SIM_CFG value_forget 36000; the language default
+# digest 7c54199e3c72cf77d45a8e94 kept). Was: threaded 708d4362c5cf91944fea33cc, one-thread a112c33baed8b89675dabb69, consts c9755b913294.
+# Re-taken at C172 (2026-10-01 00:25, on branch t168 over A146: the social reply without its "oh", an interjection never echoed): UNCHANGED
+# (threaded 552c51a504830ef77a79927b, one-thread 253a89b70a53cf7d5a42b057); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-taken at C175 (2026-10-01 02:20, on branch t172: a hand-over or show with no kneel spot becomes a set-down): UNCHANGED (the same two
+# sim digests); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-taken at C177 (2026-10-01 04:37, on branch t175: the show's approach carries the put's reach need): UNCHANGED; the language default
+# digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-pinned at A147 (2026-10-01 07:26, on branch t182: the striatal actors' eligibility through their tanh and their synaptic scaling toward unit
+# drive, critics._actor_scaling and mouth._actor_squash_grad; the sim profile moved, threaded 552c51a5.. -> cdf686b4.., one-thread 253a89b7.. ->
+# 81d01b12.., consts c9755b91.. -> b971264b..); the language default digest 7c54199e3c72cf77d45a8e94 kept (actor off in the diary).
+# Re-pinned at A148 (2026-10-01 07:45, on branch t185: the actors' eligibility on the striatal input at unit power, mouth._actor_input; the sim
+# profile moved, threaded cdf686b4.. -> 3d880199.., one-thread 81d01b12.. -> efaeac4a.., consts unchanged); the language default digest
+# 7c54199e3c72cf77d45a8e94 kept (actor off in the diary).
+# Re-pinned at A149 (2026-10-01 08:05, on branch t187: the sensorimotor striatum, the body's proprioception on the striatum's line at one
+# event's weight; the sim profile moved, threaded 3d880199.. -> e465b724.., one-thread efaeac4a.. -> 4b3befab.., consts unchanged); the
+# language default digest 7c54199e3c72cf77d45a8e94 kept (no proprioceptive channel in the diary; its sense buffers do not exist).
+# Re-taken at A150 (2026-10-01 08:45, on branch t189: the habit lesson's credit weight runs to -1 by day and night, the harm beyond one
+# unlearned): UNCHANGED (no position of the pin's 300 ticks carries a credit under -1); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-pinned at A151 (2026-10-01 09:28, on branch t191: the actors' synaptic scaling both ways, their forgetting removed; the sim profile
+# moved, threaded e465b724.. -> f7196165.., one-thread 4b3befab.. -> 69ed464f.., consts unchanged); the language default digest
+# 7c54199e3c72cf77d45a8e94 kept (actor off in the diary).
+# Re-pinned at A152 (2026-10-01 09:58, on branch t193: the own act's habit weight is dopamine's credit alone, clip(G, -1, 1); her labels' at R8's;
+# the sim profile moved, threaded f7196165.. -> 58719145.., one-thread 69ed464f.. -> 6dd3937d.., consts unchanged); the language default
+# digest 7c54199e3c72cf77d45a8e94 kept (no later effector in the diary).
+# Re-pinned at A153 (2026-10-01 11:30, on branch t194: teaching against by the cosine's hinge, bounded; the sim profile moved, threaded
+# 58719145.. -> a93c6a9f.., one-thread 6dd3937d.. -> 20cfae5c.., consts unchanged); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-pinned at A154 (2026-10-01 13:15, on branch t196: the forecast heads held at the act rows' scale after every act_pred step, day and night;
+# the sim profile moved, threaded a93c6a9f.. -> c46edd61.., one-thread 20cfae5c.. -> a18d7804.., consts unchanged); the language default
+# digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-pinned at A155 (2026-10-01 15:05, on branch t197: the novelty drive pays by learning progress; the sim profile moved, threaded
+# c46edd61.. -> d943902c.., one-thread a18d7804.. -> 9bc7769a.., consts unchanged); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-pinned at A156 (2026-10-01 15:44, on branch t198: the gates' tonic drive follows the appetitive rate; the sim profile moved, threaded
+# d943902c.. -> 19b06e5b.., one-thread 9bc7769a.. -> 64a93bc7.., consts unchanged); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-taken at C197 (2026-10-01 16:56, on branch t200: a function word is not recast or echoed by the parent): UNCHANGED (no reply to a
+# function word within the pin's 300 ticks); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+# Re-taken at C198 (2026-10-01 18:45, on branch t201: a worn word is not recast or echoed by the parent): UNCHANGED (no worn word within the
+# pin's 300 ticks); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+full    sim                   threaded organs 603e243d590a store 738f53d2ef68 optim cbf807bb0814 rng 6bbbd20c28ba work 74b48552b9a1 cfg fb1800a3b452
+full    sim                   pinned   organs 2bffd91ed336 store b9208ea80a33 optim 985badb4f75c rng 6bbbd20c28ba work cde5b14beebd cfg fb1800a3b452
+# Re-taken at A157/C199 (2026-10-01 19:29, on branch t202: the born face cue read from the world into the frame's face_periph, eyes.face_cue;
+# A154's cor scaling for a senseless effector): UNCHANGED (the sim profile's tiny G1 has no eyes, so its face cue stays zeros; the life's moves);
+# the language default digest 7c54199e3c72cf77d45a8e94 kept (no eyes in the diary).
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A158/C200 (2026-10-01 19:41, on branch t203: her approval reaches the child whether or not it looks; the born reading of her face
+# while she is with it): UNCHANGED (the sim profile has no parent's lane); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at C201 (2026-10-01 19:59, on branch t204: a label of a toy the child cannot see is her show of it): UNCHANGED (no lane in the sim
+# profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A160/C203 (2026-10-01 20:32, on branch t206 off t205: the palmar grasp summed joint by joint; the record's gaze and face cue, C202):
+# UNCHANGED (no palm touch at the grasp's threshold within the sim profile's 300 ticks); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A161/C204 (2026-10-01 20:49, on branch t207: the sit lesson; the pull-to-sit and the prop opened, the motor block's first offer):
+# UNCHANGED (no parent in the sim profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A162/C205 (2026-10-01 20:59, on branch t208: the palmar grasp habituates under a constant pressure): UNCHANGED (no palm touch at the
+# threshold in the sim profile's 300 ticks); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at C206 (2026-10-01 21:17, on branch t209: a planner line about a toy the child cannot see is her show of it): UNCHANGED (no lane in
+# the sim profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at C207 (2026-10-01 21:35, on branch t210: the day plan's owed pull-to-sit saved and restored): UNCHANGED (no lane in the sim profile);
+# the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A163/C208 (2026-10-01 21:46, on branch t211: the pull-to-sit from beside its hips when its feet are out of her reach): UNCHANGED
+# (no parent in the sim profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A164/C209 (2026-10-01 21:55, on branch t212: a touch onset at the palm wakes the habituated grasp): UNCHANGED (no palm touch at
+# the threshold in the sim profile's 300 ticks); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A165/C210 (2026-10-01 22:15, on branch t213: the pull-to-sit gathers the forearms one at a time): UNCHANGED (no parent in the
+# sim profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A166/C211 (2026-10-01 23:55, on branch t214: a gather whose hand did not arrive is planned again where the arm is): UNCHANGED
+# (no parent in the sim profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A167/C212 (2026-10-02 00:05, on branch t215: the pull takes over at the gather's force): UNCHANGED (no parent in the sim profile);
+# the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A168/C213 (2026-10-02 01:45, on branch t216: the pull's and the gather's hands grasp the forearms as the turn's grasp the limb):
+# UNCHANGED (no parent in the sim profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A169/C214 (2026-10-02 02:48, on branch t217: a spot is good for the pull when she can take the forearms one at a time from it):
+# UNCHANGED (no parent in the sim profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at C215 (2026-10-02 03:32, on branch t218: a toy the child has is not fetched): UNCHANGED (no lane in the sim profile);
+# the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at C216 (2026-10-02 05:00, on branch t219: tummy time ends, a child face down three minutes is turned over): UNCHANGED (no lane in
+# the sim profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at C217 (2026-10-02 05:12, on branch t220: tummy time's clock counts the child's side as well as its front): UNCHANGED (no lane in
+# the sim profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A170/C218 (2026-10-02 05:35, on branch t221: a child on its side is turned onto its back): UNCHANGED (no parent in the sim
+# profile); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A171/C219/C220 (2026-10-02 06:55, on branch a171: the two sides of the hand; the grasp reads the palm's side, a touch on the back
+# opens the hand): UNCHANGED (no hand of the pinned born run is pushed on either side); the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at C221/C222 (2026-10-02 09:05, on branch c221: the side rule read along the palm's normal, SIDE_COS; the toy's extent by its shape;
+# her aim by the toy, the press, the whole hold): UNCHANGED; the language default digest 7c54199e3c72cf77d45a8e94 kept.
+digest  sim                   threaded 19b06e5b9d8ebb7337a01af7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   64a93bc7be6c1889f6e4cba4 consts b971264b65f1 | --profile sim
+# Re-taken at A172 (2026-10-02 12:08, on branch a172: dopamine's adaptive coding for the actors' lesson, declared by the G1's body): CHANGED as
+# expected (the actors' lesson differs from the first dopamine); the language default digest 7c54199e3c72cf77d45a8e94 KEPT (the diary has no actor).
+digest  sim                   threaded 77dcdca9e395fcef45a88ec7 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   b9e5db5db5cfa94b523a1c0f consts b971264b65f1 | --profile sim
+# Re-taken at A173 (2026-10-02 12:50, on branch a173: the born breath at the cord, the tract's lungs in a tidal cycle): CHANGED as expected (the
+# tract breathes from the first tick); the language default digest 7c54199e3c72cf77d45a8e94 KEPT (no tract in the language body).
+digest  sim                   threaded 9234489de076690862871af2 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   22de82c91314deadf9dc6eee consts b971264b65f1 | --profile sim
+# Re-taken at A174/C229 (2026-10-02 14:05, on branch a174: the retinal slip teaches the VOR; the held smile counts a closed hand): UNCHANGED
+# from A173's (the pinned born run's flocculus moves nothing the digest sees in 300 ticks); the language default digest 7c54199e3c72cf77d45a8e94 KEPT.
+digest  sim                   threaded 9234489de076690862871af2 consts b971264b65f1 | --profile sim
+digest  sim                   pinned   22de82c91314deadf9dc6eee consts b971264b65f1 | --profile sim
+# Re-taken at A176 (2026-10-02 15:28, on branch a176: the movement unit held against the cortex's proposal): MOVED, as expected (the pinned born
+# life's actor learns within its 300 ticks, so the units it holds differ); C231 to C233 before it moved the consts hash alone (83dc3feffffe;
+# main's digests at d6fbb12 unchanged). The language default digest 7c54199e3c72cf77d45a8e94: the diary has no later effector (checked at this landing).
+digest  sim                   threaded f0d1e597f4b104649e101f3e consts 83dc3feffffe | --profile sim
+digest  sim                   pinned   9a6009f59be7e059f3a24590 consts 83dc3feffffe | --profile sim
+# Re-taken at A177 (2026-10-02 15:57, the newborn's traction response): UNCHANGED from A176's (the profile's stub world has no parent, so no
+# hold and no traction); the language default digest 7c54199e3c72cf77d45a8e94 KEPT (checked at A176's landing; A177 touches the sim world and cord alone).
+digest  sim                   threaded f0d1e597f4b104649e101f3e consts 83dc3feffffe | --profile sim
+digest  sim                   pinned   9a6009f59be7e059f3a24590 consts 83dc3feffffe | --profile sim
+# Re-taken at A178 (2026-10-02 16:25, the withdrawal's refractory period): the profile's stub world has pain on two ticks, so the reflex's rest
+# may move the digest; the language default digest 7c54199e3c72cf77d45a8e94 KEPT (no limb in the diary).
+digest  sim                   threaded 5866a4841855be676db69ac1 consts 83dc3feffffe | --profile sim
+digest  sim                   pinned   dd6317bf5f77aecbfa07fe0e consts 83dc3feffffe | --profile sim
+
+C235 (2026-10-02 17:05, the pull reaches again where the arms are, and holds what it has): the sim digests unchanged (threaded 5866a4841855be676db69ac1, one-thread dd6317bf5f77aecbfa07fe0e, consts 83dc3feffffe; the profile's stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C236 (2026-10-02 18:13, her trunk gives way at its own pace while she holds the child): the sim digests unchanged (threaded 5866a4841855be676db69ac1, one-thread dd6317bf5f77aecbfa07fe0e, consts 83dc3feffffe; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C237 (2026-10-02 19:25, the held sit, and a toy set aside before the pull): the sim digests unchanged (threaded 5866a4841855be676db69ac1, one-thread dd6317bf5f77aecbfa07fe0e, consts 83dc3feffffe; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C238 (2026-10-02 20:12, it sits by itself: the prop is done): the sim digests unchanged (threaded 5866a4841855be676db69ac1, one-thread dd6317bf5f77aecbfa07fe0e, consts 83dc3feffffe; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C239 (2026-10-02 20:16, the social line wears): the sim digests unchanged (the stub world has no parent, no conduct); the language default kept 7c54199e3c72cf77d45a8e94 (the diary has no bare calls answered by the social line: no conduct in its profile).
+C240 (2026-10-02 22:25, the hand-over's placing: her palm read from its shape, the hands she gives to, the press that waits): the sim digests unchanged (threaded 5866a4841855be676db69ac1, one-thread dd6317bf5f77aecbfa07fe0e, consts 83dc3feffffe; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C241 (2026-10-02 23:08, the turn's clock counts no tick while the chest still turns): the sim digests unchanged (threaded 5866a4841855be676db69ac1, one-thread dd6317bf5f77aecbfa07fe0e, consts 83dc3feffffe; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C242 (2026-10-02 23:36, the arm that places a toy comes back from where the child pushed it): the sim digests unchanged (threaded 5866a4841855be676db69ac1, one-thread dd6317bf5f77aecbfa07fe0e, consts 83dc3feffffe; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+A179 (2026-10-02 23:38, the newborn's expiratory braking): the sim digests RE-TAKEN, as expected (SIM_CFG gained breath_brake and the born life breathes aloud): threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c (before: threaded 5866a4841855be676db69ac1, one-thread dd6317bf5f77aecbfa07fe0e, consts 83dc3feffffe); the language default kept 7c54199e3c72cf77d45a8e94 (the diary has no tract).
+C244 (2026-10-03 02:05, the toys at its feet are set aside before the pull): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C245 (2026-10-03 02:15, a put beyond her reach from her heels is made from the tall kneel): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C246 (2026-10-03 02:36, the pick rises to the tall kneel, the clearing reaches round behind her): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C247 (2026-10-03 03:50, the palm beyond her reach when she gets there: she kneels again where it is): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C248 (2026-10-03 05:00, her elbow's continuity: the like-with-like measure only where the wrist moved): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C249 (2026-10-03 05:02, the clearing never sets the act's own toy aside): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C250 (2026-10-03 05:14, the turn approaches again twice): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C251 (2026-10-03 06:29, a hand-over with no spot for the hand on arrival becomes the set-down): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C252 (2026-10-03 08:30, a kneeling reach is asked of a kneeling base): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C254 (2026-10-03 09:30, the motor block's sit owed whatever the posture, a prone child turned over first): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C255 (2026-10-03 09:58, her elbow's continuity, the like-with-like measure where the last swing's elbow is itself continuous): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C256 (2026-10-03 11:40, the plan's reach inside her stretch, the rise only where the tall kneel reaches): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C257 (2026-10-03 12:28, the cap-stopped pull tried again in the block, the jump guard keeps the fault's arm state): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C258 (2026-10-03 14:40, the put's spot tested as the put will reach): the sim digests unchanged (threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+A180 (2026-10-03 14:53, the frames' event end per channel): the sim digests RE-TAKEN (threaded 40d6d2debd34dab724b2b308, one-thread 85b6661b7780b94835647ef9, consts 1294ae435b6c; before: threaded eb2cf5b45b7676eadaaac5a7, one-thread 4dce06208bc034e85a147ac3, consts 1294ae435b6c: working memory latches and the end-triggered imagination now run on the G1); the language default kept 7c54199e3c72cf77d45a8e94 (one forecasting channel: the law as it was).
+C259 (2026-10-03 15:16, the hand's way to rest comes down in front of her): the sim digests unchanged (threaded 40d6d2debd34dab724b2b308, one-thread 85b6661b7780b94835647ef9, consts 1294ae435b6c, A180's; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+A181 (2026-10-03 16:19, the competence drive): the sim digests RE-TAKEN (threaded 79a175446cc1255a3af59cdd, one-thread ca2dd859a27252a71aa9244e, consts 121c85c97466; before: threaded 40d6d2debd34dab724b2b308, one-thread 85b6661b7780b94835647ef9, consts 1294ae435b6c: a fourth reward source on the G1, the switch competence); the language default kept 7c54199e3c72cf77d45a8e94 (no key, no drive).
+C260 (2026-10-03 16:44, a put's place her side spots cannot reach is knelt round itself): the sim digests unchanged (threaded 79a175446cc1255a3af59cdd, one-thread ca2dd859a27252a71aa9244e, consts 121c85c97466, A181's; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C261 (2026-10-03 17:00, the bar rises): the sim digests unchanged (threaded 79a175446cc1255a3af59cdd, one-thread ca2dd859a27252a71aa9244e, consts 121c85c97466, A181's; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+A182 (2026-10-03 17:06, vicarious trial and error): the sim digests RE-TAKEN (threaded 29b4a578608e830a30668ece, one-thread efad6b2e1484cc6a158d83a3, consts ccf7dc4d6c48; before: threaded 79a175446cc1255a3af59cdd, one-thread ca2dd859a27252a71aa9244e, consts 121c85c97466: a second imagined future an imagining, the switch imagine_vte); the language default kept 7c54199e3c72cf77d45a8e94 (no key).
+A183 (2026-10-03 17:23, the motor gates homeostasis): the sim digests RE-TAKEN (threaded 628c785ea58910bdb9f7f220, one-thread 39cce2f23d7eb43ca7a5eae9, consts 9800993f78c4; before: threaded 29b4a578608e830a30668ece, one-thread efad6b2e1484cc6a158d83a3, consts ccf7dc4d6c48: the motor gates ceiling and scaling, the switches gate_ceiling and gate_scaling); the language default kept 7c54199e3c72cf77d45a8e94 (no key).
+A184 (2026-10-03 19:17, the competence drive pays a personal best): the sim digests RE-TAKEN (threaded 41338d4e3f3f40864f536ac9, one-thread 03f2ca884bc20062a66c34c8, consts 9800993f78c4; before: threaded 628c785ea58910bdb9f7f220, one-thread 39cce2f23d7eb43ca7a5eae9, consts 9800993f78c4: the competence progress is the fall of the own-act forecast error below its record); the language default kept 7c54199e3c72cf77d45a8e94 (no key).
+A185, C263 (2026-10-03, the arms' resting tone; the put beside the body): the sim digests unchanged (threaded 41338d4e3f3f40864f536ac9, one-thread 03f2ca884bc20062a66c34c8, consts 9800993f78c4, A184's; the pins' world is a stub); the language default kept 7c54199e3c72cf77d45a8e94.
+A186 (2026-10-03, the born saccade to a face): the sim digests RE-TAKEN (threaded 25a41e03489709bccf75c7c6, one-thread d27075b8fc6328d63bd973f3, consts a126e3b9d081; before: threaded 41338d4e3f3f40864f536ac9, one-thread 03f2ca884bc20062a66c34c8, consts 9800993f78c4: the switch orient_saccade and its two constants); the language default kept 7c54199e3c72cf77d45a8e94 (no key).
+C262 (2026-10-03 21:53, a personal best is a new achievement): the sim digests unchanged (threaded 25a41e03489709bccf75c7c6, one-thread d27075b8fc6328d63bd973f3, consts a126e3b9d081, A186's; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C264 (2026-10-03 22:33, her copying's readers): the sim digests unchanged (threaded 25a41e03489709bccf75c7c6, one-thread d27075b8fc6328d63bd973f3, consts a126e3b9d081, A186's; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+A187 (2026-10-04 00:47, speed only: the eye's own meshes; the tick's start kept raw): the sim digests unchanged (threaded 25a41e03489709bccf75c7c6, one-thread d27075b8fc6328d63bd973f3, consts a126e3b9d081, A186's); the language default kept 7c54199e3c72cf77d45a8e94.
+A188 (2026-10-04 01:15, the planner's lean read against the usual difference): the sim digests RE-TAKEN (threaded dc27081efdaa41781ec41f6e, one-thread 767c9ac20a26cee5503b6591, consts 2107ee039efe; before: threaded 25a41e03489709bccf75c7c6, one-thread d27075b8fc6328d63bd973f3, consts a126e3b9d081); the language default kept 7c54199e3c72cf77d45a8e94.
+C266 (2026-10-04 01:35, her copy by her other hand when the mirrored one is busy): the sim digests unchanged (A188's: threaded dc27081efdaa41781ec41f6e, one-thread 767c9ac20a26cee5503b6591, consts 2107ee039efe; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+A189 (2026-10-04 04:25, A188 switched off in the life): the sim digests RE-TAKEN (threaded c920042799bde8d9a82451b8, one-thread cd18bf0e0e2271bfd5188433, consts e0ecf068e1a2; before: A188's); the language default kept 7c54199e3c72cf77d45a8e94.
+A191 (2026-10-04 08:32, the amygdala's low road for strain): the sim digests RE-TAKEN (threaded df712925e5aa487456b9f2f7, one-thread f3ec41f8df7b5e9ab1d6714a, consts e0ecf068e1a2; before: A189's c920042799bde8d9a82451b8, cd18bf0e0e2271bfd5188433); the language default kept 7c54199e3c72cf77d45a8e94.
+A192 (2026-10-04 13:48, the failed lean deleted, the idle comparison off): the sim digests RE-TAKEN (threaded 87dafeaa76c7268adf8d98e3, one-thread 04dd06b3a0f379b5ebf4af07, consts 3af49a7ef34a; before: A191's); the language default kept 7c54199e3c72cf77d45a8e94.
+A193 (2026-10-04 16:26, the standing and the stepping reflexes): the sim digests unchanged (A192's: threaded 87dafeaa76c7268adf8d98e3, one-thread 04dd06b3a0f379b5ebf4af07, consts 3af49a7ef34a; the stub world has no G1 cord); the language default kept 7c54199e3c72cf77d45a8e94.
+C269 (2026-10-04 18:35, the teacher's pace): the sim digests unchanged (A192's; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+A190 (2026-10-04 19:34, an act weighed against not doing it): the sim digests RE-TAKEN (threaded 4c5b4e02f2e7930c5d2b4ca0, one-thread d883bf2c9bd7efd8d0e98116, consts b816e29a1660; before: A192's); the language default kept 7c54199e3c72cf77d45a8e94.
+C270 (2026-10-04 20:30, she names what it did): the sim digests unchanged (A190's; the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C290 (2026-10-05 17:20, her asks reach her mouth): the sim digests unchanged; the language default kept 7c54199e3c72cf77d45a8e94.
+C289 (2026-10-05 16:55, her asks while she holds it standing): the sim digests unchanged; the language default kept 7c54199e3c72cf77d45a8e94.
+C288 (2026-10-05 16:25, the ask after a show; her own name wears): the sim digests unchanged; the language default kept 7c54199e3c72cf77d45a8e94.
+A195 (2026-10-05 14:50, the postural tone and the vestibulospinal reflex when it stands alone): the sim digests re-run and unchanged (threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660; the stub world has no G1 cord); the language default kept 7c54199e3c72cf77d45a8e94.
+A196 (2026-10-05 17:45, the ankles' yield and the soft roll joints in the tone alone): the sim digests re-run and unchanged (threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660; the stub world has no G1 cord); the language default kept 7c54199e3c72cf77d45a8e94.
+A197/C291 (2026-10-05 18:35, the tone by degrees in her hands; her release once it is balanced): the sim digests re-run and unchanged (threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660; the stub world has no parent and no G1 cord); the language default kept 7c54199e3c72cf77d45a8e94.
+C292 (2026-10-05 19:10, the carry's spot): the stub world has no parent; sim digests unchanged (threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C294 (2026-10-05 19:45, her follow only of a straight trunk; the pick-up after a fall): the stub world has no parent; sim digests unchanged (threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+D1 (2026-10-05 23:45, the door stage: --room door, the leaf and the second room; the door opens on day 96): the sim digests re-run (the stub world has no parent and takes no room; unchanged: threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94. The runner's command takes --room door from this landing: a disclosed environment change.
+C295 (2026-10-06 08:55, the night's recovery of the stand's and the step's smiles): the stub world has no parent; sim digests unchanged (threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+A200/C296/A201 (2026-10-06 11:30, the competence record's relaxation; her modelled answer; the roll reflex parked at 0): sim digests re-run and unchanged (threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94 (re-taken with the relaxation: the diary's competence is off).
+C297 (2026-10-06 11:45, the lessons' share): the stub world has no parent; sim digests unchanged (threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+A200b (2026-10-06 12:00, the competence record drawn to the error of late at 0.02): sim digests unchanged (threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660); the language default re-taken and kept 7c54199e3c72cf77d45a8e94.
+A200c (2026-10-06 12:38, the competence fall read against the error's spread; gain 0.25): the sim profile's body has the drive, so the sim pin MOVES: threaded 25414c330832fbae78847381 (was 4c5b4e02f2e7930c5d2b4ca0), consts b816e29a1660 (was b816e29a1660); the language default re-taken and kept 7c54199e3c72cf77d45a8e94 (the diary's competence is off). A behaviour change of the stub body's reward, disclosed.
+C298 (2026-10-06 13:30, the blocked carry to the mat's centre): the stub world has no parent; sim digests unchanged (threaded 25414c330832fbae78847381, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C299 (2026-10-06 13:44, the look toward the asked thing paid; more 'what is it?'): the stub world has no parent; sim digests unchanged (threaded 25414c330832fbae78847381, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C300 (2026-10-06, she shows walking and getting with their words): the stub world has no parent; sim digests unchanged (threaded 25414c330832fbae78847381, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+D2 (2026-10-06, the sibling figure, step 1): the stub world has no door scene; sim digests unchanged (threaded 25414c330832fbae78847381, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+S1 (2026-10-06 16:15, the kneel plan's clearance test in one array): the clock only; sim digests unchanged (threaded 25414c330832fbae78847381, consts b816e29a1660); 300 ticks of the day-104 pair on the live tree and on S1 identical in every field but the clock.
+A202 (2026-10-06 16:30, the grounding of words in joint attention): the sim profile's body carries the organ's working state (its rows, counts and trace, zeros in the stub world, which has no eyes: nothing bound), so the work digest and the sim pin MOVE: threaded 2c0b09f02b12cd83081411f9 (was 25414c330832fbae78847381), consts b816e29a1660 (unchanged); organs 1cd502d21efc, store 7fce35be4ba5, optim 66839d3e7fd9 and rng fec6bbed1b19 unchanged: no act of the stub body moved. The language default re-taken and kept 7c54199e3c72cf77d45a8e94 (the diary's anatomy declares no Grounding).
+D2 step 4 (2026-10-06 16:40, the sibling speaks): the stub world has no sibling; sim digests unchanged (threaded 2c0b09f02b12cd83081411f9, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+A202b (2026-10-06 17:10, the word's look a running mean; consistency gates the cue and the name): the organ's working state gains the sums of look sizes, so the work digest and the sim pin MOVE: threaded b04a7ece4ac23e8f7b463b5a (was 2c0b09f02b12cd83081411f9), consts b816e29a1660 (unchanged); organs, store, optim and rng unchanged. The language default re-taken and kept 7c54199e3c72cf77d45a8e94. A204 (the one-hip weight shift) tried on a copy and parked, not in the tree.
+A202c, D2 step 4b (2026-10-06 17:30, a saved row's sum of look sizes begins as |mean| x n; the sibling's word needs its toy's name in the lexicon): sim digests unchanged (threaded b04a7ece4ac23e8f7b463b5a, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94. A205 (the lean-caught step) tried on a copy and parked, not in the tree.
+A202d (2026-10-06 17:50, the grounding rows begin again once under the consistency law, a version mark): the working state gains the mark, so the work digest and the sim pin MOVE: threaded e9c3af3703760cb3710d0a08 (was b04a7ece4ac23e8f7b463b5a), consts b816e29a1660 (unchanged); organs, store, optim and rng unchanged. The language default re-taken and kept 7c54199e3c72cf77d45a8e94. (Taken on a tree that also carried A206's reflex code uncommitted, which the stub body, never standing, does not run.)
+C302 (2026-10-06 18:00, the stand's grip reaches again): the stub world has no parent; sim digests unchanged (threaded e9c3af3703760cb3710d0a08, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C303 (2026-10-06 18:15, a stand refused for want of a spot carries it at once): the stub world has no parent; sim digests unchanged (threaded e9c3af3703760cb3710d0a08, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+A202e (2026-10-06 20:15, a line's last word binds three times as hard; weighted counts; rows begin again, v3): the working state's counts change form, so the work digest and the sim pin MOVE: threaded b94161c200e6fa535f7b0331 (was e9c3af3703760cb3710d0a08), consts b816e29a1660 (unchanged); organs, store, optim and rng unchanged. The language default re-taken and kept 7c54199e3c72cf77d45a8e94.
+A202f (2026-10-06 21:50, a line of one word has no final position): the working state gains the line's word count, so the sim pin MOVE: threaded fc63293b526e350613a8bddb (was b94161c200e6fa535f7b0331) (threaded fc63293b526e350613a8bddb, consts b816e29a1660; organs, store, optim and rng unchanged); the language default kept 7c54199e3c72cf77d45a8e94.
+C304, C305, A202g (2026-10-07 03:10, a label or answer of a toy not where it looks is a show; the look is the whole fovea window against the scene): the look's form changes the working state, so the sim pin MOVES: threaded 27a4b2e77a0cfd274b1fd7fc (was fc63293b526e350613a8bddb), consts b816e29a1660 (unchanged); organs, store, optim and rng unchanged; the stub world has no parent for C304/C305. The language default re-taken and kept 7c54199e3c72cf77d45a8e94.
+A208, C306, A202h, C307 (2026-10-07 03:55, the born hand cue; the follow-in by reach a show; the look the salient cell when the fovea holds nothing; the show's spot reaches the show point): the orienting cues gain one (the working state's record of cues), so the sim pin MOVES: threaded 1e416bd7f7e199961dfee121 (was 27a4b2e77a0cfd274b1fd7fc), consts b816e29a1660 (unchanged); organs, store, optim and rng unchanged; the stub world has no eyes and no parent for the rest. The language default kept 7c54199e3c72cf77d45a8e94.
+C286 (2026-10-05 14:20, her ask waits for a toy in view; the carry brings its toys): the sim digests unchanged; the language default kept 7c54199e3c72cf77d45a8e94.
+C285 (2026-10-05 14:00, its stand and its step pay in her hands): the sim digests unchanged; the language default kept 7c54199e3c72cf77d45a8e94.
+C284 (2026-10-05 12:40, she sees it stand and step): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C283 (2026-10-05 11:55, her asks on their own cadence): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C282 (2026-10-05 11:40, her smile teaches naming): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94 (body/sim/lang is the G1's teacher, not the language body).
+C281 (2026-10-05 11:05, the walk over, carried to its mat): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C279, C280 (2026-10-05 10:15, her planning bounded a tick): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C278 (2026-10-05 02:05, hurting on its front, laid on its back): the sim digests unchanged; the language default kept 7c54199e3c72cf77d45a8e94.
+C277 (2026-10-05 01:20, sat down upright, the carry back to its mat): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C276 (2026-10-05 00:45, the stand's spot where both grips are reached): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C275 (2026-10-05 00:15, her turn at a share of its weight): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C274, A194 (2026-10-05 00:10, the held walk: the swing only unloaded, her hands on either side of its chest): the sim digests re-run and unchanged (threaded 4c5b4e02f2e7930c5d2b4ca0, consts b816e29a1660; the stub world has no parent and no G1 cord); the language default kept 7c54199e3c72cf77d45a8e94.
+C273 (2026-10-04 22:50, the stand in floor play, its spot tested): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C272 (2026-10-04 22:00, the toys at her hand first): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C271 (2026-10-04 21:45, her walking pace back): the sim digests unchanged (the stub world has no parent); the language default kept 7c54199e3c72cf77d45a8e94.
+C268 (2026-10-04 20:32, she stands it up and walks it): the sim digests unchanged (A190's: threaded 4c5b4e02f2e7930c5d2b4ca0; the stub world has no parent and no G1 cord); the language default kept 7c54199e3c72cf77d45a8e94.
+C309, A202i (2026-10-07 06:33, one show at a time, of what she holds, never of the bucket; the name's prior in the readout's units): the sim digests re-run and unchanged (threaded 1e416bd7f7e199961dfee121, consts b816e29a1660: NEVER_FETCHED moved to parent_consts, not in the body's cfg; the stub run primes no name, so GROUND_SAY's new unit moves nothing there); the language default kept 7c54199e3c72cf77d45a8e94.
+C311 (2026-10-07 06:50, the far toys come back to it at dawn): the sim digests re-run and unchanged (threaded 1e416bd7f7e199961dfee121, consts b816e29a1660; the stub world's dawn moves no toy: its toys lie within 2 m); the language default kept 7c54199e3c72cf77d45a8e94.
+A202k, C312 (2026-10-07 07:05, the look every word shares is no word's look; the far-miss instrument): the organ's cue and name read against the grand mean of the looks, so the sim pin MOVES: threaded 128d8cc96eeb7f0c65f3410a (was 1e416bd7f7e199961dfee121), consts b816e29a1660 (unchanged); the language default kept 7c54199e3c72cf77d45a8e94 (the default profile has no grounding organ).
+A202l (2026-10-07 07:18, the name after many hearings; the look in view off the shared look): the sim digests re-run and unchanged from A202k's (threaded 128d8cc96eeb7f0c65f3410a, consts b816e29a1660; the stub's names never reach 8 hearings); the language default kept 7c54199e3c72cf77d45a8e94.
+A202m, C313 (2026-10-07 07:56, a thing is a figure against its ground; the record's 'sees'): the sim digests re-run and unchanged (threaded 128d8cc96eeb7f0c65f3410a, consts b816e29a1660: the stub's windows never fill with one surface and its cells stand out against their neighbours as against the room); the language default kept 7c54199e3c72cf77d45a8e94.
+A202n (2026-10-07 08:18, the rows begun again under the figure law): a fresh life's rows are born at version 4 as at 3, so the sim digests are unchanged (threaded 128d8cc96eeb7f0c65f3410a, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C314 (2026-10-07 08:46, the word heard and the look it met): the working state gains the instrument's field, so the sim pin MOVES: threaded 7e3ff53121abcae20e559dfa (was 128d8cc96eeb7f0c65f3410a), consts b816e29a1660; the language default kept 7c54199e3c72cf77d45a8e94.
+A202o (2026-10-07 09:02, the speaker's face is not a referent; the skin rows begun again, version 5): the sim digests re-run and unchanged (threaded 7e3ff53121abcae20e559dfa, consts b816e29a1660: the stub world has no face in view); the language default kept 7c54199e3c72cf77d45a8e94.
+A202p (2026-10-07 09:40, her face read by its own stream, the object stream beside it; a periphery cell's saliency against its neighbours and the room): the cue's cells change, so the sim pin MOVES: threaded 2a5ea74f937d565023b8c292 (was 7e3ff53121abcae20e559dfa), consts b816e29a1660; the language default kept 7c54199e3c72cf77d45a8e94.
+A202q (2026-10-07 11:05, the name is a word that ends her lines; the letters never primed): the organ's working state gains its hearing counts, so the sim pin MOVES: threaded be9c613d839050926ead2930 (was 2a5ea74f937d565023b8c292), consts b816e29a1660; the language default kept 7c54199e3c72cf77d45a8e94.
+C315 (2026-10-07 11:26, no show of her own while a stand is owed in a motor block): the stub world has no parent; sim digests re-run (threaded be9c613d839050926ead2930, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C316 (2026-10-07 12:40, she finishes the name before she stops; A202q's share on 3 hearings): the sim digests re-run and unchanged (threaded be9c613d839050926ead2930, consts b816e29a1660: the stub has no parent's voice and its names never reach the share), the language default re-run and kept 7c54199e3c72cf77d45a8e94.
+C317 (2026-10-07 15:50, her path to a spot starts where she will stand): the stub world has no parent; sim digests unchanged (threaded be9c613d839050926ead2930, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C318 (2026-10-07 16:10, the show's approach needs the show point only): the stub world has no parent; sim digests re-run (threaded be9c613d839050926ead2930, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C319 (2026-10-07 16:20, a held toy set aside before the stand): the stub world has no parent; sim digests re-run (threaded be9c613d839050926ead2930, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+A202s, C320 (2026-10-07 18:15, its own hand is not a thing named; the rows begun again; the owed stand first): the frame gains self_cells and the organ's rows restart, so the sim pin MOVES: threaded be814fa315c5b1ceefc77d24 (was be9c613d839050926ead2930), consts b816e29a1660; the language default re-run: 7c54199e3c72cf77d45a8e94 (kept 7c54199e3c72cf77d45a8e94).
+C321 (2026-10-07 19:15, the shown toy held 14 ticks; the self mask takes every own limb link): sim digests re-run: threaded be814fa315c5b1ceefc77d24 (A202s's: be814fa315c5b1ceefc77d24), consts b816e29a1660; the language default kept 7c54199e3c72cf77d45a8e94.
+C322 (2026-10-07 20:30, a toy that moved away is fetched again): the stub world has no parent; sim digests re-run (threaded be814fa315c5b1ceefc77d24, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+A211, C323, C324, C325 (2026-10-07 23:50, the born salience cue; the stand offered with a toy in hand; the follow-in not redirected; no path counts toward the carry): the frame gains salient_periph and the anatomy a standing cue, so the sim pin MOVES: threaded 546c6ba20315dc90e7e0dc32 (was be814fa315c5b1ceefc77d24), consts b816e29a1660; the language default re-run: 7c54199e3c72cf77d45a8e94 (kept 7c54199e3c72cf77d45a8e94).
+A212 (2026-10-08 09:50, the retina adapts to the light): the eyes' codes move, so the sim pin MOVES: threaded ac0dc664acdd1a600dd47334 (was 546c6ba20315dc90e7e0dc32), consts b816e29a1660; the language default re-run: 7c54199e3c72cf77d45a8e94 (kept 7c54199e3c72cf77d45a8e94).
+A213 (2026-10-08 10:30, the committed saccade): the stub world has no eyes; sim digests re-run (threaded ac0dc664acdd1a600dd47334, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+A214, A215, C327 (2026-10-08 11:40, the situation organ; the gaze-following cue's stand-in; her glance at the named thing): the situation organ runs in the stub world, so the sim pin MOVES: threaded b860a1ba1f1108d7170326e6 (was ac0dc664acdd1a600dd47334; A214 alone 5e9856f4e1ba8539feee08fb), consts b816e29a1660; the language default re-run: 7c54199e3c72cf77d45a8e94 (kept 7c54199e3c72cf77d45a8e94).
+A216, A217 (2026-10-08 12:20, a thing's name not the situation's word; her body's cells left out of the look): sim digests re-run (threaded b860a1ba1f1108d7170326e6, consts b816e29a1660: the stub world has no parent and its organ names nothing); the language default kept 7c54199e3c72cf77d45a8e94.
+A217 amended, A218 (2026-10-08 14:35, her cells by rays; a situation learned across occasions): the situation organ's counting moves, so the sim pin MOVES: threaded 0c294b48121583d7ba5c9589 (was b860a1ba1f1108d7170326e6), consts b816e29a1660; the language default re-run: 7c54199e3c72cf77d45a8e94 (kept 7c54199e3c72cf77d45a8e94).
+C328 (2026-10-08 15:50, carried back to its mat after walks and blocks): the stub world has no parent; sim digests re-run (threaded 0c294b48121583d7ba5c9589, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C329-C333 (2026-10-08 17:50, the direct teacher: the shown toy up 6 s; a stand due before shows in floor play; she appears beside the child and her stand's holds engage at once; the show and the lean-in by placement): the stub world has no parent; sim digests re-run (threaded 0c294b48121583d7ba5c9589, consts b816e29a1660, unchanged); the language default kept 7c54199e3c72cf77d45a8e94.
+C331 amended (2026-10-08 18:10, an arm whose hold has ended is at rest; placements and pins saved with the state): sim digests re-run (threaded 0c294b48121583d7ba5c9589, consts b816e29a1660, unchanged); the language default kept 7c54199e3c72cf77d45a8e94.
+C334 (2026-10-08 18:50, her placement carries what her hands hold; her spot clear of the toys): the stub world has no parent; sim digests re-taken after the landing (threaded 0c294b48121583d7ba5c9589, consts b816e29a1660, unchanged); the language default kept 7c54199e3c72cf77d45a8e94.
+C335 (2026-10-08 19:15, the hand-over and the bring-back by placement): the stub world has no parent; sim digests re-taken after the landing (threaded 0c294b48121583d7ba5c9589, consts b816e29a1660, unchanged); the language default kept 7c54199e3c72cf77d45a8e94.
+A214, C342, C337 amended twice (2026-10-09 01:10, the supporting reaction under her hold, the tendon organ on the tone, the tone off past 35 deg; the steady over its hips; the raise not under the prone rule): the stub world has no G1 physics or parent; sim digests re-run (threaded 0c294b48121583d7ba5c9589, consts b816e29a1660, unchanged); the language default kept 7c54199e3c72cf77d45a8e94.
+C343 (2026-10-09 01:45, its feet set on the floor before it is raised: FEET_DOWN_M): the stub world has no parent; sim digests unchanged by construction (threaded 0c294b48121583d7ba5c9589, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C344 (2026-10-09 03:20, the arch destination 4.4): the stub world has no plan; sim digests unchanged by construction (threaded 0c294b48121583d7ba5c9589, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+C345 (2026-10-09 04:30, the walk's wall stop, the carry after a far lay, the arch against the wall): the stub world has no parent or room; sim digests unchanged by construction (threaded 0c294b48121583d7ba5c9589, consts b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94.
+W6 (2026-10-09 05:05, a faulted physics tick lived again with her hands off: fault_recover, the loop's retry): the stub world has no hook; sim digests re-run (threaded 0c294b48121583d7ba5c9589, consts b816e29a1660, unchanged); the language default kept 7c54199e3c72cf77d45a8e94.
+A215 (2026-10-09 06:20, the stress fed by the slow band's dip: stress_slow in SIM_CFG): sim digests re-taken (threaded d056d4d5a802556c4d99bfd3, consts fdfb82dddf5c; from 0c294b48121583d7ba5c9589 / b816e29a1660); the language default kept 7c54199e3c72cf77d45a8e94 (stress_slow unset there).
+C346 (2026-10-09 07:20, FLOOR_STAND_GAP 500): the stub world has no plan; sim digests unchanged by construction (threaded d056d4d5a802556c4d99bfd3, consts fdfb82dddf5c); the language default kept 7c54199e3c72cf77d45a8e94.
+A216 (2026-10-09 11:45, the thrust gated off with the chest tipped back: STAND_BACK_G): the stub world has no G1 physics; sim digests unchanged by construction (threaded d056d4d5a802556c4d99bfd3, consts fdfb82dddf5c); the language default kept 7c54199e3c72cf77d45a8e94.
+C347 (2026-10-09 13:20, the stand's pause 300): the stub world has no plan; sim digests unchanged by construction (threaded d056d4d5a802556c4d99bfd3, consts fdfb82dddf5c); the language default kept 7c54199e3c72cf77d45a8e94.
+C348 (2026-10-09 13:30, come to me: the free stand's lure, LURE_AHEAD_M/LURE_Z_M): the stub world has no plan; sim digests unchanged by construction (threaded d056d4d5a802556c4d99bfd3, consts fdfb82dddf5c); the language default kept 7c54199e3c72cf77d45a8e94.
+C349 (2026-10-09 13:35, stood up clear of the walls: STAND_CLEAR_M; the steady's lowering named): the stub world has no plan or parent; sim digests unchanged by construction (threaded d056d4d5a802556c4d99bfd3, consts fdfb82dddf5c); the language default kept 7c54199e3c72cf77d45a8e94.
+C350 / W7 (2026-10-09 16:25, the ghost: body/sim/ghost.py, off until a day plan's ghost block; the motor blocks replaced): the stub world has no plan or parent and the ghost is off by construction; sim digests unchanged by construction (threaded d056d4d5a802556c4d99bfd3, consts fdfb82dddf5c: the served cfg untouched); the language default kept 7c54199e3c72cf77d45a8e94
+W8 (2026-10-09 22:30, the locomotion effector 'loco', the last effector; the day's four command blocks): the anatomy changed (one more motor effector, its organs and recall map; the mossy fibres not widened), so the sim digests move: threaded 1ee1c62c5a76b461d51f5465, one-thread c387250bed8591dc36cf18d9 (from d056d4d5a802556c4d99bfd3 / 85b6661b7780b94835647ef9); consts fdfb82dddf5c unchanged (SIM_CFG untouched); the language default kept 7c54199e3c72cf77d45a8e94 (the diary's anatomy has no such effector; persistence's growth rules touch a save with recall maps only)
+W8 amended (2026-10-10 00:00, the locomotion effector with no consequence sense; a re-declared effector's organs born fresh at a load): the anatomy changed again, so the sim digests move: threaded 787fe5742e3864bb8692bbd3, one-thread 38fb37fd47ae1a57597ae3ad (from 1ee1c62c5a76b461d51f5465 / c387250bed8591dc36cf18d9); consts fdfb82dddf5c unchanged; the language default kept 7c54199e3c72cf77d45a8e94
+A216 (2026-10-10 02:05, the born approach: the locomotor command's cord step toward her face; the orienting bias and the gate input "a cue appeared" on the command, n_in 2): the anatomy's loco gate changed and the cord steps the command, so the sim digests move: threaded 21752f901a8d9b533a9d0e19, one-thread fbfc83b0d3a69ba2f4f7d538, consts 1d89d1f17d95 (the stub world's born body with the ghost off: the cord's step runs through the brain's own effector whether or not a block holds the gait). The language default 7c54199e3c72cf77d45a8e94 kept by construction (no locomotor effector on the page; REFLEX approach 0).
+A216 sized (2026-10-10 02:08, approach_turn_gain 0.5, approach_turn_max 0.3, approach_damp 0.5 on the trunk's gyro): the stub world has no parent, so the face cue never fires in the pin's run and the step's size does not enter it: sim digests unchanged (threaded 21752f901a8d9b533a9d0e19, one-thread fbfc83b0d3a69ba2f4f7d538, consts 1d89d1f17d95); the language default kept 7c54199e3c72cf77d45a8e94.
+W8 amended twice (2026-10-10 02:14, LOCO_SETTINGS sized to the command's integrator; A216's slew 0.05): the stub world's ghost is off and the command moves nothing in it: sim digests unchanged (threaded 21752f901a8d9b533a9d0e19, one-thread fbfc83b0d3a69ba2f4f7d538, consts 1d89d1f17d95); the language default kept 7c54199e3c72cf77d45a8e94. C351 amended three times (her stay_put) touches the parent alone.
+A216 amended (2026-10-10 02:20, her voice the approach's second cue): the stub world hears nothing and sees no face: sim digests unchanged (threaded 21752f901a8d9b533a9d0e19, one-thread fbfc83b0d3a69ba2f4f7d538, consts 1d89d1f17d95); the language default kept 7c54199e3c72cf77d45a8e94.
+A217 (2026-10-10 03:10, GROUND_CUE_MARGIN 0 for the heard word's cue): the stub world hears no word, so no cue can fire in the pin's run: sim digests unchanged (threaded 21752f901a8d9b533a9d0e19, one-thread fbfc83b0d3a69ba2f4f7d538, consts 1d89d1f17d95); the language default 7c54199e3c72cf77d45a8e94 kept (the diary has no grounding organ).
+W8 amended three times (2026-10-10 03:40, the striatum grown at a load for a joined effector): a born body loads nothing, so the sim digests are unchanged by construction (threaded 21752f901a8d9b533a9d0e19, one-thread fbfc83b0d3a69ba2f4f7d538, consts 1d89d1f17d95); the language default 7c54199e3c72cf77d45a8e94 kept.
+R8 amended (2026-10-10 03:50, the night's row carries the lesson's parts, nrem_parts): the saved night report is in the digest's working state, so the threaded sim digest moves to b56e9427aff7691652626b90 (organs 199e530e7517, store 5ad1e909926e, optim 9b12cc944b83, rng 79c885977692 and cfg afc4272a669c unchanged: work 889a2b37ce7a -> abc799fde554, the report alone); the one-thread digest 930db7745cd3f8da1cb433f1 (organs 30825681eddd, store 0b03eaad4e07, optim 0452f6927d34, rng 79c885977692, cfg unchanged: work d5470efb73e6 -> 5ab7b48185d4); consts 1d89d1f17d95 unchanged; the language default 7c54199e3c72cf77d45a8e94 kept by construction (the diary's night is the words').

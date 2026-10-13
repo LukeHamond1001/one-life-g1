@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+title: "one-life-g1: a robot brain raised in one continuous life"
+message: "If you refer to this work, please cite it as below."
+type: software
+authors:
+  - family-names: Hamond
+    given-names: Luke
+repository-code: "https://github.com/LukeHamond1001/one-life-g1"
+license: Apache-2.0
+version: 0.148.1
+date-released: 2026-10-12
+abstract: "A continual-learning architecture for a simulated Unitree G1 humanoid: a predictive model trained online from its own errors, a policy trained by one reward, a teacher's approval read from her face, intrinsic rewards for novelty and competence, and nightly replay. No dataset, no task reward, one life never reset. 148 days lived on one Mac at the time of this release."

@@ -1,0 +1,7 @@
+# The versions the life ran on (Python 3.14.3, macOS on Apple silicon). Exact replay of a saved life depends on them: other versions
+# run, but floating point may differ and a replay then drifts from the record (tools/determinism_check.py prints a digest to compare).
+torch==2.12.0
+numpy==2.4.0
+tokenizers==0.22.2
+mujoco==3.9.0
+scipy==1.18.0

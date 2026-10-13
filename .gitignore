@@ -1,0 +1,39 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+*.log
+MUJOCO_LOG.TXT
+
+# secrets: never committed
+API Key.md
+*.key
+
+# the lives, their records, saves and voice caches; copies; the replay's download
+data/
+
+# the demo films and their tooling: kept on this machine only, never in git (the owner, 2026-09-26)
+video/
+docs/film/
+docs/ALIGNMENT.md
+docs-private/
+DEMO_SCRIPT.md
+DEMO_TRANSCRIPT.md
+DEMO_VIDEO.md
+VIDEO_10MIN.md
+
+# the editor's worktrees and the server's logs
+.claude/worktrees/
+logs/
+rescue_volume/
+ops/anim/
+ops/anim_chunks.sh
+ops/demo_anim.py
+ops/demo_film.py
+ops/demo_replay.py
+ops/demo_video.py
+ops/film_assemble.py
+ops/film_sound.py
+
+# the editor's own notes
+.claude/

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "one-life-g1"
+version = "0.148.1"
+description = "A robot brain that learns in one continuous life: a simulated Unitree G1 that learns every tick from one teacher's approval, sleeps every night, and is never reset."
+readme = "README.md"
+requires-python = ">=3.14"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+dependencies = ["torch>=2.2", "numpy>=1.26", "tokenizers>=0.15", "mujoco>=3.1", "scipy>=1.11"]
+
+[project.optional-dependencies]
+page = ["pillow"]
+
+[project.urls]
+Repository = "https://github.com/LukeHamond1001/one-life-g1"
+
+[tool.setuptools.packages.find]
+include = ["body*"]

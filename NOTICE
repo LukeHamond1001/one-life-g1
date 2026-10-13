@@ -1,0 +1,12 @@
+one-life-g1 — a robot brain raised in one continuous life
+Copyright 2026 Luke Hamond
+
+Licensed under the Apache License, Version 2.0 (LICENSE).
+
+Third-party material in this repository:
+- body/sim/assets/unitree_g1/: the Unitree G1 robot description (model files and meshes), Copyright (c) 2016-2023 HangZhou YuShu
+  TECHNOLOGY CO., LTD. ("Unitree Robotics"), redistributed under the BSD 3-Clause licence in that folder's LICENSE. The gait controller
+  the brain commands in simulation is Unitree's; this repository claims nothing of it.
+  Its trained policy (motion.pt, from unitree_rl_gym, BSD 3-Clause) is not in this repository: tools/get_gait.sh fetches it from
+  Unitree's repository at a pinned commit and checks its SHA-256.
+- body/sim/assets/parent/ and body/sim/textures/: the teacher's figure and the room's materials, made for this project.
