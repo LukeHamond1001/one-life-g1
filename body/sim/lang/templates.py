@@ -96,7 +96,7 @@ OPEN_CONTAINERS = frozenset({"bucket"})   # A129: what she can see into; a toy l
 NOUNS = OBJECT_NOUNS | FIXTURE_NOUNS | CHILD_BODY          # a recast or an echo says "the X" of these ("ball! the ball!")
 FUNCTION = frozenset(dict(GROUPS)["function"])             # never a focus word: her ear never expects them
 PAST_EVENTS = {"sat": ("sat",), "rolled": ("rolled",), "fell": ("fell",), "got": ("got",),
-               "did": ("rolled", "sat", "got", "gave")}
+               "did": ("rolled", "sat", "got", "gave", "came")}     # C372: and its coming to her ('you did it!')
 
 # what each growth word needs in the world to be shown (A15): ("obj", name) an object of that name; ("fixture", name); ("twins",
 # colour) two toys of that colour (B2); ("act", kind) an act her motion can do; ("event", kind) an event the world makes;
@@ -150,6 +150,7 @@ FRAMES = {
                                                         # test is trial_name's (its name or a foil: 4.8, 12)
     "hall_call": [F("{n}.", "{n}"), F("{n}? mama is here.")],
     "come_call": [F("mama is here. {n}.", "{n}"), F("here. here. {n}.", "{n}"), F("look. mama here. {n}.", "{n}")],   # C351: called from across the room (the focus word last).
+    "come_again": [F("{n}.", "{n}"), F("here. {n}.", "{n}"), F("mama here. {n}.", "{n}"), F("here. here. {n}.", "{n}")],   # C353: the call repeated (short; her words only; the name last)
                                                         # C351 amended twice (2026-10-10, 02:10): the first frames ('come here, {n}.', '{n}. come to mama.') never passed
                                                         # her check: a comma fails the form and 'come' is no word of hers (birth or growth), so no call was ever voiced
                                                         # (the copy's refusals: 19 of 19); her words only, no commas
@@ -180,6 +181,7 @@ FRAMES = {
     "confirm_held": [F("you hold the {o}.", "{o}"), F("yes! you hold the {o}.", "{o}")],                                 # for its own act
     "confirm_stood": [F("you stand!", "stand"), F("yes! you stand.", "stand"), F("up. you stand up!", "up")],     # C284
     "confirm_stepped": [F("you walk!", "walk"), F("yes! you walk.", "walk"), F("walk. walk!", "walk")],
+    "confirm_came": [F("you did it!", "it"), F("yes! you did it.", "it"), F("good! you did it!", "it")],   # C372: its coming to her, in her words
     "confirm_lifted": [F("the {o} is up.", "up"), F("up. up! the {o}.", "{o}")],
     "confirm_shook": [F("oh! the {o}.", "{o}"), F("look. the {o}!", "{o}"), F("the {o}. the {o}!", "{o}")],
     "confirm_hit": [F("oh! the {o}.", "{o}"), F("look. the {o}!", "{o}")],

@@ -1794,7 +1794,7 @@ def test_a_world_of_frames():
         except TypeError:
             continue
         raise AssertionError(f"{bad} was made without the sim's methods")
-    LR0 = dict(live_lr=0.0, value_lr=0.0, band_lr=0.0, night_lr=0.0, gate_lr=0.0, gate_adam_lr=0.0, vcrit_lr=0.0, actor_lr=0.0, face_lr=0.0)
+    LR0 = dict(forecast_scaling=0, live_lr=0.0, value_lr=0.0, band_lr=0.0, night_lr=0.0, gate_lr=0.0, gate_adam_lr=0.0, vcrit_lr=0.0, actor_lr=0.0, face_lr=0.0)
     cfg = dict(LR0, wake_ticks=120, wake_every=8, gate_every=8, night_rounds=1, night_starts=4, night_batch=4, rem_dreams=2, rem_steps=2,
                write_floor=1e-30, gate_floor=0.3, fast_rls=0)
     w = _stub_world()
@@ -1971,7 +1971,7 @@ def test_the_loop_deadline_and_pace():
 # ---------------- step R6: the motor timing part and the learned stops ----------------
 
 _STEPS = (-0.27, -0.09, 0.0, 0.09, 0.27)
-_LR0 = dict(live_lr=0.0, value_lr=0.0, band_lr=0.0, night_lr=0.0, gate_lr=0.0, gate_adam_lr=0.0, vcrit_lr=0.0, actor_lr=0.0, face_lr=0.0,
+_LR0 = dict(forecast_scaling=0, live_lr=0.0, value_lr=0.0, band_lr=0.0, night_lr=0.0, gate_lr=0.0, gate_adam_lr=0.0, vcrit_lr=0.0, actor_lr=0.0, face_lr=0.0,
             night_rounds=1, night_starts=4, night_batch=4, rem_dreams=2, rem_steps=2)
 
 
@@ -2082,7 +2082,8 @@ def test_the_timing_part_is_built_last():
     assert new[:len(new) - len(tim)] == ["stri_mline", "acts.arm.rows", "acts.grip.rows", "acts.tap.rows", "gates.arm.weight", "gates.arm.bias",
                                           "gates.grip.weight", "gates.grip.bias", "gates.tap.weight", "gates.tap.bias", "actors.arm.weight",
                                           "actors.arm.bias", "actors.grip.weight", "actors.grip.bias", "actors.tap.weight", "actors.tap.bias"], new
-    assert tim == ["timing.arm.pred.weight", "timing.arm.pred.bias", "timing.arm.fwd.weight", "timing.arm.fwd.bias", "timing.arm.cor.weight",
+    assert tim == ["timing.arm.inv_mu", "timing.arm.inv_sd", "timing.arm.inv_m1", "timing.arm.inv_m2", "timing.arm.inv_c",   # A229n/A229x: act_inv's input statistics
+                   "timing.arm.pred.weight", "timing.arm.pred.bias", "timing.arm.fwd.weight", "timing.arm.fwd.bias", "timing.arm.cor.weight",
                    "timing.arm.inv.0.weight", "timing.arm.inv.0.bias", "timing.arm.inv.2.weight", "timing.arm.inv.2.bias",
                    "timing.grip.pred.weight", "timing.grip.pred.bias", "timing.grip.fwd.weight", "timing.grip.fwd.bias", "timing.grip.cor.weight",
                    "timing.tap.pred.weight", "timing.tap.pred.bias"] and new[-len(tim):] == tim, tim
@@ -2299,6 +2300,8 @@ def _timing_ref(L, i, C, obs, gain):
                 tgt, wt, kd = acts[t], 1.0, "own"
             elif e.inverse and t < T - 1:
                 tgt, wt, kd = tab.flat([int(x.argmax()) for x in tm.inverse_logits(s[t], s[t + 1])]), float(gain), "read"
+                if tgt == rest:
+                    wt, kd = 0.0, "read as rest"                       # A229: a rest that rest explains teaches nothing
             elif e.inverse:
                 tgt, wt, kd = rest, 0.0, "last"
             else:
@@ -2460,7 +2463,9 @@ def test_demonstrations_count_as_earned():
     scale exactly with the reliability: none at 0, a hundredth of the full lesson at 0.01, a quarter at 0.25; the forward half's
     lesson does not depend on it. On a window with own acts beside the rests the lesson is linear in the reliability, its own acts'
     part the same at every reliability. (Divided by the weights' sum, as it was, the reliability only reweighted: at 0.01 a window of
-    rests taught as at 1.) What act_pred then learns under its optimizer is anatomy 31's"""
+    rests taught as at 1.) What act_pred then learns under its optimizer is anatomy 31's. A229 (2026-10-17): a rest act_inv reads as
+    the rest act teaches nothing (anatomy 37), so the window of still rests, which act_inv reads as rest throughout, teaches nothing
+    at any reliability: its lesson the forward half's alone, act_pred's gradient none"""
     from body.core.world import WorldLoop
     cfg = dict(_LR0, wake_ticks=100000, wake_every=10 ** 6, gate_every=10 ** 6, write_floor=1e-30, gate_floor=0.5, fast_rls=0,
                act_inv_lr=1e-2, act_inv_tau=2000)
@@ -2485,6 +2490,14 @@ def test_demonstrations_count_as_earned():
         res = {g: _lesson_at(L, obs, whos, bundles, g) for g in gains}
         lt0, gp0, gf0, _ = res[0.0]; lt1, gp1, gf1, rp1 = res[1.0]
         full = lt1 - lt0                                          # the rests' part of the lesson at reliability 1 (the forward half's cancels)
+        if name == "rests":                                       # A229: still rests, read as the rest act, teach nothing at any reliability
+            tm_ = L.m.timing["arm"]; s_ = obs["body"].float()
+            with torch.no_grad():
+                read_ = [L.m.acts["arm"].flat([int(x.argmax()) for x in tm_.inverse_logits(s_[k], s_[k + 1])]) for k in range(1, int(s_.shape[0]) - 1)]
+            assert all(r_ == 12 for r_ in read_), read_
+            assert full == 0.0 and all(float(res[g][1].abs().max()) == 0.0 for g in gains) and all(res[g][3]["s_lab"] == 0.0 for g in gains), (name, full)
+            out[name] = (0.0, 0.0, 0.0)
+            continue
         assert full > 1e-3, (name, full)
         for g in gains:
             lt_, gp_, gf_, rp_ = res[g]
@@ -2500,9 +2513,9 @@ def test_demonstrations_count_as_earned():
             assert float(gp0.abs().max()) > 0.0                   # its own acts teach at every reliability
         out[name] = (round(full, 4), round(float(gp1.norm()), 4), round(float(res[0.01][1].norm()), 6))
     print(f"anatomy 28: act_pred's lesson scales with act_inv's reliability (the weights absolute): the rests' part of the lesson and",
-          f"act_pred's gradient at 1 and at 0.01 (lesson, |grad| at 1, |grad| at 0.01): rests alone {out['rests']}, pure demonstration",
-          f"{out['demonstration']}, own acts beside rests {out['mixed']} (linear in the reliability, the own acts' part fixed); the forward",
-          f"half's lesson the same at every reliability")
+          f"act_pred's gradient at 1 and at 0.01 (lesson, |grad| at 1, |grad| at 0.01): pure demonstration {out['demonstration']}, own",
+          f"acts beside rests {out['mixed']} (linear in the reliability, the own acts' part fixed); still rests, read as rest, teach",
+          f"nothing at any reliability {out['rests']} (A229); the forward half's lesson the same at every reliability")
 
 
 def test_act_inv_reliability_is_kappa():
@@ -3013,8 +3026,8 @@ def test_a_34_joint_body_builds():
 
 def _proposal_error(L, win):
     """the arm's proposal (act_pred and the correction, through the cortex as it is now) against act_inv's labels at a window's
-    labelled rests (every rested position but the last, whose next sense is not felt): (the mean of 0.5 |proposal - the label's row|^2
-    as the lesson weighs it, the number of those positions)"""
+    labelled rests (every rested position but the last, whose next sense is not felt; A229: and whose label is an act, not the rest
+    act): (the mean of 0.5 |proposal - the label's row|^2 as the lesson weighs it, the number of those positions; 0 and 0 where none)"""
     L.win.clear(); L.win.extend(win)
     obs, whos, bundles, _ = L._window_tensors()
     tm = L.m.timing["arm"]; tab = L.m.acts["arm"]
@@ -3023,8 +3036,8 @@ def _proposal_error(L, win):
         s = obs["body"].float(); acts = obs["arm"]; T = int(acts.shape[0])
         lab = tab.flat_many([lg.argmax(-1) for lg in tm.inverse_logits(s[:-1], s[1:])])
         P = tm.pred(C[:-1]) + tm.cor(s[1:] - tm.fwd(C[:-1]))
-        pos = [t for t in range(1, T - 1) if int(acts[t]) == 12]
-        return sum(0.5 * float(((P[t - 1] - tab(lab[t].unsqueeze(0))[0]) ** 2).sum()) for t in pos) / len(pos), len(pos)
+        pos = [t for t in range(1, T - 1) if int(acts[t]) == 12 and int(lab[t]) != 12]   # (A229: a rest read as rest is no label)
+        return (sum(0.5 * float(((P[t - 1] - tab(lab[t].unsqueeze(0))[0]) ** 2).sum()) for t in pos) / len(pos), len(pos)) if pos else (0.0, 0)
 
 
 def _arm_gated(L):
@@ -3185,6 +3198,9 @@ def test_act_pred_learns_by_reliability():
       against every hundredth lesson at 1, read after 300, 1000 and 3000: the same mass within 0.8 to 1.25 after 1000 and 3000, 0.6
       to 1.25 after 300 (three whole lessons against 300 spread: the last whole one, at the 300th, not yet diluted by the own acts'
       lessons after it; 0.75 measured, the side of teaching less); the share, reported, bends further with the horizon.
+    - A229 (2026-10-17): a rest act_inv reads as the rest act carries no label (anatomy 37), so the window of still rests teaches the
+      arm nothing at any reliability (its count of labels 0, its share and mass not read; the longer horizon's second case the
+      trained state's guidance in its place) and the mixed window's labels are its rests read as acts alone.
     - THE OPTIMIZERS: opt_pred a GatedDescent holding act_pred and the corrections (a group per effector: the arm's and the grip's, the
       tap senses nothing, its act_pred alone), its rate act_pred_rate x sqrt(d) and its bound act_pred_bound x sqrt(d) times that, per
       unit of the waking rate, and no state after any lesson; every other parameter in the day's Adam as before (its rate, betas and
@@ -3195,7 +3211,7 @@ def test_act_pred_learns_by_reliability():
     LR = float((_served_cfg() or PHYSIOLOGY)["live_lr"])
     L, w, W = _arm_fixture(LR)
     n_lab = {k: _proposal_error(L, v)[1] for k, v in W.items()}
-    assert n_lab["rests"] == n_lab["guidance"] == 30 and 5 <= n_lab["mixed"] <= 25 and n_lab["own"] >= 1 and L.motor[0]["inv_gain"] > 0.3, (n_lab, L.motor[0]["inv_gain"])
+    assert n_lab["rests"] == 0 and n_lab["guidance"] == 30 and 1 <= n_lab["mixed"] <= 25 and n_lab["own"] >= 1 and L.motor[0]["inv_gain"] > 0.3, (n_lab, L.motor[0]["inv_gain"])   # (A229: still rests, read as rest, are no labels)
     # THE OPTIMIZERS
     tim = L.m.timing; d = L.m.d
     want = {"arm": [tim["arm"].pred.weight, tim["arm"].pred.bias, tim["arm"].cor.weight], "grip": [tim["grip"].pred.weight, tim["grip"].pred.bias,
@@ -3239,6 +3255,8 @@ def test_act_pred_learns_by_reliability():
                 if name in ("rests", "guidance"):                   # the arm's act_pred and correction: its first 3 tensors' elements
                     n_arm = sum(p_.numel() for p_ in L._gated_params(L.anatomy.effectors[1]))
                     assert float(steps[0.0][:n_arm].abs().max()) == 0.0, ((times, reg, name), "reliability 0 moved the arm's act_pred without an own act")
+                if name == "rests":                                 # A229: still rests, read as rest, teach nothing at any reliability
+                    assert all(float(steps[g][:n_arm].abs().max()) == 0.0 for g in gains), ((times, reg, name), "a rest read as rest moved the arm's act_pred")
                 for g in gains[1:]:
                     assert all(torch.equal(a_, b_) for a_, b_ in zip(day[0.0][0], day[g][0])), ((times, reg, name, g), "the day's step moved with the reliability")
                     assert all(torch.equal(day[0.0][1][k_]["exp_avg"], day[g][1][k_]["exp_avg"]) and torch.equal(day[0.0][1][k_]["exp_avg_sq"], day[g][1][k_]["exp_avg_sq"]) for k_ in day[0.0][1]), (times, reg, name, g)
@@ -3261,11 +3279,13 @@ def test_act_pred_learns_by_reliability():
                         L.win.clear(); L.win.extend(win); L._wake_lesson()
                     _waking_rate(L, LR)
                     res[g] = _proposal_error(L, win)[0]; st[g] = _stream_params(L)
+                if name in ("rests", "guidance"):
+                    same[(times, reg, name)] = all(torch.equal(a_, b_) for g in gs[1:] + ("mass",) for a_, b_ in zip(st[0.0], st[g]))
+                if not n_lab[name]:
+                    continue                                        # (A229: a window of rests read as rest has no label to share)
                 full = res[0.0] - res[1.0]
                 shares[(times, reg, name)] = (round(full, 4), {g: round((res[0.0] - res[g]) / full, 4) for g in gs[1:-1]})
                 mass[(times, reg, name)] = round((res[0.0] - res[0.05]) / (res[0.0] - res["mass"]), 4)
-                if name in ("rests", "guidance"):
-                    same[(times, reg, name)] = all(torch.equal(a_, b_) for g in gs[1:] + ("mass",) for a_, b_ in zip(st[0.0], st[g]))
     said = {"share": {f"{k[0]}x {k[1]} {k[2]}": v for k, v in shares.items()}, "same mass at 0.05": {f"{k[0]}x {k[1]} {k[2]}": v for k, v in mass.items()}}
     for key, (full, sh) in shares.items():
         assert full > 0.02, (key, "the whole lesson does not teach", said)
@@ -3275,9 +3295,10 @@ def test_act_pred_learns_by_reliability():
     for key, r_ in mass.items():
         assert (0.8 if key[0] == 1 else 0.6) <= r_ <= 1.25, (key, "the spread labels taught otherwise than the same mass given whole", said)
     assert same and all(same.values()), ("the stream learned act_inv's labels", [k for k, v in same.items() if not v])
-    # LONGER: the fitted state's mixed window (3000 lessons) and the trained state's rests (1000), at 0.01 against every hundredth at 1
+    # LONGER: the fitted state's mixed window (3000 lessons) and the trained state's guidance (1000; its rests until A229, whose still
+    # rests now teach nothing), at 0.01 against every hundredth at 1
     AT = (300, 1000, 3000); long_ = {}
-    for reg, name, n_ in (("fitted", "mixed", 3000), ("trained", "rests", 1000)):
+    for reg, name, n_ in (("fitted", "mixed", 3000), ("trained", "guidance", 1000)):
         at_ = tuple(a_ for a_ in AT if a_ <= n_)
         e_ = {g: _curve_from(L, S[reg], W[name], g, n_, at_) for g in (0.0, 0.01, 1.0)}
         e_["mass"] = _curve_from(L, S[reg], W[name], lambda i: 1.0 if i % 100 == 99 else 0.0, n_, at_)
@@ -3317,7 +3338,7 @@ def _two_errors(L, win):
         s = obs["body"].float(); acts = obs["arm"]; T = int(acts.shape[0])
         lab = tab.flat_many([lg.argmax(-1) for lg in tm.inverse_logits(s[:-1], s[1:])])
         P = tm.pred(C[:-1]) + tm.cor(s[1:] - tm.fwd(C[:-1]))
-        rp = [t for t in range(1, T - 1) if int(acts[t]) == 12]
+        rp = [t for t in range(1, T - 1) if int(acts[t]) == 12 and int(lab[t]) != 12]   # (A229: a rest read as rest is no label)
         op = [t for t in range(1, T) if int(acts[t]) != 12]
         el = sum(0.5 * float(((P[t - 1] - tab(lab[t].unsqueeze(0))[0]) ** 2).sum()) for t in rp) / max(1, len(rp))
         eo = sum(0.5 * float(((P[t - 1] - tab(acts[t].unsqueeze(0))[0]) ** 2).sum()) for t in op) / max(1, len(op))
@@ -3720,6 +3741,179 @@ def test_act_preds_step_is_bounded():
           f"step after the dip in rates: {mini}")
 
 
+def test_a_rest_read_as_rest_teaches_nothing():
+    """anatomy 37 (A229, 2026-10-17): A DEMONSTRATION IS A MOVE AT REST THAT REST CANNOT EXPLAIN. On a window of the arm's rests alone
+    (its gate shut) with act_inv's reading forced (an act at every third pair, the rest act at the others), the lesson's labels are
+    the rested positions read as an act: a rested position read as the rest act carries no label and no weight (s_lab counts the
+    others alone; the report's mean weight likewise), and the whole lesson is the reference's position by position with those
+    positions at weight 0. Fails without A229 (every rested position but the last labelled, the rest act taught at the reliability)"""
+    from body.core.world import WorldLoop
+    cfg = dict(_LR0, wake_ticks=100000, wake_every=10 ** 6, gate_every=8, write_floor=1e-30, gate_floor=0.5, fast_rls=0)
+    w = _arm_world(wall=0.45); torch.manual_seed(5); L = _born_in(_Timed(TOK, cfg), cfg, w)
+    _closed_arm(L)
+    run = WorldLoop(L)
+    for _ in range(40):
+        run.step()
+    obs, whos, bundles, reads = L._window_tensors(); T = int(obs["arm"].shape[0])
+    e = L.anatomy.effectors[1]; tm = L.m.timing["arm"]; tab = L.m.acts["arm"]; rest = int(e.rest_id)
+    assert all(int(x) == rest for x in obs["arm"]), [int(x) for x in obs["arm"]]
+    want = [6 if k % 3 == 0 else rest for k in range(T - 1)]               # the forced reading of the pair (s[k], s[k + 1])
+    digs = [[int(x_) for x_ in tab.digits(torch.tensor(a_)).tolist()] for a_ in want]
+
+    def forced(s0, s1):                                                     # the window's pairs at once, as the lesson asks
+        assert s0.dim() == 2 and int(s0.shape[0]) == T - 1
+        out = []
+        for j_, K_ in enumerate(e.factors):
+            z = torch.full((T - 1, int(K_)), -10.0)
+            for k, d_ in enumerate(digs):
+                z[k, d_[j_]] = 10.0
+            out.append(z)
+        return out
+    gain = 0.5; L.motor[0]["inv_gain"] = gain
+    with torch.no_grad():
+        C = L.m.stream(L.m.inputs(L.anatomy, obs, whos, bundles))
+    tm.inverse_logits = forced
+    try:
+        lt, rp, lb = L._timing_loss(1, C, obs)
+        lt = lt if lb is None else lt + gain * lb
+        tg, ws, kinds = [], [], []
+        with torch.no_grad():
+            num = torch.zeros(())
+            s = obs["body"].float()
+            for t in range(1, T):
+                p = tm.pred(C[t - 1]) + tm.cor(s[t] - tm.fwd(C[t - 1]))
+                if t < T - 1:
+                    tgt = want[t]; wt = gain if tgt != rest else 0.0; kd = "read" if tgt != rest else "read as rest"
+                else:
+                    tgt, wt, kd = rest, 0.0, "last"
+                num = num + wt * 0.5 * ((p - tab(torch.tensor(tgt))) ** 2).sum()
+                tg.append(tgt); ws.append(wt); kinds.append(kd)
+            lf = sum(0.5 * float(((tm.fwd(C[t]) - s[t + 1]) ** 2).sum()) for t in range(T - 1)) / (T - 1)
+    finally:
+        del tm.inverse_logits
+    n_act = sum(1 for t in range(1, T - 1) if want[t] != rest)
+    n_rest = sum(1 for t in range(1, T - 1) if want[t] == rest)
+    assert n_act >= 5 and n_rest >= 10, (n_act, n_rest)
+    assert abs(rp["s_lab"] - n_act / (T - 1)) < 1e-12, (rp["s_lab"], n_act, T)
+    assert abs(rp["w"] - gain * n_act / (T - 1)) < 1e-6, (rp["w"], gain, n_act, T)
+    want_l = float(num) / (T - 1) + lf
+    assert abs(float(lt.detach()) - want_l) <= 1e-5 * max(1.0, abs(want_l)), (float(lt.detach()), want_l)
+    print(f"anatomy 37: on {T - 1} rested positions read {n_act} as an act and {n_rest} as the rest act (and the last unread), the lesson",
+          f"labels the {n_act} alone (s_lab {rp['s_lab']:.4f}, mean weight {rp['w']:.4f} at reliability {gain}) and equals the reference with",
+          "the rests read as rest at weight 0 (A229)")
+
+
+def test_a_blocked_setting_is_read_as_rest():
+    """anatomy 38 (A233, 2026-10-18): A SETTING ITS ACTUATOR COULD NOT CARRY OUT IS READ AS THE REST. On anatomy 37's window of the
+    arm's rests with act_inv's reading forced (an act at every third pair, the rest act at the others), the window shows the act's
+    settings blocked at every other of those pairs ('@blk:arm', each joint's set setting that is not its rest): there act_inv's
+    reading of each such joint is its rest digit, so the pair reads as the rest act and teaches nothing (A229); the pairs whose
+    settings were not blocked keep their label, and a window that shows no flags labels every act as before. Fails without A233"""
+    from body.core.world import WorldLoop
+    cfg = dict(_LR0, wake_ticks=100000, wake_every=10 ** 6, gate_every=8, write_floor=1e-30, gate_floor=0.5, fast_rls=0)
+    w = _arm_world(wall=0.45); torch.manual_seed(5); L = _born_in(_Timed(TOK, cfg), cfg, w)
+    _closed_arm(L)
+    run = WorldLoop(L)
+    for _ in range(40):
+        run.step()
+    obs, whos, bundles, reads = L._window_tensors(); T = int(obs["arm"].shape[0])
+    e = L.anatomy.effectors[1]; tm = L.m.timing["arm"]; tab = L.m.acts["arm"]; rest = int(e.rest_id)
+    assert all(int(x) == rest for x in obs["arm"]), [int(x) for x in obs["arm"]]
+    want = [6 if k % 3 == 0 else rest for k in range(T - 1)]
+    digs = [[int(x_) for x_ in tab.digits(torch.tensor(a_)).tolist()] for a_ in want]
+    rd = [int(x_) for x_ in tab.digits(torch.tensor(rest)).tolist()]
+    d6 = [int(x_) for x_ in tab.digits(torch.tensor(6)).tolist()]
+    assert d6 != rd, (d6, rd)
+
+    def forced(s0, s1):
+        out = []
+        for j_, K_ in enumerate(e.factors):
+            z = torch.full((T - 1, int(K_)), -10.0)
+            for k, d_ in enumerate(digs):
+                z[k, d_[j_]] = 10.0
+            out.append(z)
+        return out
+    F_ = sum(int(k_) for k_ in e.factors)
+    blk = torch.zeros(T, F_, dtype=torch.bool)
+    offs = [sum(int(k_) for k_ in e.factors[:j_]) for j_ in range(len(e.factors))]
+    hit = [k for k in range(T - 1) if k % 6 == 0]                            # every other act: its set settings blocked
+    for k in hit:
+        for j_, d_ in enumerate(d6):
+            if d_ != rd[j_]:
+                blk[k, offs[j_] + d_] = True
+    gain = 0.5; L.motor[0]["inv_gain"] = gain
+    with torch.no_grad():
+        C = L.m.stream(L.m.inputs(L.anatomy, obs, whos, bundles))
+    tm.inverse_logits = forced
+    try:
+        _, rp0, _ = L._timing_loss(1, C, obs)                               # no flags: every act labelled (A229's)
+        _, rp1, _ = L._timing_loss(1, C, dict(obs, **{"@blk:arm": blk}))
+    finally:
+        del tm.inverse_logits
+    n_all = sum(1 for t in range(1, T - 1) if want[t] != rest)
+    n_kept = sum(1 for t in range(1, T - 1) if want[t] != rest and t not in hit)
+    assert n_all >= 5 and n_all - n_kept >= 2, (n_all, n_kept)
+    assert abs(rp0["s_lab"] - n_all / (T - 1)) < 1e-12, (rp0["s_lab"], n_all, T)
+    assert abs(rp1["s_lab"] - n_kept / (T - 1)) < 1e-12, (rp1["s_lab"], n_kept, T)
+    print(f"anatomy 38: of {n_all} rested positions read as an act, the {n_all - n_kept} whose settings the window showed blocked read as",
+          f"the rest and teach nothing (s_lab {rp0['s_lab']:.4f} -> {rp1['s_lab']:.4f}); the others keep their label (A233)")
+
+
+def test_a_joint_nothing_pushed_is_read_as_rest():
+    """anatomy 39 (A233, 2026-10-18): A JOINT THE WORLD SHOWS NOTHING PUSHED MOVED BY ITS REST ALONE. On anatomy 37's window of the arm's
+    rests with act_inv's reading forced (an act at every third pair), the arm taken as a pusher (its push one number a joint) and the
+    window showing the push into each position ('@push', '@pushk'): a pair whose next position shows its act's joints pushed keeps its
+    label; one that shows them unpushed reads as the rest and teaches nothing (A229); one whose push is not known keeps its label (as
+    before A233). Fails without A233"""
+    from body.core.world import WorldLoop
+    cfg = dict(_LR0, wake_ticks=100000, wake_every=10 ** 6, gate_every=8, write_floor=1e-30, gate_floor=0.5, fast_rls=0)
+    w = _arm_world(wall=0.45); torch.manual_seed(5); L = _born_in(_Timed(TOK, cfg), cfg, w)
+    _closed_arm(L)
+    run = WorldLoop(L)
+    for _ in range(40):
+        run.step()
+    obs, whos, bundles, reads = L._window_tensors(); T = int(obs["arm"].shape[0])
+    e = L.anatomy.effectors[1]; tm = L.m.timing["arm"]; tab = L.m.acts["arm"]; rest = int(e.rest_id)
+    want = [6 if k % 3 == 0 else rest for k in range(T - 1)]
+    digs = [[int(x_) for x_ in tab.digits(torch.tensor(a_)).tolist()] for a_ in want]
+    rd = [int(x_) for x_ in tab.digits(torch.tensor(rest)).tolist()]
+    d6 = [int(x_) for x_ in tab.digits(torch.tensor(6)).tolist()]
+    moved = [j_ for j_ in range(len(d6)) if d6[j_] != rd[j_]]
+    assert moved, (d6, rd)
+
+    def forced(s0, s1):
+        out = []
+        for j_, K_ in enumerate(e.factors):
+            z = torch.full((T - 1, int(K_)), -10.0)
+            for k, d_ in enumerate(digs):
+                z[k, d_[j_]] = 10.0
+            out.append(z)
+        return out
+    nj = len(e.factors)
+    P = torch.zeros(T, nj); K = torch.ones(T, dtype=torch.bool)
+    acts_at = [k for k in range(1, T - 1) if want[k] != rest]
+    pushed = acts_at[0::3]; unknown = acts_at[1::3]; still = acts_at[2::3]
+    for k in pushed:
+        for j_ in moved:
+            P[k + 1, j_] = 0.01                                                 # the push into the pair's next position, on its joints
+    for k in unknown:
+        K[k + 1] = False
+    gain = 0.5; L.motor[0]["inv_gain"] = gain
+    with torch.no_grad():
+        C = L.m.stream(L.m.inputs(L.anatomy, obs, whos, bundles))
+    tm.inverse_logits = forced; L._push_slice = lambda e_: (0, nj)
+    try:
+        _, rp, _ = L._timing_loss(1, C, dict(obs, **{"@push": P, "@pushk": K}))
+        _, rp0, _ = L._timing_loss(1, C, obs)
+    finally:
+        del tm.inverse_logits; del L._push_slice
+    assert len(still) >= 2 and len(pushed) >= 2 and len(unknown) >= 2, (pushed, unknown, still)
+    assert abs(rp0["s_lab"] - len(acts_at) / (T - 1)) < 1e-12, (rp0["s_lab"], len(acts_at))
+    assert abs(rp["s_lab"] - (len(pushed) + len(unknown)) / (T - 1)) < 1e-12, (rp["s_lab"], len(pushed), len(unknown), len(still))
+    print(f"anatomy 39: of {len(acts_at)} rested positions read as an act, the {len(still)} whose next position shows its joints unpushed read",
+          f"as the rest and teach nothing; the {len(pushed)} pushed and the {len(unknown)} whose push is unknown keep their label (A233)")
+
+
 ANATOMY_TESTS = [test_language_anatomy_equals_the_tokenizers_fields, test_language_anatomy_is_inert, test_anatomy_check,
                  test_life_reads_its_anatomy, test_an_anatomy_in_the_tokenizers_place, test_the_body_reads_text_through_its_anatomy,
                  test_reward_sources_feel_todays_rule, test_a_life_feels_as_before, test_the_declared_order_is_the_sums,
@@ -3731,7 +3925,8 @@ ANATOMY_TESTS = [test_language_anatomy_equals_the_tokenizers_fields, test_langua
                  test_the_learned_stops, test_demonstrations_count_as_earned, test_act_inv_reliability_is_kappa,
                  test_a_34_joint_body_builds, test_act_pred_learns_by_reliability,
                  test_a_striatum_saved_before_r5b_loads, test_act_pred_reloads_without_moments, test_own_acts_and_labels_learn_together,
-                 test_act_preds_step_is_bounded]
+                 test_act_preds_step_is_bounded, test_a_rest_read_as_rest_teaches_nothing,
+                 test_a_blocked_setting_is_read_as_rest, test_a_joint_nothing_pushed_is_read_as_rest]
 
 if __name__ == "__main__":
     t0 = time.time(); failed = 0

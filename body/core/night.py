@@ -612,7 +612,7 @@ class NightMixin:
         terms = []
         for b in range(len(gam)):
             pairs = list(self.v_buf[b])
-            if len(pairs) < 4 or (int(self.cfg.get("fast_rls", 0)) and b == int(self.cfg["dopamine_band"])):   # the fast head is solved, not replayed
+            if len(pairs) < 4 or (int(self.cfg.get("fast_rls", 0)) and str(self.cfg.get("dopamine_source", "striatum")) != "band" and b == int(self.cfg["dopamine_band"])):   # the fast head is solved, not replayed (D1: the band's is, when it is dopamine's)
                 continue
             hp = torch.stack([p[0] for p in pairs]).to(self.dev); R = torch.tensor([p[1] for p in pairs], device=self.dev)
             hn = torch.stack([p[2] for p in pairs]).to(self.dev)

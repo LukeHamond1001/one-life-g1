@@ -76,6 +76,8 @@ class SubFrame:
     slip: object = None
     turn: object = None
     limit: object = None
+    loco_err: object = None             # A227: at sub-step 0, the last tick's turn achieved minus the turn commanded (rad/s, per locomotor
+    loco_cmd: object = None             # axis) and the turn commanded (rad/s): the walk readout's teacher; None on a tick it teaches nothing
 
 
 @dataclass(eq=False)
@@ -89,6 +91,8 @@ class SubActs:
     torque: object = None
     vor_gain: object = None
     vor_offset: object = None
+    loco_gain: object = None            # A227: at sub-step 0, the walk command's gain correction and offset (rad/s) per locomotor axis,
+    loco_offset: object = None          # which the world holds through the tick: the legs are given (1 + gain) x command + offset
 
 
 class Acts(dict):

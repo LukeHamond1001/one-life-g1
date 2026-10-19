@@ -461,7 +461,8 @@ def test_amyg_orienting_gain():
     _force(G1, 0.7, 0.0); run.step()
     frame = Frame(G1.ticks, {"face_periph": [1.0, 0.4, -0.3], "sound_side": [1.0, 0.5], "onset_periph": [1.0, -0.3, 0.2]}, 0.0)
     G1._orient_now = None; cues = G1._orient_cues(frame)
-    assert [c.name for c, *_ in cues] == ["face", "sound", "onset"] and all(dy != 0 for _, dy, _, _ in cues)
+    fired_ = [c.name for c, dy, *_ in cues if dy != 0]                      # (the anatomy's cues grew: named, gaze, salient, hand; silent here)
+    assert fired_ == ["face", "sound", "onset"] and all(dy == 0 for c, dy, *_ in cues if c.name not in fired_), [(c.name, dy) for c, dy, *_ in cues]
     gain = G1._orient_gain(); assert abs(gain - 1.7) < 1e-12
     for name in ("gaze", "waist"):
         e_ = G1.anatomy.effector(name); tab_ = G1.m.acts[name]
@@ -594,9 +595,10 @@ def test_amyg_the_sim_twice():
         for _ in range(300):
             run.step()
         hs.append(_whole(L))
-        assert L.m.amyg.heads == (("face", 1.0), ("face", -1.0), ("pain", -1.0)) and L.m.amyg.n_in == 32 + 13 + 1   # A88: no charge heads
+        hd_ = tuple(L.m.amyg.heads)                                     # A88: no charge heads; the face's two and the pain's first (the novelty
+        assert hd_[:3] == (("face", 1.0), ("face", -1.0), ("pain", -1.0)) and not any(h_[0] == "charge" for h_ in hd_), hd_   # and competence heads after)
     assert hs[0] == hs[1], [k for k in hs[0] if hs[0][k] != hs[1][k]]
-    print(f"amyg 12: the G1 with the amygdala on (3 heads, 46 inputs at d 32), 300 ticks twice from birth: the same life ({' '.join(f'{k} {v[:12]}' for k, v in hs[0].items())})")
+    print(f"amyg 12: the G1 with the amygdala on ({len(L.m.amyg.heads)} heads, {L.m.amyg.n_in} inputs at d 32), 300 ticks twice from birth: the same life ({' '.join(f'{k} {v[:12]}' for k, v in hs[0].items())})")
 
 
 # ---------------- amyg 13: its cost ----------------
@@ -630,8 +632,49 @@ def test_amyg_its_cost():
           f"({', '.join(f'{w:.3f}' for _, w in runs)}; this machine's load {os.getloadavg()[0]:.1f})")
 
 
+def test_the_approach_orients_to_its_own_cues():
+    """amyg (A237, 2026-10-18): AN EFFECTOR WITH A BORN APPROACH ORIENTS TO WHAT IT APPROACHES. On the G1 with her face in the periphery
+    to the right, a sound's side to the right and a sudden change to the left: the gaze's and the waist's born bias sum all three cues
+    (as before), the walk command's sums only the cues its approach declares (the heard word's look, her face, the sound's side), so
+    its pull is twice the face's where every cue's would be once. Fails without A237 (the walk command summing every cue)"""
+    import math as _m
+    from body.sim.anatomy import SIM_CFG, SimAnatomy, born_table
+    from body.tests.test_frames import _g1_events_world
+    from body.core.world import Frame
+    gc = dict(SIM_CFG, wake_ticks=100000, gate_floor=0.3, write_floor=1e-30, amyg_every=10 ** 9, amyg_rel_tau=1e15)
+    torch.manual_seed(0)
+    G1 = Life.birth(SimAnatomy(born_table(), gc), device="cpu", d=32, layers=1, heads=2, window=8, cfg=gc, seed=0, world=_g1_events_world())
+    run = WorldLoop(G1)
+    for _ in range(3):
+        run.step()
+    frame = Frame(G1.ticks, {"face_periph": [1.0, 0.4, -0.3], "sound_side": [1.0, -0.5], "onset_periph": [1.0, -0.3, 0.2]}, 0.0)
+    G1._orient_now = None; cues = G1._orient_cues(frame)
+    dirs = {c.name: dy for c, dy, *_ in cues if dy}
+    assert dirs == {"face": 1, "sound": 1, "onset": -1}, dirs
+    gain = G1._orient_gain(); lg4 = _m.log(4.0)
+    for name in ("gaze", "waist"):
+        e_ = G1.anatomy.effector(name); tab_ = G1.m.acts[name]
+        b_ = G1._orient_bias(e_, frame, tab_)
+        for j, (ax, sg) in e_.orient.items():
+            dsum = sum((dy if ax == "yaw" else dp) for _, dy, dp, _ in cues)   # every cue (on the yaw: 1 + 1 - 1)
+            want = torch.tensor([(gain * lg4) * float(dsum) * float(sg) * G1._setting_sign(k, 5) for k in range(5)])
+            if dsum == 0:
+                assert b_ is None or torch.equal(b_[j], torch.zeros(5)), (name, j, b_)
+            else:
+                assert torch.equal(b_[j], want), (name, j, b_[j], want)
+    e_ = G1.anatomy.effector("loco"); tab_ = G1.m.acts["loco"]
+    assert set(e_.approach["cues"]) >= {"face", "sound"} and "onset" not in e_.approach["cues"], e_.approach["cues"]
+    b_ = G1._orient_bias(e_, frame, tab_)
+    for j, (ax, sg) in e_.orient.items():
+        want = torch.tensor([(gain * lg4) * 2.0 * float(sg) * G1._setting_sign(k, 5) for k in range(5)])        # her face and the sound
+        assert torch.equal(b_[j], want), ("loco", j, b_[j], want)
+    print(f"amyg (A237): with her face and a sound to the right and a change to the left, the gaze and the waist pull by one cue's, the walk",
+          "command's turn by two: its approach's cues alone")
+
+
 AMYG_TESTS = [test_amyg_inert_for_language, test_amyg_the_law_exact, test_amyg_one_pairing, test_amyg_split_valence_and_the_tags_bounds, test_amyg_the_later_boost,
-              test_amyg_the_nights_side, test_amyg_orienting_gain, test_amyg_pav, test_amyg_the_save_round_trip, test_amyg_the_sim_twice, test_amyg_its_cost]
+              test_amyg_the_nights_side, test_amyg_orienting_gain, test_amyg_pav, test_amyg_the_save_round_trip, test_amyg_the_sim_twice, test_amyg_its_cost,
+              test_the_approach_orients_to_its_own_cues]
 
 
 if __name__ == "__main__":

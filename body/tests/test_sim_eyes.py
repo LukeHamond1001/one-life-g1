@@ -76,7 +76,7 @@ def test_the_gaze():
     assert np.allclose(f.obs["body"][218:221], w.gaze / 0.15, atol=0.02)
     for _ in range(10):
         w.apply({"gaze": W.act_flat([4, 4, 4])})
-    assert abs(w.gaze[2] - W.VERG_MAX) < 1e-12 and abs(w.gaze[1] - W.GAZE_REACH_PITCH) < 0.01      # (the VOR's small turn within)
+    assert abs(w.gaze[2] - W.VERG_MAX) < 1e-12 and min(abs(w.gaze[1] - W.GAZE_REACH_PITCH), abs(w.gaze[1] - 0.5 * W.GAZE_REACH_PITCH)) < 0.01, w.gaze   # (the VOR's small turn within; or its quick phase, 0.5 born, on the pitch too)
     ry = W.GAZE_REACH_YAW - W.VERG_MAX / 2                              # at the reach, or jumped back by the VOR's quick phase (a
     assert ry / 2 - 0.01 <= w.gaze[0] <= ry                              # head swaying on softer servos, A39), never past it
     for side in "LR":                                                   # both windows inside their images at the reach
@@ -362,10 +362,14 @@ def test_the_face_template():
         _face_rig(w, dist)
         f = w.frame()
         assert set(f.obs) == {"body", "touch", "vestibular", "pain", "eye_p", "eye_f", "face_fovea", "face_periph", "imu_torso",
-                              "words", "face", "ears", "sound_side", "onset_periph"}, sorted(f.obs)
+                              "words", "face", "ears", "sound_side", "onset_periph",
+                              "strain", "gaze_periph", "hand_periph", "salient_periph", "her_cells", "self_cells", "loco_cmd",
+                              "loco_cmd_push", "leg_l_driven", "leg_r_driven", "waist_driven", "loco_engaged", "leg_l_engaged", "leg_r_engaged",
+                              "waist_engaged", "loco_blocked"}, sorted(f.obs)   # (A88's strain; the cues and cells since; A224; A228b; A230; A231; A232)
         t = f.truth["eyes"]
         assert t["face_test"]["L"][0] and t["face_test"]["R"][0]
-        assert f.obs["face_fovea"][0] == 0.0 and not f.obs["face_periph"].any()       # no born face detector at birth (C39 option a)
+        assert f.obs["face_fovea"][0] == 0.0 and f.obs["face_periph"][0] == 1.0       # no born face detector on the pixels at birth (C39 option a); the born
+                                                                                       # face cue's stand-in fires on her face in view (A157)
         tf = E.face_template(t["fovea"]["L"])
         reads[dist] = (int(E.template_match(tf)), round(float(tf[0]), 2), round(float(tf[1]), 2))
     t0 = time.perf_counter()

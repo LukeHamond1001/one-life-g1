@@ -107,6 +107,8 @@ from body.sim import ears as EA  # noqa: E402  (the ears, P2)
 from body.sim import observer as OBS  # noqa: E402  (the born momentum observer: contact from the robot's own sensors, A37)
 from body.sim import sounds as SND  # noqa: E402  (the room's sounds from its physics, W5)
 from body.sim import ghost as GH  # noqa: E402  (the room's guidance field, fading, W7)
+from body.sim import legs as LEGS  # noqa: E402  (the learned leg layer below the brain, W9)
+from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swallowed unseen)
 
 R = None                        # body/sim/reflexes.py, the body's spinal cord: bound at the first world's birth (it imports this module)
 
@@ -277,6 +279,8 @@ def act_flat(digits):
     return a
 
 
+GAIT_DRIVEN = ("leg_l", "leg_r", "waist")   # A230 (2026-10-17): the effectors whose joints the gait sets in a walk (ghost.py _expert_step: the
+                                           # leg layer's targets on the twelve leg joints and the waist's): their own acts move nothing then
 LOCO_NAME, LOCO_JOINTS = "loco", ("go", "turn")   # W8 (2026-10-09, 22:30): THE LOCOMOTION EFFECTOR: the brain's command to the body's gait circuit (the
                                                     # expert gait held in the ghost's command blocks, body/sim/ghost.py): two channels of five settings,
                                                     # a step on the commanded speed and on the commanded turn, as the gaze's acts step its windows. The
@@ -694,6 +698,7 @@ class G1World(SimWorld):
         self.pelvis_id = m.body("pelvis").id
         self.g1_bodies = np.array([b for b in range(m.nbody) if int(m.body_rootid[b]) == int(m.body_rootid[m.body('pelvis').id])], dtype=np.int64)
         self.ghost = GH.Ghost(self)                                     # W7: the room's guidance field (off until the day plan's ghost block)
+        self.legs = LEGS.LegLayer(self.seed)                            # W9: the body's learned leg layer (taught in walk blocks)
         self.cereb_idx = np.array([JOINTS.index(j) for j in AN.CEREB_JOINTS])
         self.weight = self.body_mass * float(np.linalg.norm(m.opt.gravity))
         self.armature = m.dof_armature[self.dof].copy()                     # each joint's rotor inertia through its gear (the model's)
@@ -708,6 +713,10 @@ class G1World(SimWorld):
         self.tract_raw = np.zeros(EA.TICK)                                   # the same in the engine's units (her transcriber's)
         self.crying = False                                                  # the cord's born cry pushed the tract this tick
         self.vor_corr = np.zeros(4)      # the flocculus's gain correction (yaw, pitch) and offset (yaw, pitch), held through a tick
+        self.loco_corr = np.zeros(2)     # A227: the cerebellum's walk readout: the turn's gain correction and offset (rad/s), held through a tick
+        self._loco_err = None; self._loco_cmd = None   # A227: the last tick's turn error and commanded turn (rad/s), the readout's teacher
+        self._loco_push = [0.0, 0.0]                   # A228b: the cord's push on the walk command in the last tick (the next frame shows it)
+        self._driven = ()                              # A230: the effectors whose joints the gait set in the last tick (the next frame shows it)
         self._vor_slip = None; self._vor_turn = None   # A174: the last tick's retinal slip and head turn (yaw, pitch; rad), the flocculus's teacher
         cl_, cr_, cc_ = m.camera("eye_L").id, m.camera("eye_R").id, m.camera("eye_C").id   # A174: the eyes' separation and the cameras' lever
         self.eye_ipd = float(np.linalg.norm(m.cam_pos[cl_] - m.cam_pos[cr_]))                # about the trunk's yaw axis (the parallax of a near
@@ -758,6 +767,26 @@ class G1World(SimWorld):
             m.actuator_gainprm[a, :] = 0.0; m.actuator_gainprm[a, 0] = p
             m.actuator_biasprm[a, :] = 0.0; m.actuator_biasprm[a, 1] = -p; m.actuator_biasprm[a, 2] = -v
         self.kp, self.kv = kp, kv
+
+    def set_leg_gains(self, walking):
+        """W9: the leg servos (and the waist's, GH.WAIST_KP) at Unitree's walking gains while the leg layer walks (unitree_rl_gym's g1.yaml: kp 100 100 100 150 40 40,
+        kd 2 2 2 4 2 2, the gains the real G1 walks with and its gait was trained under), else the body's resting law (A39). A function
+        of the ghost's walk mode, so a load sets it again (not a saved field)"""
+        m = self.m
+        idx = list(self.eff_joint_idx["leg_l"]) + list(self.eff_joint_idx["leg_r"])
+        base_kp, base_kv = servo_gains()
+        for k, i in enumerate(idx):
+            a = int(self.aid[i])
+            p = float(GH.EXPERT_KP[k]) if walking else float(base_kp[i])
+            v = float(GH.EXPERT_KD[k]) if walking else float(base_kv[i])
+            m.actuator_gainprm[a, 0] = p; m.actuator_biasprm[a, 1] = -p; m.actuator_biasprm[a, 2] = -v
+            self.kp[i] = p; self.kv[i] = v
+        for k, i in enumerate(self.eff_joint_idx["waist"]):            # and the waist's, stiff in a walk (GH.WAIST_KP: the gait's upright trunk)
+            a = int(self.aid[i])
+            p = float(GH.WAIST_KP[k]) if walking else float(base_kp[i])
+            v = float(GH.WAIST_KD[k]) if walking else float(base_kv[i])
+            m.actuator_gainprm[a, 0] = p; m.actuator_biasprm[a, 1] = -p; m.actuator_biasprm[a, 2] = -v
+            self.kp[i] = p; self.kv[i] = v
 
     def passive_torque(self, q):
         """A143: the passive tissues' torque at every joint for the angles `q` (JOINTS order): zero over the middle of the range, and in the last
@@ -818,7 +847,14 @@ class G1World(SimWorld):
                                 np.stack([s["obs_b"], s["obs_b_on"]], 1).reshape(-1)])
         pain = np.concatenate([(s["bd_peak"] > self.tau_hold).astype(np.float64), [float(s["base_peak"] > self.f_pain)]])
         strain = np.array([float((s["bd_peak"] / self.tau_hold).max() > STRAIN_LINE)])   # A191: a gear loaded near its pain line
-        obs = {"body": body, "touch": touch, "pain": pain, "strain": strain, "vestibular": s["vestibular"].copy(), "imu_torso": s["imu_torso"].copy()}
+        obs = {"body": body, "touch": touch, "pain": pain, "strain": strain, "vestibular": s["vestibular"].copy(), "imu_torso": s["imu_torso"].copy(),
+               "loco_cmd": np.array([float(self.ghost.cmd_v), float(self.ghost.cmd_w)], float),   # A224: the walk command's own drive (the command before this tick's act)
+               "loco_cmd_push": np.array([float(x) for x in getattr(self, "_loco_push", (0.0, 0.0))], float),   # A228b: the part of it the cord's
+               **{n_ + "_driven": np.array([1.0 if n_ in getattr(self, "_driven", ()) else 0.0]) for n_ in GAIT_DRIVEN},   # A230: the gait set its
+               "loco_engaged": np.array([1.0 if self.ghost.obeys_command() else 0.0]),   # A231: whether the actuators will carry these effectors'
+               "loco_blocked": np.array(self._loco_blocked(), float),   # A232: the walk command's settings its integrator cannot carry out now
+               **{n_ + "_engaged": np.array([0.0 if self.ghost.owns_legs() else 1.0]) for n_ in GAIT_DRIVEN}}   # acts this tick (the gait's)
+                                                                                                 # push made in the last tick (its corollary discharge)
         face = 0.0
         if not self.night:
             ln = self.lane
@@ -881,7 +917,10 @@ class G1World(SimWorld):
         slip_ = turn_ = None
         if int(sub) == 0 and self._vor_slip is not None:               # A174: at sub-step 0 the last tick's slip and turn (the flocculus's teacher)
             slip_, turn_ = list(self._vor_slip), list(self._vor_turn)
-        sa = self.sub_tick(SubFrame(self.tick, int(sub), mossy.tolist(), teach.tolist(), slip_, turn_, lim[ci].tolist()))
+        lerr_ = lcmd_ = None
+        if int(sub) == 0 and self._loco_err is not None:               # A227: at sub-step 0 the last tick's turn error and command
+            lerr_, lcmd_ = list(self._loco_err), list(self._loco_cmd)
+        sa = self.sub_tick(SubFrame(self.tick, int(sub), mossy.tolist(), teach.tolist(), slip_, turn_, lim[ci].tolist(), lerr_, lcmd_))
         self._below_n += 1
         if sa is None:
             return
@@ -889,6 +928,49 @@ class G1World(SimWorld):
             self.m.actuator_biasprm[a, 0] = np.asarray(sa.torque, float)
         if sub == 0 and sa.vor_gain is not None:
             self.vor_corr = np.concatenate([np.asarray(sa.vor_gain, float), np.asarray(sa.vor_offset if sa.vor_offset is not None else (0.0, 0.0), float)])
+        if sub == 0 and getattr(sa, "loco_gain", None) is not None:      # A227: the walk's turn calibration, held through the tick
+            self.loco_corr = np.array([float(np.asarray(sa.loco_gain, float).reshape(-1)[0]), float(np.asarray(sa.loco_offset, float).reshape(-1)[0])])
+
+    def _pelvis_yaw(self):
+        R_ = self.d.xmat[self.pelvis_id].reshape(3, 3)
+        return float(math.atan2(float(R_[1, 0]), float(R_[0, 0])))
+
+    def _loco_ok(self):
+        """A227: whether this moment may teach the walk's turn readout: the body walking on the brain's command (a command block's walk,
+        the hand-down after its last lift over: GH.LIFT_TICKS + GH.WALK_START ticks), not turned by the room, not being lowered, upright"""
+        g = self.ghost
+        if not (g.on and g.command and g.walk) or g.turning or g.lower > 0 or g.ticks <= GH.LIFT_TICKS + GH.WALK_START:
+            return False
+        R_ = self.d.xmat[self.pelvis_id].reshape(3, 3)
+        return float(self.d.xpos[self.pelvis_id][2]) > GH.FALL_Z + 0.15 and float(R_[2, 2]) > 0.8
+
+    def _loco_teach(self, ok0, y0):
+        """A227: the turn the body made over this tick (its pelvis's yaw, rad/s) minus the turn the brain commanded this tick (before the
+        readout's correction): the readout's teacher at the next tick's sub-step 0. None when the tick cannot teach (either end unfit,
+        the corrected command at the range's cap)"""
+        self._loco_err = self._loco_cmd = None
+        if not ok0 or y0 is None or not self._loco_ok():
+            return
+        u_ = float(self.ghost.cmd_w)
+        if abs(self.loco_turn(u_)) >= GH.COMMAND_W_MAX - 1e-9:
+            return
+        dy_ = (self._pelvis_yaw() - y0 + math.pi) % (2 * math.pi) - math.pi
+        self._loco_err = [dy_ / TICK_S - u_]; self._loco_cmd = [u_]
+
+    def _loco_blocked(self):
+        """A232 (2026-10-18): the walk command's settings its integrator cannot carry out now, one flag per setting (the go joint's five,
+        then the turn's): a step back on a speed at its floor (0: the command is a speed, nothing is slower), a step forward on a speed at
+        its ceiling, a turn past the turn's range either way. The zero setting never. A233: the floor is standing (a speed under
+        GH.COMMAND_V_STAND), not 0 itself, which the decay alone never reaches"""
+        v_, w_ = float(self.ghost.cmd_v), float(self.ghost.cmd_w)
+        go = [float(v_ < GH.COMMAND_V_STAND), float(v_ < GH.COMMAND_V_STAND), 0.0, float(v_ >= GH.COMMAND_V_MAX), float(v_ >= GH.COMMAND_V_MAX)]
+        tn = [float(w_ <= -GH.COMMAND_W_MAX), float(w_ <= -GH.COMMAND_W_MAX), 0.0, float(w_ >= GH.COMMAND_W_MAX), float(w_ >= GH.COMMAND_W_MAX)]
+        return go + tn
+
+    def loco_turn(self, u):
+        """A227: the turn the legs are given for the brain's turn command u (rad/s): (1 + the cerebellum's gain correction) x u + its
+        offset, inside the command's range (the readout born at zero: u itself)"""
+        return float(min(max((1.0 + float(self.loco_corr[0])) * float(u) + float(self.loco_corr[1]), -GH.COMMAND_W_MAX), GH.COMMAND_W_MAX))
 
     def fault_recover(self, e):
         """W6 (2026-10-09, 05:05): A TICK THE PHYSICS COULD NOT LIVE IS LIVED AGAIN WITH HER HANDS OFF. The world stands where the tick
@@ -907,7 +989,8 @@ class G1World(SimWorld):
             for i in list(par.live):
                 try:
                     par.cancel(i)
-                except Exception:
+                except Exception as e_i5:
+                    _I5("world.py:fault_recover:971", e_i5)
                     pass
             par.holds = []; par.phases = []; par.arms = {sd: dict(mode="relaxed") for sd in "LR"}
         self.d.xfrc_applied[:] = 0.0; self.d.qfrc_applied[:] = 0.0
@@ -922,6 +1005,14 @@ class G1World(SimWorld):
         hands' acts pass the spinal cord first (the palmar grasp). Every 10 ms (5 steps) the loop below the tick is called when a body
         hooks it (`below`). The tract sounds and the ears hear the tick (by day). A tick MuJoCo cannot live raises WorldFault and
         leaves the world where the tick began (A18)."""
+        start = self._capture(fast=True)                                # A187: the tick's start kept raw (canonical only if a fault restores it).
+                                                                        # R11 (2026-10-16): taken first, before the door, the sibling, the grasp's
+                                                                        # habituation, the tone's share and the walk command move (taken after
+                                                                        # them, a faulted tick left them moved: world 13's 'the frame after the
+                                                                        # fault is the tick's start's' failed; the life faulted 20 times so)
+        for k_, v_ in dict(acts or {}).items():                             # R11: an act out of its range is refused before anything moves
+            if k_ in EFFECTOR_FACTORS and v_ is not None and k_ != VOICE_NAME:   # (world 2: after the refusal the world is a fresh one's;
+                act_digits(int(v_), len(EFFECTOR_FACTORS[k_]))              # the door and the sibling had stepped first)
         self.door_tick()                                                    # (the door stage: nothing without the leaf)
         self.sibling_tick()                                                 # D2: the sibling walks its loop (nothing without the figure)
         if self.paused:
@@ -1020,14 +1111,31 @@ class G1World(SimWorld):
             gaze_step = gaze_step + np.asarray(cg_, float)                # cortex's add)
         la = acts.get(LOCO_NAME)                                          # W8: the locomotion command's step this tick
         lstep = [0.0, 0.0] if la is None or int(la) == EFFECTOR_REST[LOCO_NAME] else [LOCO_SETTINGS[j][k] for j, k in enumerate(act_digits(la, len(LOCO_JOINTS)))]
+        if self.ghost.on and self.ghost.command and self.ghost.walk and self.parent is not None and lstep[1] != 0.0:
+            try:                                                          # W9e: its OWN turn against her bearing (the guide's fade reads it)
+                her_ = np.asarray(self.parent.base["at"], float)[:2]; xy_ = np.asarray(self.d.xpos[self.pelvis_id][:2], float)
+                Rp_ = self.d.xmat[self.pelvis_id].reshape(3, 3)
+                b_ = math.atan2(her_[1] - xy_[1], her_[0] - xy_[0]) - math.atan2(Rp_[1, 0], Rp_[0, 0]); b_ = (b_ + math.pi) % (2 * math.pi) - math.pi
+                if abs(b_) > GH.GUIDE_OFF_RAD:
+                    self.ghost.own_n += 1; self.ghost.own_agree += int((lstep[1] > 0) == (b_ > 0))
+                    sd_ = getattr(self.ghost, "own_sides", None)
+                    if sd_ is not None:                                   # C361: each side apart (her on its left: index 0, 1; right: 2, 3)
+                        k_ = 0 if b_ > 0 else 2; sd_[k_] += int((lstep[1] > 0) == (b_ > 0)); sd_[k_ + 1] += 1
+            except Exception as e_i5:
+                _I5("world.py:apply:1102", e_i5)
+                pass
         cl_ = cord.get(LOCO_NAME)                                         # A216: the born approach's step (the colliculus's road to the
-        if cl_ is not None:                                               # locomotor command), summed with the brain's own, as the saccade is
-            lstep = [float(a_) + float(b_) for a_, b_ in zip(lstep, cl_)]
-        self.ghost.command_step(*lstep)
+        push_ = [0.0, 0.0]                                                # locomotor command), summed with the brain's own, as the saccade is
+        if cl_ is not None:                                               # (W9b: by the share it keeps as the brain takes over; C370: the
+            k_ = (float(getattr(self.ghost, "go_share", self.ghost.reflex_share)), float(self.ghost.reflex_share))   # forward step by its
+            push_ = [k_[j_] * float(b_) for j_, b_ in enumerate(cl_)]                                              # own, the turn by the
+            lstep = [float(a_) + p_ for a_, p_ in zip(lstep, push_)]                                                # guide's)
+        self._loco_push = push_                                           # A228b: what the cord added to the command this tick (the next
+        self.ghost.command_step(*lstep)                                   # frame's loco_cmd_push)
+        lok0_ = self._loco_ok(); ly0_ = self._pelvis_yaw() if lok0_ else None   # A227: the tick's start, for the turn's error at its end
         va = acts.get(VOICE_NAME)
         vdig = None if va is None or int(va) == VOICE_REST else act_digits(va, len(AN.TRACT))
         wo = acts.get(WORDS_NAME)
-        start = self._capture(fast=True)                                # A187: the tick's start kept raw (canonical only if a fault restores it)
         warn0 = [int(d.warning[i].number) for i in range(int(mujoco.mjtWarning.mjNWARNING))]
         par = self.parent
         t_par = time.perf_counter()
@@ -1198,8 +1306,11 @@ class G1World(SimWorld):
             f_ = NIGHT_LIGHT + (1.0 - NIGHT_LIGHT) * (DAWN_TICKS - self.dawn_left) / DAWN_TICKS
             for fld, v in self.light_day.items():
                 getattr(m, fld)[...] = v * f_
+        self._driven = GAIT_DRIVEN if (self.ghost.on and getattr(self.ghost, "drove", False)) else ()   # A230: the gait set these joints in this
+                                                                        # tick's steps (the leg layer's targets in a walk): their own acts did not move them
         if self.ghost.on:
             self.ghost.tick_end(self, acts, act_digits, SETTINGS)       # W7: the lead advanced, the strength's fade, the catch
+        self._loco_teach(lok0_, ly0_)                                   # A227: the turn's error over this tick, taught at the next tick's sub-step 0
         if self.lane is not None:
             self.lane.after_apply(self)                                 # her conduct's tick, on what the world just did
         self.tick += 1
@@ -1896,6 +2007,10 @@ class G1World(SimWorld):
                 "stepping": {k_: [str(v_[0]), int(v_[1])] for k_, v_ in self._stepping.items()},   # A193
                 "parent": None if self.parent is None else (self.parent._state() if fast else self.parent.state()),
                 "s5": ((lambda x: x) if fast else _canon)({"heat": self.heat, "tract": self.tract.state(), "ears": self.ears.state(), "vor_corr": self.vor_corr,
+                              "loco": [[float(x) for x in self.loco_corr], None if self._loco_err is None else [float(x) for x in self._loco_err],
+                                       None if self._loco_cmd is None else [float(x) for x in self._loco_cmd]],   # A227
+                              "loco_push": [float(x) for x in getattr(self, "_loco_push", (0.0, 0.0))],   # A228b: the cord's push the next frame shows
+                              "driven": [str(x) for x in getattr(self, "_driven", ())],   # A230: the effectors the gait drove (the next frame shows them)
                               "vor_slip": ([] if self._vor_slip is None else list(map(float, self._vor_slip))),        # A174 (empty: none)
                               "vor_turn": ([] if self._vor_turn is None else list(map(float, self._vor_turn))),
                               "observer": self.observer.state(), "sounds": self.sounds.state(),
@@ -1904,9 +2019,12 @@ class G1World(SimWorld):
                               "carried": [[int(t), list(a), list(b)] for t, a, b in self.carried], "door_open": bool(self.door_open),
                               "tidied": [[int(t), k, list(a), list(b)] for t, k, a, b in self.tidied],
                               "pinned": {str(k): [list(map(float, v[0])), None if v[1] is None else list(map(float, v[1])), int(v[2])] for k, v in self.pinned.items()},   # C332
+                              "vest": [float(self._vest_pitch), float(getattr(self, "_vest_roll", 0.0)), bool(self._vest_on),   # R9 (2026-10-16): the canals' lean,
+                                       float(getattr(self, "_sup_lp", 0.0)), float(getattr(self, "_tone_w", 1.0))],   # the hold felt and the tone's share (C287)
                               "ghost": self.ghost.state(),                                   # W7
                               "lane": None if self.lane is None else self.lane.state()}),
-                "warnings": np.array([int(d.warning[i].number) for i in range(int(mujoco.mjtWarning.mjNWARNING))])}
+                "warnings": np.array([int(d.warning[i].number) for i in range(int(mujoco.mjtWarning.mjNWARNING))]),
+                "legs": (self.legs.snapshot() if self.ghost.walk else None) if fast else self.legs.state()}   # W9 (a tick's snapshot only while it learns)
         return pickle.dumps(st, protocol=4) if fast else st
 
     def _restore(self, st):
@@ -1922,6 +2040,9 @@ class G1World(SimWorld):
             d.warning[i].number = int(n)
         self.tick, self.paused = int(st["tick"]), bool(st["paused"])
         self.seed = int(st["seed"])
+        legs_ = st.get("legs")                                              # W9: the leg layer (older saves: none, born fresh)
+        if legs_ is not None:
+            (self.legs.load_state if "torch" in legs_ else self.legs.restore)(legs_)
         self._sensed = {k: (_fresh(v) if isinstance(v, np.ndarray) else v) for k, v in st["sensed"].items()}   # numpy's own dtypes
         for k, v in (("sides", np.zeros((2, 2))), ("palm_log", np.zeros(2)), ("palm_onset", np.zeros(2))):   # (A171; a save from before it:
             self._sensed.setdefault(k, v)                                                                     # the hands unpressed this tick)
@@ -1948,7 +2069,20 @@ class G1World(SimWorld):
         if self.eyes is not None and s5.get("eyes") is not None:
             self.eyes.load_state(s5["eyes"])
         self.ears.load_state(s5["ears"])
+        if s5.get("vest") is not None:                                      # R9 (2026-10-16): THE VESTIBULAR LEAN KEPT ACROSS A SAVE. The canals'
+            self._vest_pitch, self._vest_roll, self._vest_on = float(s5["vest"][0]), float(s5["vest"][1]), bool(s5["vest"][2])   # integrator was
+            if len(s5["vest"]) > 4:                                         # and the tone's share (C287) and the hold felt that sets it: born at
+                self._sup_lp, self._tone_w = float(s5["vest"][3]), float(s5["vest"][4])   # 0 and 1 at a restore, the tone jumped (0.24 to 0.30)
+                                                                            # not saved: every restart (each landing) set the body's sense of its lean
+                                                                            # to upright, the posture reflex reading a false 0 until R.VEST_TAU drew it
+                                                                            # back (lane 8's exact replay diverged in a walk 13 ticks after its restore)
         self.vor_corr = np.asarray(s5["vor_corr"], float).copy()
+        lc_ = s5.get("loco")                                            # A227 (an older save: nothing learned, no lesson owed)
+        self.loco_corr = np.asarray(lc_[0], float).copy() if lc_ else np.zeros(2)
+        self._loco_err = None if not lc_ or lc_[1] is None else [float(x) for x in lc_[1]]
+        self._loco_cmd = None if not lc_ or lc_[2] is None else [float(x) for x in lc_[2]]
+        self._loco_push = [float(x) for x in s5.get("loco_push", (0.0, 0.0))]   # A228b (an older save: none shown)
+        self._driven = tuple(str(x) for x in s5.get("driven", ()))   # A230 (an older save: none)
         vs_, vt_ = s5.get("vor_slip"), s5.get("vor_turn")               # (A174; older saves or an empty pair: none)
         self._vor_slip = None if not vs_ else np.asarray(vs_, float).copy()
         self._vor_turn = None if not vt_ else np.asarray(vt_, float).copy()

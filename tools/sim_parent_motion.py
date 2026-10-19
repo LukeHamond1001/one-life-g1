@@ -927,6 +927,8 @@ def replay_proc(mode, path, seed=3, p_rest=0.3, t0=150, n=60):
                          h(d.qpos.tobytes()), h(d.qvel.tobytes()), h(d.qfrc_applied.tobytes()), h(d.xfrc_applied.tobytes()),
                          h(d.ctrl.tobytes()), h(d.actuator_force.tobytes())])
     rows.append(["save", h(w.save_state())])
+    if os.environ.get("REPLAY_DUMP"):                                       # (2026-10-16: the final save itself, to diff a mismatch)
+        open(path + "." + mode + ".final", "wb").write(w.save_state())
     open(path + "." + mode, "w").write(json.dumps(dict(start=start, rows=rows, stops=pm.stats.get("over_run", 0),
                                                         yield_ticks=pm.stats.get("yield_ticks", 0))))
 

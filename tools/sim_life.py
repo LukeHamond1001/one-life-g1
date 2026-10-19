@@ -16,6 +16,7 @@ Run (S5b, every learning rate 0):  nice -n 10 python3 tools/sim_life.py --out DI
 Birth (seed 1, the born learning rates): the same without --lr0, --out the life's own folder, never from a plumbing run's state.
 """
 import argparse
+import math
 import collections
 import json, math
 import os
@@ -36,6 +37,7 @@ from body.sim import world as W  # noqa: E402
 from body.sim import eyes as E  # noqa: E402
 from body.sim import lane as LN  # noqa: E402
 from body.sim.lang import lexicon as LX  # noqa: E402
+from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swallowed unseen)
 
 LR0 = dict(live_lr=0.0, value_lr=0.0, band_lr=0.0, night_lr=0.0, gate_lr=0.0, gate_adam_lr=0.0, vcrit_lr=0.0, actor_lr=0.0, face_lr=0.0,
            act_inv_lr=0.0)
@@ -78,7 +80,8 @@ class CachedVoice:
         if any(self.cache._paths(key, store)[0].exists() for store in (self.cache.kept, self.cache.clips)):
             try:
                 return self.cache.clip(text, register, emphasis, voice, heard, prosody, shape)
-            except Exception:
+            except Exception as e_i5:
+                _I5("sim_life.py:clip:82", e_i5)
                 pass                                              # a clip failing its check would ask the engine: the stand-in instead
         self.stand_ins += 1
         return self.fake.clip(text, register, emphasis, heard=heard, shape=shape)
@@ -208,7 +211,8 @@ def _ended(lane, world, open_seen):
         kind, target = open_seen.pop(mid, ("?", None))
         try:
             why = str(world.parent.why(mid) or "")[:260]
-        except Exception:
+        except Exception as e_i5:
+            _I5("sim_life.py:_ended:212", e_i5)
             why = ""
         out.append([kind, target, str(st), why])
     return out
@@ -222,7 +226,8 @@ def _last_count(path, key):
             f.seek(max(0, size - (1 << 20)))
             rows = [r for r in f.read().split(b"\n") if r.strip()]
         return int(json.loads(rows[-1]).get(key, 0)) if rows else 0
-    except Exception:
+    except Exception as e_i5:
+        _I5("sim_life.py:_last_count:226", e_i5)
         return 0
 
 
@@ -250,7 +255,8 @@ def _cut_record_tail(path, tick):
             row = buf[pos:end]
             try:
                 t = int(json.loads(row)["t"])
-            except Exception:
+            except Exception as e_i5:
+                _I5("sim_life.py:_cut_record_tail:254", e_i5)
                 t = None
             if t is not None and t > tick and cut is None:
                 cut = pos
@@ -343,6 +349,7 @@ def main():
                                                                                     # actor's probability of a big step (either way) at its wrist pitch and yaw: the
                                                                                     # wrist pain's ruler (big wrist steps precede 40% of it; days 29 to 39: 10.6% to 0.9%)
         rec["kj"] = [[round(float(k_), 2) for k_ in (st.get("inv_kappa") or [])] for st in L.motor[3:5]]   # C146: each arm's inverse model's
+        rec["kj_loco"] = [round(float(k_), 2) for k_ in (L.motor[[e_.name for e_ in L.anatomy.motors].index("loco")].get("inv_kappa") or [])]   # A224: the walk command's inverse's kappa (go, turn)
         rec["habit_w"] = getattr(L, "_habit_w", None)                        # A141 (C149): the last habit lesson's mean weight and its share of
         rec["actor_upd"] = [[round(float(st.get("a_upd", [0, 0])[0]), 2), round(float(st.get("a_upd", [0, 0])[1]), 2)] for st in L.motor[3:5]]   # A142:
                                                                             # each arm's actor's summed update norms, the fast lesson's and the tag's
@@ -409,7 +416,7 @@ def main():
             rec["stage"] = int(lane.conduct.stage)
             rec["stops"], rec["stopj"] = _stops(world)                   # C160/C161: the arm joints at their range stops, per arm: the count and the mask
             if getattr(L, "_dop_last", None) is not None:
-                rec["dop"] = round(float(L._dop_last), 4)                   # C186 (2026-10-01): THE TICK'S DOPAMINE (the actors' lesson signal: the striatal
+                rec["dop"] = round(float(L._dop_last), 4); rec["dop_shape"] = round(float(getattr(L, "_dop_shape_last", 0.0)), 4); sr_ = getattr(L, "_shape_rho_last", None); rec["shape_rho"] = {str(k_): round(float(v_), 3) for k_, v_ in sr_.items()} if isinstance(sr_, dict) else {}   # D3: the shaping term; D3c/D3d: each band's earned gain (a float from an older save: none)                   # C186 (2026-10-01): THE TICK'S DOPAMINE (the actors' lesson signal: the striatal
                 if getattr(L, "_dop_gain", None) is not None:
                     rec["dopg"] = round(float(L._dop_gain), 3)              # A172: and the actors' adaptive gain on it (1 / its running RMS)
                                                                             # fast critic's TD error, critics._learn_values), to read the credit around pain
@@ -431,6 +438,24 @@ def main():
                 if hasattr(L, "_ferr_progress"):
                     rec["nov_p"] = round(float(L._ferr_progress()), 3)        # A155: and the learning progress the payment was scaled by
             _NOV_LAST = nov_now
+            if world.tick % 1000 == 0 and int(L.cfg.get("actor_cues", 0)):   # A225's ruler: the walk command's actor's lean (its turn settings
+                try:                                                        # toward + less toward -, per unit of the cue's direction + right) on
+                    lo_ = next(e_ for e_ in L.anatomy.motors if e_.name == "loco")   # her voice's and her face's cues; toward her is negative
+                    W_ = L.m.get_submodule(lo_.actor).weight.detach(); nm_ = [c_.name for c_ in L.anatomy.orienting]; n_ = 2 * len(nm_)
+                    rec["cue_w"] = {k_: round(float(W_[8, W_.shape[1] - n_ + 2 * nm_.index(k_) + 1] + W_[9, W_.shape[1] - n_ + 2 * nm_.index(k_) + 1]
+                                                    - W_[5, W_.shape[1] - n_ + 2 * nm_.index(k_) + 1] - W_[6, W_.shape[1] - n_ + 2 * nm_.index(k_) + 1]), 4)
+                                    for k_ in ("sound", "face", "named") if k_ in nm_}
+                except Exception as e_i5:
+                    _I5("sim_life.py:main:443", e_i5)
+                    pass
+            if world.tick % 100 == 0 and getattr(world, "loco_corr", None) is not None and getattr(L.m, "cereb", None) is not None and hasattr(L.m.cereb, "n_loco"):
+                rec["loco_corr"] = [round(float(world.loco_corr[0]), 4), round(float(world.loco_corr[1]), 4), int(L.m.cereb.n_loco)]   # A227: the walk's turn
+                                                                            # calibration held this tick (gain correction, offset rad/s) and its lessons so far
+            tn_ = (getattr(L, "_lg", None) or {}).pop("tip_now", None)
+            if tn_:
+                rec["tip"] = tn_                                            # I1h (2026-10-16): each effector's draw this tick [the share of its joints the
+                                                                            # bias tipped, the bias's size], every tick: the arms' tipped draws read poorer
+                                                                            # than untipped ones of the same size (I1g); with the pain's joints, readable
             if world.tick % 16 == 0 and getattr(L, "_actor_ms", None):        # C183 (2026-10-01): THE ACTORS' DRIVE every 16 ticks: each striatal actor's
                 rec["adrive"] = {k_: round(float(v_) ** 0.5, 2) for k_, v_ in L._actor_ms.items()}   # running root mean square of its pre-activations
                                                                             # (A147's set point 1; day 48's stood at 550 to 11,000), by actor name
@@ -439,6 +464,20 @@ def main():
                     rec["bands"] = dict(g=[round(float(torch.sigmoid(L.m.band_gate[b](L.bands[b]))), 3) for b in range(len(L.m.clocks))],
                                         v=[round(float(x), 3) for x in L.m.values(L.bands).tolist()],
                                         td=[round(float(x), 4) for x in (getattr(L, "_td_last", None) or [])])
+                rec["ledger"] = L.ledger_report()                           # I1: each part's running contribution (body/core/ledger.py)
+                rec["vte_gain"] = {e_.name: round(float(L._vte_gain(e_.name)), 3) for e_ in L.anatomy.motors}   # A219: the lean's earned gain per effector
+            try:                                                            # I1f (2026-10-15): HER SIDE AGAINST THE WALK COMMAND'S STRIATAL LEAN, every tick of a
+                gh_ = world.ghost                                           # command block: [her bearing from its heading (rad, + left), the loco actor's lean
+                if gh_.on and gh_.command and world.parent is not None:    # (its turn settings toward + less toward -)]; the ruler for 'it turns to her voice
+                    her_ = np.asarray(world.parent.base["at"], float)[:2]; xy_ = np.asarray(world.d.xpos[world.pelvis_id][:2], float)   # because it learned
+                    Rp_ = world.d.xmat[world.pelvis_id].reshape(3, 3)      # to': the lean's agreement with her side, each side scored (p1_tools/day_line.py)
+                    b_ = math.atan2(her_[1] - xy_[1], her_[0] - xy_[0]) - math.atan2(Rp_[1, 0], Rp_[0, 0]); b_ = (b_ + math.pi) % (2 * math.pi) - math.pi
+                    v_ = (getattr(L, "_lg", None) or {}).get("votes", {}).get("loco")
+                    if v_ is not None and len(v_) > 1 and int(v_[1].numel()) == 5:
+                        t_ = v_[1]; rec["side"] = [round(float(b_), 2), round(float(t_[3] + t_[4] - t_[0] - t_[1]), 3)]
+            except Exception as e_i5:
+                _I5("sim_life.py:main:472", e_i5)
+                pass
             if ls.get("found"):
                 rec["found"] = ls["found"]                                  # C158: a find this tick, [toy, whether the child saw the hide]
             if ls.get("bucket_hand") is not None:

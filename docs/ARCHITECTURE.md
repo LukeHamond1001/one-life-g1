@@ -25,9 +25,18 @@ A tick is about 150 ms of the body's time. In a tick:
    recursive least squares.
 6. **The policy chooses.** For each effector (gaze, voice, arms, hands, trunk, legs' command) a softmax over its candidate acts on the
    stream state, with an eligibility trace. It learns by policy gradient: weights += α × (reward prediction error) × eligibility, with
-   each row's norm bounded and a normalisation rule holding each actor's drive near unit scale.
+   each row's norm bounded and a normalisation rule holding each actor's drive near unit scale. Beside every policy but the gaze's an
+   **inverse model** learns, from what the body actually did, which act would have produced the move. Only moves the world carried out
+   teach it: a setting the actuator could not carry out, or a joint nothing pushed, is read as rest. When the body is moved without its
+   own act (her hand guiding its arm, the guide's push on its walk), the move is a **demonstration**: the inverse model's reading of the
+   act behind it becomes a lesson for the forecast of its own acts. A policy's proposal is only as decisive as its inverse model has
+   proved reliable, joint by joint, and, where it is shown demonstrations, as often as its readings agreed with them.
 7. **The acts go out.** Reflexes below the brain (declared and listed) shape them: an orienting turn toward a face or a voice, the first
-   approach, a grasp on contact, balance. Walking is Unitree's own gait controller; the brain sends it speed and heading.
+   approach, a grasp on contact, balance. The walk: the brain sends a speed and a heading to a **leg layer** of the body's own (a
+   small network run every 20 ms, below the brain), which learned to step from Unitree's gait controller; the controller's share of
+   the push falls while the layer agrees with it and the commanded turn is followed, and comes back to catch a fall. The limbs'
+   forward models calibrate the turn the brain sends (a gain and an offset learned from the turn made against the turn commanded).
+   Twice a day, on an empty practice floor beside its rooms, the layer practises at the room's pace.
 
 ## The intrinsic rewards
 
@@ -69,7 +78,11 @@ night           P(episode) ∝ mean(s · (1 + |δ|)) / running mean
 
 ## What is borrowed, declared and fixed
 
-- Unitree's gait controller under the brain's speed-and-heading command (the command port).
+- Unitree's gait controller as the leg layer's teacher and safety catch: its actions are the layer's lessons, and its share of the
+  push at the legs falls while the layer agrees and comes back for a fall. The brain's speed-and-heading command (the command port)
+  drives the layer.
+- The guide: in her come lesson, a forward and a turning help on the walk command, each with its own share that falls as the child
+  comes and turns toward her on its own. Its shares are in the record every day.
 - The born reflexes: orienting to a face or a voice, the first approach, the grasp reflex, balance, and a face reader that turns her
   expression into a signed signal.
 - Every constant is sourced in `docs/SIM_DESIGN.md` or marked as ours there.
@@ -92,12 +105,16 @@ The code and the ledger still use older, borrowed names for the parts; this page
 | NREM, REM, dreams | slow-wave replay, frame replay, re-imagination |
 | the cord, reflexes | the controllers below the brain |
 | her face, the smile | her approval: the reward signal |
+| act_inv, the inverse, a demonstration | the inverse model, a move the world made that it learns from |
+| the ghost | the gait controller's harness (its share, the falls it catches) |
+| the leg layer (W9) | the body's own stepping network below the brain |
 
 ## Where it lives
 
 - `body/core/cortex.py` the predictive model and the store's writes · `body/core/critics.py` the critics · `body/core/actor.py` the
   policy's rule · `body/core/frames.py` events and recall · `body/core/sleep.py`, `body/core/night.py` the night · `body/core/amygdala.py`
-  the value forecast · `body/core/cerebellum.py` the limbs' models · `body/core/cord.py` the reflexes · `body/core/physiology.py` every
+  the value forecast · `body/core/cerebellum.py` the limbs' models · `body/core/cord.py` the reflexes · `body/core/mouth.py` the
+  acts and their inverse · `body/core/timing.py` the inverse's lessons · `body/sim/legs.py` the leg layer · `body/core/physiology.py` every
   constant, with its source.
 - `body/sim/` the world: the G1, the room, her body and her teaching (`body/sim/lang/`), its eyes, ears, voice and pain.
 - `tools/sim_life.py` the life; `tools/sim_rulers.py` the rulers; `tools/determinism_check.py` and `tools/pins/` the pins.

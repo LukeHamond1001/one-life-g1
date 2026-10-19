@@ -122,6 +122,7 @@ import parent_body as PB  # noqa: E402
 import parent_kin as kin  # noqa: E402
 import parent_poses as P  # noqa: E402
 from parent_kin import unit  # noqa: E402
+from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swallowed unseen)
 
 TICK_S, STEPS = 0.150, 75
 CHAINS = ("arm_L", "arm_R", "core")
@@ -225,8 +226,9 @@ BODY_PARTS = {"hand": ("left_wrist_yaw_link", "right_wrist_yaw_link"), "foot": (
 DONE_STATES = ("done", "refused", "cancelled")
 # the room's fixtures she can walk to or point at (world points: the make_g1room layout)
 FIXTURES = {"door": (2.6, -1.5, 1.0), "hall": (3.3, -1.5, 1.0), "window": (-2.6, -0.1, 1.45), "sofa": (0.15, 1.82, 0.45),
-            "table": (0.15, 0.95, 0.40), "shelf": (2.39, 0.55, 0.45), "mat": (0.0, -0.6, 0.012), "light": (0.0, 0.3, 2.58),
-            "floor": (1.2, -1.9, 0.0), "lamp": (-1.25, 1.95, 1.5)}
+            "table": (-2.0, 1.9, 0.40), "shelf": (2.39, 0.55, 0.45), "mat": (0.0, -0.6, 0.012), "light": (0.0, 0.3, 2.58),
+            "floor": (1.2, -1.9, 0.0), "lamp": (-1.25, 1.95, 1.5)}   # (the table's place since C169/C170, the north-west corner; read
+                                                                        # from the model by fixtures_of, its height from here)
 
 
 def fixtures_of(m):
@@ -2395,7 +2397,8 @@ class ParentMotion:
                     try:
                         c_ = np.asarray(self._resolve_hand(a["to"], sd)[0], float)
                         miss = c_ - self.d.xpos[self.toys[cur["toy"]]]
-                    except Exception:
+                    except Exception as e_i5:
+                        _I5("parent_motion.py:_aim_fix:2399", e_i5)
                         pass
                 a["miss"] = float(np.linalg.norm(miss))
                 fix = fix + K.AIM_GAIN * miss
@@ -4293,6 +4296,10 @@ class ParentMotion:
                 side = unit(np.cross(ch.axis, [0, 0, 1.0])[:2]) if abs(ch.axis[2]) < 0.95 else np.array([1.0, 0.0])
                 H = np.asarray(ch.torso[:2], float) + 0.9 * side
                 spot = (H, float(math.atan2(ch.torso[1] - H[1], ch.torso[0] - H[0])))
+                if not self._in_plan(H):                                    # C366 (2026-10-17): NEVER SET OFF HER FLOOR. The child out on the
+                    raise Refuse("the child is off the floor she can plan on (the practice ground): she stays where she is (C366)")
+                    # practice ground (a walk block's), a show begun before the block set her kneeling 16 m out beside it (day 187 at
+                    # 8,979,827), where her way up found no floor (every spot off the plan), and she knelt there through a command block
             if not clear_of_toys(spot[0], spot[1]):
                 # C334 amended (2026-10-08, life tick 6,014,827): THE TOYS UNDER HER PLACED FIGURE ARE SET ASIDE. With every spot near a
                 # toy her figure was set over one (her shin 2.4 cm into the drum, her thigh on the duck): a contact the physics resolves
@@ -5011,7 +5018,8 @@ class ParentMotion:
                         bool(self._solve_trunk({sd: (g, R, shape)}, None, step=10)[3]):
                     grips[int(body)] = (local, normal)                      # the grip this spot solved with: the hold she then makes
                     return local, normal
-            except Exception:
+            except Exception as e_i5:
+                _I5("parent_motion.py:_forearm_hold_args:5019", e_i5)
                 continue
         grips[int(body)] = (FOREARM_TOP, UP_LOCAL)
         return FOREARM_TOP, UP_LOCAL
@@ -5082,7 +5090,8 @@ class ParentMotion:
         Rb = self.d.xmat[h.body].reshape(3, 3)
         try:
             g, Rh = self._grip_now(ph["side"], actual=True); Rl = _lst(Rb.T @ Rh)
-        except Exception:
+        except Exception as e_i5:
+            _I5("parent_motion.py:_ph_hold_direct:5090", e_i5)
             Rl = _lst(np.eye(3))
         self.arms[ph["side"]] = dict(mode="hold", hold=h.name, goff=[0.0, 0.0, 0.0], goff0=[0.0, 0.0, 0.0], goff_plan=[0.0, 0.0, 0.0],
                                      Rl=Rl, shape1=shape)
@@ -6060,7 +6069,8 @@ class ParentMotion:
         w = self.w
         try:
             xy = np.asarray(self._put_xy(), float)[:2]
-        except Exception:
+        except Exception as e_i5:
+            _I5("parent_motion.py:_plan_world_put:6068", e_i5)
             xy = np.asarray(self.child.torso[:2], float) + np.array([0.35, 0.0])
         w.toy_within_reach(toy, xy)
         a["info"]["put_xy"] = [float(xy[0]), float(xy[1])]

@@ -50,6 +50,241 @@ def _run(w, n, greet_at=None, acts=None):
     return out
 
 
+def test_she_is_brought_back_to_her_floor():
+    """C366b: outside a walk block, off the floor she can plan on while the child is on it (the practice ground: day 187), her acts end
+    and her approach to the child sets her beside it on her floor within HER_FLOOR_EVERY ticks and a few more, logged"""
+    from body.sim.lang import dayplan as DP_
+    w, lane = _world(plan=True, day_ticks=2400)
+    _run(w, 40)                                                              # (into the day's first block, the child on its mat)
+    pm = lane.conduct.motion
+    pm.place("heels", [16.5, -1.0], 0.0)                                     # set out on the practice ground
+    assert not pm._in_plan(np.asarray(pm.base["at"], float)) and pm._in_plan(np.asarray(w.d.qpos[:2], float))
+    back = None
+    for k in range(DP_.HER_FLOOR_EVERY * 3 + 40):
+        w.frame(); w.apply({})
+        if pm._in_plan(np.asarray(pm.base["at"], float)):
+            back = k
+            break
+    assert back is not None, (pm.base["at"], [x for x in lane.plan.log if "C366" in str(x)][-3:])
+    assert any("off her floor" in str(x[1]) for x in lane.plan.log), lane.plan.log[-5:]
+    assert float(np.linalg.norm(np.asarray(pm.base["at"], float) - np.asarray(w.d.qpos[:2], float))) < 2.0, pm.base["at"]
+    print("C366b: set out on the practice ground, she was beside the child on her floor", back, "ticks later at", [round(float(x), 2) for x in pm.base["at"]])
+
+
+def test_the_come_lesson_has_no_lure():
+    """C367: in a command block (the come lesson) no toy is pinned a step ahead of its feet (C348's lure stays the ghost blocks'), and
+    she calls it"""
+    w, lane = _world(plan=True, day_ticks=2400)
+    kinds, calls = set(), 0
+    for k in range(560):
+        w.frame(); w.apply({})
+        if lane.plan.kind == "command":
+            kinds.add("command")
+            assert getattr(lane.plan, "lure", None) is None and not w.pinned, (k, lane.plan.lure, w.pinned)
+            calls += int(str(lane.last.get("line_intent") or "").startswith("come"))
+    assert "command" in kinds and calls >= 1, (kinds, calls)
+    print("C367: a command block with no toy pinned before its feet;", calls, "of her calls")
+
+
+def test_the_come_window_opens_as_her_call_sounds():
+    """C369: the come window (lane.come_call) opens on the tick her come-here sounds, not at her day plan's ask: her voice held 20
+    ticks at each ask (as her answers to its turns held it on day 189), each window opens with her call's line and no other tick"""
+    w, lane = _world(plan=True, day_ticks=2400)
+    con, ask_ = lane.conduct, lane.conduct.request
+
+    def held(intent, **kw):
+        if intent == "come_call":
+            con.fast.busy_until = max(con.fast.busy_until, int(w.tick) + 20)
+        return ask_(intent, **kw)
+    con.request = held
+    opened = said = 0
+    last_ = None
+    for k in range(900):
+        w.frame(); w.apply({})
+        cc_ = getattr(lane, "come_call", None)
+        call_ = lane.last.get("line_intent") == "come_call"
+        new_ = cc_ is not None and (last_ is None or int(cc_[0]) != int(last_[0]))
+        assert new_ == call_, (k, cc_, last_, lane.last.get("line"), [x for x in lane.plan.log if "come here" in str(x[1])][-3:])
+        opened += int(new_); said += int(call_)
+        last_ = None if cc_ is None else list(cc_)
+    asks = [x for x in lane.plan.log if x[1] == "come here: called (C351)"]
+    assert asks and said >= 1, (asks, said)
+    print("C369: the plan asked", len(asks), "calls (her voice held 20 ticks at each); windows opened", opened, "each as her call sounded")
+
+
+def test_the_forward_share_moves_with_its_calls():
+    """C370: a call's end moves the born approach's forward share: a call it faced (within TURN_TO_RAD at some tick of its window) and
+    did not come to raises it, a call it came to lowers it, a call it never faced leaves it; in the world a window that runs out after
+    it faced her raises it, logged"""
+    import types
+    from body.sim import ghost as GH
+    gh = types.SimpleNamespace(go_share=0.2, reflex_share=0.137, go_log=[])
+    wn = types.SimpleNamespace(ghost=gh)
+    cc = [0, 1.6, False, False, [0.0, 0.0], [1.6, 0.0]]
+    ev, done = L.come_events(cc, 0.1, 0.0, 1.6)                              # facing her, no way made
+    assert cc[9] is True and not done, (cc, ev)
+    L.ParentLane._go_after(None, wn, cc, False, 130)
+    assert abs(gh.go_share - 0.2 / GH.REFLEX_FADE) < 1e-12 and gh.go_log[-1][:2] == [130, 0], gh.go_log
+    s0 = gh.go_share
+    cc2 = [0, 1.6, False, False, [0.0, 0.0], [1.6, 0.0]]
+    L.come_events(cc2, 1.2, 0.0, 1.6)                                        # turned away all the window
+    L.ParentLane._go_after(None, wn, cc2, False, 260)
+    assert gh.go_share == s0 and len(gh.go_log) == 1
+    cc3 = [0, 1.6, False, False, [0.0, 0.0], [1.6, 0.0]]
+    ev, done = L.come_events(cc3, 0.1, 1.0, 0.6)                             # came: within COME_M of her by its own way
+    assert done and ("came", "mama") in ev, ev
+    L.ParentLane._go_after(None, wn, cc3, True, 300)
+    assert abs(gh.go_share - s0 * GH.REFLEX_FADE) < 1e-12 and gh.go_log[-1][:2] == [300, 1], gh.go_log
+    w, lane = _world(plan=False)                                             # the world's wiring: a window run out after it faced her
+    _run(w, 3)
+    ce_ = L.come_events
+
+    def faced(cc_, b_abs, moved, dist):
+        return ce_(cc_, 0.0, 0.0, dist)                                      # (read as facing her, no way made)
+    L.come_events = faced
+    try:
+        g0 = w.ghost.go_share = 0.3
+        ch_ = np.asarray(w.d.qpos[:2], float)
+        lane.come_call = [int(w.tick), 1.5, False, False, [float(ch_[0]), float(ch_[1])], [float(ch_[0]) + 1.5, float(ch_[1])]]
+        for _ in range(L.K.COME_WINDOW + 3):
+            w.frame(); w.apply({})
+    finally:
+        L.come_events = ce_
+    assert lane.come_call is None and abs(w.ghost.go_share - g0 / GH.REFLEX_FADE) < 1e-12 and w.ghost.go_log, (w.ghost.go_share, w.ghost.go_log)
+    print("C370: faced and not come", round(0.2 / GH.REFLEX_FADE, 4), "| never faced: unchanged | came", round(s0 * GH.REFLEX_FADE, 4),
+          "| the world's window run out after facing her:", g0, "->", round(w.ghost.go_share, 4))
+
+
+def test_a_calls_repeats_end_with_its_window():
+    """C371: when the come window closes her come-here still waiting in her queue is dropped, whether it came (the window closed by the
+    coming) or the window ran out; her other requests stay (her voice held busy through the tick, so nothing is said in it)"""
+    w, lane = _world(plan=False)
+    _run(w, 3)
+    ce_ = L.come_events
+    left = {}
+    for how in ("came", "ran out"):
+        def ev(cc_, b_abs, moved, dist, how=how):
+            e_, d_ = ce_(cc_, b_abs, moved, dist)
+            return (e_ + [("came", "mama")], True) if how == "came" else (e_, False)
+        L.come_events = ev
+        try:
+            ch_ = np.asarray(w.d.qpos[:2], float)
+            t0_ = int(w.tick) if how == "came" else int(w.tick) - L.K.COME_WINDOW - 5
+            lane.come_call = [t0_, 1.5, False, False, [float(ch_[0]), float(ch_[1])], [float(ch_[0]) + 1.5, float(ch_[1])]]
+            lane.conduct.requests = []
+            lane.conduct.request("come_again"); lane.conduct.request("greet")
+            lane.conduct.fast.busy_until = int(w.tick) + 50
+            w.frame(); w.apply({})
+            left[how] = [i_ for i_, _k in lane.conduct.requests]
+            assert lane.come_call is None, (how, lane.come_call)
+        finally:
+            L.come_events = ce_
+    assert left == {"came": ["greet"], "ran out": ["greet"]}, left
+    print("C371: her queue after the window closed:", left)
+
+
+def test_no_error_swallowed_unseen():
+    """I5: a handler that catches an error and carries on reports it: the first failure at a site and every EVERY-th are printed
+    ('SWALLOWED (I5) at <site> (#n): ...'), counted per site; the come window's handler so reports a failure and keeps its fallback
+    (the window closed)"""
+    import contextlib, io
+    from body.core import swallow as SW
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        for k in range(SW.EVERY + 1):
+            SW.swallowed("test:site", ValueError("x"))
+    lines = [l for l in buf.getvalue().splitlines() if l.startswith("SWALLOWED (I5) at test:site")]
+    assert len(lines) == 2 and "(#1)" in lines[0] and f"(#{SW.EVERY})" in lines[1] and SW.COUNT["test:site"] == SW.EVERY + 1, lines
+    w, lane = _world(plan=False)
+    _run(w, 3)
+    ce_ = L.come_events
+
+    def broken(*a, **k):
+        raise RuntimeError("a fault in the come window")
+    L.come_events = broken
+    buf = io.StringIO()
+    try:
+        ch_ = np.asarray(w.d.qpos[:2], float)
+        lane.come_call = [int(w.tick), 1.5, False, False, [float(ch_[0]), float(ch_[1])], [float(ch_[0]) + 1.5, float(ch_[1])]]
+        with contextlib.redirect_stdout(buf):
+            w.frame(); w.apply({})
+    finally:
+        L.come_events = ce_
+    assert lane.come_call is None and "SWALLOWED (I5) at lane.py:_events" in buf.getvalue() and "a fault in the come window" in buf.getvalue(), buf.getvalue()[-300:]
+    print("I5: the first failure and every", SW.EVERY, "th printed per site; the come window's fault reported, the window closed as before")
+
+
+def test_the_turn_counted_is_its_own():
+    """C375 (2026-10-18): THE TURN COUNTED IS ITS OWN. A call that owed a turn and ended facing her (or with its coming) lowers the
+    guide's turn share only where the child's own turns in the call's window pointed toward her more often than away: none of its own,
+    or mostly away, and the share rises as for a call not turned; mostly toward, it falls; a call begun before the counts (no snapshot)
+    or across a block's end (the counts begun again) as before C375. Fails without C375"""
+    import types
+    from body.sim import ghost as GH
+    gh = types.SimpleNamespace(go_share=0.5, reflex_share=0.10, go_log=[], turn_log=[], own_n=10, own_agree=6, call_own0=(10, 6))
+    wn = types.SimpleNamespace(ghost=gh)
+    base = [0, 1.6, False, False, [0.0, 0.0], [1.6, 0.0]]
+    faced = base + [True, 1.2, False, True]                                  # turned paid, her bearing 1.2 at the first look
+    L.ParentLane._go_after(None, wn, list(faced), False, 100)                # faced her, none of its own turns: up
+    assert abs(gh.reflex_share - 0.10 / GH.REFLEX_FADE) < 1e-12 and gh.turn_log[-1][:2] == [100, 0], gh.turn_log
+    s1 = gh.reflex_share; gh.call_own0 = (gh.own_n, gh.own_agree); gh.own_n += 8; gh.own_agree += 2
+    L.ParentLane._go_after(None, wn, list(faced), False, 200)                # mostly away (2 of 8): up
+    assert abs(gh.reflex_share - s1 / GH.REFLEX_FADE) < 1e-12
+    s2 = gh.reflex_share; gh.call_own0 = (gh.own_n, gh.own_agree); gh.own_n += 8; gh.own_agree += 6
+    L.ParentLane._go_after(None, wn, list(faced), False, 300)                # mostly toward (6 of 8): down
+    assert abs(gh.reflex_share - s2 * GH.REFLEX_FADE) < 1e-12
+    s3 = gh.reflex_share; gh.call_own0 = (gh.own_n, gh.own_agree)
+    L.ParentLane._go_after(None, wn, base + [False, 1.2, False, False], True, 400)   # came, none of its own turns: up
+    assert abs(gh.reflex_share - min(GH.TURN_SHARE_MAX, s3 / GH.REFLEX_FADE)) < 1e-12
+    s4 = gh.reflex_share; gh.call_own0 = (gh.own_n + 5, gh.own_agree + 5)    # a block's end between (the counts below the snapshot)
+    L.ParentLane._go_after(None, wn, list(faced), False, 500)                # as before: faced her, down
+    assert abs(gh.reflex_share - s4 * GH.REFLEX_FADE) < 1e-12
+    del gh.call_own0; s5 = gh.reflex_share
+    L.ParentLane._go_after(None, wn, list(faced), False, 600)                # no snapshot: as before
+    assert abs(gh.reflex_share - s5 * GH.REFLEX_FADE) < 1e-12
+    print("C375: a call ended facing her lowers the turn share only on its own turns toward her (none or mostly away: up; mostly toward:",
+          "down); a block's end between or no snapshot: as before")
+
+
+def test_the_turn_share_moves_with_its_calls_and_her_spots():
+    """C373: a call whose first look found her beyond TURN_FROM_RAD moves the approach's turn share by its outcome: up when it did not
+    turn to face her, down when it did or came; a call begun near her heading leaves it; logged. C374: her come spots in her order:
+    left, right (90 deg), then 45 deg left and right, then behind, then ahead, each COME_DIST from the child. C373 amended: the share's
+    rise stops at TURN_SHARE_MAX, the share at which the guide's largest step, held, integrates to the turn the legs make in place (the
+    number tied to the constants it is made of)"""
+    import math as _m
+    import types
+    from body.sim import ghost as GH
+    gh = types.SimpleNamespace(go_share=0.5, reflex_share=0.11, go_log=[], turn_log=[])
+    wn = types.SimpleNamespace(ghost=gh)
+    base = [0, 1.6, False, False, [0.0, 0.0], [1.6, 0.0]]
+    far = base + [False, 1.2, False, False]                                  # [6] turned paid, [7] her bearing at the first look, [8], [9]
+    L.ParentLane._go_after(None, wn, list(far), False, 100)                  # owed a turn, not turned: up
+    assert abs(gh.reflex_share - 0.11 / GH.REFLEX_FADE) < 1e-12 and gh.turn_log[-1][:2] == [100, 0], gh.turn_log
+    s1 = gh.reflex_share
+    turned = list(far); turned[6] = True
+    L.ParentLane._go_after(None, wn, turned, False, 200)                     # turned to face her: down
+    assert abs(gh.reflex_share - s1 * GH.REFLEX_FADE) < 1e-12 and gh.turn_log[-1][:2] == [200, 1]
+    s2 = gh.reflex_share
+    L.ParentLane._go_after(None, wn, list(far), True, 300)                   # came (so it turned): down
+    assert abs(gh.reflex_share - s2 * GH.REFLEX_FADE) < 1e-12
+    s3 = gh.reflex_share; near = base + [False, 0.3, False, False]
+    L.ParentLane._go_after(None, wn, near, False, 400)                       # begun near her heading: left
+    assert gh.reflex_share == s3 and len(gh.turn_log) == 3
+    from body.core.physiology import REFLEX
+    assert abs(GH.TURN_SHARE_MAX - 0.3 * (1.0 - GH.COMMAND_DECAY) / float(REFLEX["approach_turn_max"])) < 1e-9   # C373 amended: the cap is
+    gh.reflex_share = 0.17                                                   # the legs' turn (0.3 rad/s) over what the largest step, held, integrates to
+    L.ParentLane._go_after(None, wn, list(far), False, 500)                  # not turned at 0.17: the rise stops at the cap
+    assert gh.reflex_share == GH.TURN_SHARE_MAX and gh.turn_log[-1][:2] == [500, 0], gh.turn_log
+    L.ParentLane._go_after(None, wn, list(far), False, 600)
+    assert gh.reflex_share == GH.TURN_SHARE_MAX
+    sp = DP.come_spots([1.0, 2.0], 0.0)
+    want = [(0.0, 1.0), (0.0, -1.0), (_m.sqrt(0.5), _m.sqrt(0.5)), (_m.sqrt(0.5), -_m.sqrt(0.5)), (-1.0, 0.0), (1.0, 0.0)]
+    assert len(sp) == 6 and all(np.allclose((np.asarray(q_) - [1.0, 2.0]) / DP.COME_DIST, w_, atol=1e-12) for q_, w_ in zip(sp, want)), sp
+    print("C373: the turn share 0.11 -> not turned", round(s1, 4), "-> turned", round(s2, 4), "-> came", round(s3, 4), "-> begun near: unchanged |",
+          "C374: her spots left, right, 45 left, 45 right, behind, ahead | the turn share's cap", GH.TURN_SHARE_MAX)
+
+
 def test_the_tables():
     """lane 1: her lexicon's 79 rows map one to one onto the anatomy's born table (rest 0, end 1, space 2, the letters 3-28, her 50
     birth words 29-78, in her order), read from the table itself; the article "a" keeps its own row apart from the letter's
@@ -188,7 +423,7 @@ def test_the_days_layout():
         assert d.blocks[0][0] == DP.WAKE and d.blocks[-1][1] == DP.DAY_TICKS - DP.WIND
         assert all(a[1] == b[0] for a, b in zip(d.blocks, d.blocks[1:]))
         n = {k: ks.count(k) for k in set(ks)}
-        assert n["floor"] == 3 and n["command"] == 5 and n["show"] == 1 and n["tasks"] == 1 and n["away"] == 1, n   # (the training day, 2026-09-29: away once)
+        assert n["floor"] == 2 and n["command"] == 4 and n["walk"] == 2 and n["show"] == 1 and n["tasks"] == 1 and n["away"] == 1, n   # (the training day, 2026-09-29: away once)
         counts.add(n["away"])
         assert 2 <= len(d.focus) <= 3 and set(d.focus) <= set(DP.BIRTH_TOYS)
     d = DP.DayPlan(1, day_ticks=2400); d.lay_out(0)
@@ -297,9 +532,14 @@ def test_a_short_day():
     lines += [(t, None, ln) for t, _s, _f, _e, ln in a if ln]
     texts = [ln for _t, _k, ln in lines]
     assert lines[0][0] == 0 and lines[0][2].startswith("hi"), lines[:2]
-    assert any("bye" in x for x in texts) and any(x.startswith("night night") for x in texts), texts
+    night_ = any(x.startswith("night night") for x in texts) or any(i_ == "night" for i_, _k in lane2.conduct.requests)   # (the 2,400-tick
+    # day's goodnight window is 30 ticks, the day's 300 scaled: a show of hers that began just before it (here the cup, 4 ticks before)
+    # keeps her goodnight queued past the day's end, where a day of 24,000 ticks says it after the show; 2026-10-17, the goodnight trace)
+    assert any("bye" in x for x in texts) and night_, texts
     kinds = [k for _t, k, _ln in lines if k]
-    assert "away" in kinds and "floor" in kinds
+    aw_ = [(int(b_[0]), int(b_[1])) for b_ in lane.plan.blocks if b_[2] == "away"]   # her goodbye within the away block (it can come
+    assert "floor" in kinds and aw_ and any("bye" in ln and any(a0 <= t_ - lane.day_start <= a1 for a0, a1 in aw_) for t_, _k, ln in lines), \
+        (aw_, [x for x in lines if "bye" in x[2]])                                  # after the save's tick 1,200: C364's 2026-10-17 trace)
     print(f"lane 8: a short day: {len(lines)} lines, from '{texts[0]}' to '{texts[-1]}', a goodbye and a return; saved at tick 1200",
           "and restored in a new world, the rest of the day the same")
 
@@ -368,33 +608,59 @@ def test_her_eyes():
     for _ in range(2):                                                              # its left arm moves (the elbow's big step)
         w.frame(); w.apply({"arm_l": W.act_flat([2, 2, 2, 0, 2, 2, 2]), "hand_l": opening})
     for k in range(5):                                                              # the ball into that open palm within MOVED_TICKS, kept
-        place(0.02); w.frame(); w.apply({"hand_l": opening} if k < 2 else {})       # there GOT_HOLD ticks (a hold, not a graze); then
+        ch_ = L.PM_child(w)                                                         # there GOT_HOLD ticks (a hold, not a graze), held as a
+        w.pin_toy("ball", ch_.grasp["L"] + ch_.palm_n["L"] * 0.03, ticks=1)         # hand holds it (the world's pin through the tick's steps;
+        w.frame(); w.apply({"hand_l": opening} if k < 2 else {})                    # set only at a tick's start it rolled off this palm within
+                                                                                    # the tick, 2026-10-17: never 3 ticks in touch); then
         evs += [tuple(e) for e in lane.last["events"]]                             # the grasp closes on it
         judged += [tuple(x) for x in (lane.last.get("judged") or ())]
         if lane.last.get("line"):
-            said.append((w.tick, lane.last["line"]))
-    for _ in range(6):
-        w.frame(); w.apply({})
-        evs += [tuple(e) for e in lane.last["events"]]
+            said.append((w.tick, lane.last["line"], lane.last.get("line_intent")))
+    seen_at, rd_max = [], 0.0                                                       # (the face test and the felt reading watched from here:
+    for _ in range(24):                                                             # her smile's hold runs from the judgment) (24: her label
+        w.frame(); w.apply({})                                                      # of the lifted ball, 'up. up! the ball.', comes first now
+        evs += [tuple(e) for e in lane.last["events"]]                             # the ball is held in the palm, and her words wait for it)
+        if lane.last.get("face_test"):
+            seen_at.append(w.tick)
+        rd_max = max(rd_max, float(lane.reading))
         judged += [tuple(x) for x in (lane.last.get("judged") or ())]
         if lane.last.get("line"):
-            said.append((w.tick, lane.last["line"]))
+            said.append((w.tick, lane.last["line"], lane.last.get("line_intent")))
     got = [e for e in evs if e[0] == "got"]
     assert got == [("got", "ball")], evs
     assert [j for j in judged if j[1] == "got"] == [(2, "got", "ball")], judged
-    assert said and any(ln.startswith(("yes", "good")) for _t, ln in said), said     # her "yes!" marks the smile (after her label of
-                                                                                     # the ball coming into its hand, if that came first)
-    seen_at = []                                                                     # A94: she smiles en face: her mouth in its fovea
-    for k in range(40):                                                              # (the face test) within the smile's hold, and
-        w.frame(); w.apply({})                                                       # the born reading rises: the smile is felt
-        if lane.last.get("face_test"):
-            seen_at.append(w.tick)
-        if seen_at and lane.reading > 0:                                             # (A158: the reading rises the tick she smiles, looked
-            break                                                                    # at or not; her en-face conduct is read on the test)
-    assert seen_at and lane.reading > 0, (seen_at, lane.reading, lane.feel.log[-6:])
+    from body.sim.lang import consts as LC_
+    assert said and any(str(it_ or "").startswith("confirm") and t_ - 15 <= LC_.CONFIRM_LATE for t_, _ln, it_ in said), said   # her words for
+    # its act mark the smile (C270: what it did, or the thing, or 'yes!'), at her first free tick within CONFIRM_LATE (C364) after her label
+    # of the ball coming into its hand, if that came first ('up. up! the ball.' since the ball is held in the palm: 2026-10-17)
+    assert rd_max > 0, (rd_max, lane.feel.log[-6:])                                 # A158: the born reading rises: the smile is felt, looked at
+                                                                                     # or not (with the ball held in its hand she names the toy it
+                                                                                     # holds, 'you see your ball.', and is not en face within the
+                                                                                     # smile's hold: the en-face smile is read below, on a ball set)
+    # A94: she smiles en face, her mouth in its fovea (the face test): the same reach with the ball only set into the palm (it rolls off
+    # this palm: no hold, her words 'good. good!' for its arm's act), her smile en face within 80 ticks
+    w3, lane3 = _world()
+    _run(w3, 4)
+    m3, d3 = w3.m, w3.d
+    j3 = m3.body("toy_ball").jntadr[0]; a3 = m3.jnt_qposadr[j3]
+    for _ in range(6):
+        w3.frame(); w3.apply({"hand_l": opening})
+    for _ in range(2):
+        w3.frame(); w3.apply({"arm_l": W.act_flat([2, 2, 2, 0, 2, 2, 2]), "hand_l": opening})
+    for k in range(5):
+        ch3 = L.PM_child(w3)
+        d3.qpos[a3:a3 + 3] = ch3.grasp["L"] + ch3.palm_n["L"] * 0.05; d3.qvel[m3.jnt_dofadr[j3]:m3.jnt_dofadr[j3] + 6] = 0.0
+        mujoco.mj_forward(m3, d3); w3.frame(); w3.apply({"hand_l": opening} if k < 2 else {})
+    for k in range(80):
+        w3.frame(); w3.apply({})
+        if lane3.last.get("face_test"):
+            seen_at.append(w3.tick)
+            break
+    assert seen_at, ("no en-face smile", lane3.feel.log[-6:])
     import body.sim.lane as LN_
     from body.sim.lang import consts as LC, percept as LP
-    assert "held" in LP.EVENT_KINDS and LC.MOTOR_WORTH["held"] == (1, "shook")   # C225: her smile for the hand that holds on (shaping toward the shake)
+    assert "held" in LP.EVENT_KINDS and LC.MOTOR_WORTH["held"] == (1, None)      # C225: her smile for the hand that holds on (C234: the hold a skill
+                                                                                     # of its own, its smile wearing by its own count: no next rung)
     lane.lifted.add("ball"); lane.held_run = {}
     ev2 = []
     for _ in range(LN_.HELD_TICKS + 10):                                             # the ball, lifted, kept in its hand HELD_TICKS running:
@@ -453,7 +719,7 @@ def test_her_lessons():
 
 def _test_her_lessons_body():
     w, lane = _world(plan=True, day_ticks=2400)
-    lessons, lines = [], []
+    lessons, lines, placed = [], [], {}
     for k in range(1300):
         w.frame(); w.apply({})
         if lane.last.get("line"):
@@ -461,13 +727,16 @@ def _test_her_lessons_body():
         for x in lane.plan.log:
             if x[1] == "lesson" and x not in lessons:
                 lessons.append(x)
+        for x in lessons:                                                # (2026-10-16: the toy's place read in the 300 ticks after its
+            if x[2] == "reach" and x[3] not in placed and 0 <= w.tick - x[0] <= 300:   # lesson, not at the run's end, when it may
+                sn_ = {s.id: s for s in lane._p.seen}.get(x[3])          # long since have rolled or been carried out of its view)
+                if sn_ is not None and (sn_.child_can_reach or sn_.on in ("hand", "mama")):
+                    placed[x[3]] = w.tick
     reach = [x for x in lessons if x[2] == "reach"]
     assert reach and all(x[4] == 0 and x[5] == 0.1 for x in reach), reach[:4]
     toy = reach[0][3]
     assert [ln for _k, _kind, ln in lines if ln.startswith(("here.", "look. here.")) and toy in ln], lines[:20]
-    p = lane._p
-    seen = {s.id: s for s in p.seen}
-    assert toy in seen and (seen[toy].child_can_reach or seen[toy].on in ("hand", "mama")), (toy, seen.get(toy))
+    assert toy in placed, (toy, reach[:2], {s.id: (s.child_sees, s.child_can_reach, s.on) for s in lane._p.seen})
     lane.conduct.book.setdefault("got", {})[toy] = DP.K.MASTERED_N if hasattr(DP, "K") else 3   # C261: its got mastered at this level (three smiled): a level up
     lane.plan.focus = [toy]
     lane.plan._lesson(w.tick, lane)
@@ -475,7 +744,7 @@ def _test_her_lessons_body():
     assert later and later[0][4] == 1 and later[0][5] == 0.15, later[:2]
     assert abs(lane.conduct.motion.lesson_dist - 0.15) < 1e-9
     st = lane.plan.state()
-    assert st["level"] == {toy: 1} and toy in st["got_seen"]
+    assert st["level"].get(toy) == 1 and all(v_ == 0 for k_, v_ in st["level"].items() if k_ != toy) and toy in st["got_seen"]   # (its other lessons' toys at level 0)
     w2, lane2 = _world(plan=True, day_ticks=2400)
     w2.load_state(w.save_state())
     assert lane2.plan.level == lane.plan.level and lane2.conduct.motion.lesson_dist == lane.conduct.motion.lesson_dist
@@ -590,8 +859,8 @@ def _test_the_roll_rung_body():
     assert side > 0.20, (side, far)                                                          # on its far side
     p = lane._p
     seen = {s_.id: s_ for s_ in p.seen}
-    assert toy in seen and not seen[toy].child_can_reach and seen[toy].on != "mama", seen.get(toy)
-    lane.plan._lesson(w.tick, lane)                                    # the next lesson: the reach rung again (they alternate)
+    assert toy not in seen or (not seen[toy].child_can_reach and seen[toy].on != "mama"), seen.get(toy)   # (her eyes back on its eyes:
+    lane.plan._lesson(w.tick, lane)                                    # the toy may be out of her view; its place proved above) the next lesson: the reach rung again (they alternate)
     last = [x for x in lane.plan.log if x[1] == "lesson"][-1]
     assert last[2] == "reach" and lane.plan.roll_turn is True, last
     st = lane.plan.state()
@@ -632,6 +901,10 @@ def test_a_toy_she_could_not_get_to():
                 w.frame(); w.apply({})
             break
     why = w.parent.why(i)
+    if not DP.HER_HANDS:                                                 # C350 (2026-10-09): her hands' lessons off, a show is the room's:
+        cxy_ = np.asarray(w.d.qpos[:2], float)                           # the toy held before its eyes from wherever it lay, so a toy she
+        assert w.parent.status(i) == "done" and float(np.linalg.norm(d.xpos[b][:2] - cxy_)) < 1.0, (w.parent.status(i), d.xpos[b][:2], cxy_)   # could not
+        return                                                           # kneel by is shown all the same (A117's refusal returns with her hands)
     assert w.parent.status(i) == "refused" and "nowhere to kneel" in why, (w.parent.status(i), why)
     assert "cup" in c.left, (why, c.left)
     at = list(c.left["cup"])
@@ -1025,21 +1298,21 @@ def test_the_hide_with_the_bucket_out_of_reach():
         c.request = lambda k, **kw: asked.append((k, kw))
         c.book.setdefault("got", {})[toy] = 2 * DP.K.MASTERED_N            # the reach rung mastered: the hide's turn
         def S(id_, reach): return SimpleNamespace(id=id_, name=id_, on="floor", child_sees=True, child_can_reach=reach)
-        plan.hide_turn = True
+        plan.hide_turn = True; plan.reach_turn = False                 # (C261: the reach lesson's turn not now)
         lane._p = SimpleNamespace(seen=[S("bucket", False), S(toy, True)], events=[], child_holds=())
         plan._lesson(100, lane)
         assert asked and asked[-1][0] == "hide" and asked[-1][1].get("o") == toy, asked[-2:]
-        plan.hide_turn = True
+        plan.hide_turn = True; plan.reach_turn = False
         lane._p = SimpleNamespace(seen=[S(toy, True)], events=[], child_holds=())    # the bucket unseen, its place known
         lane.toys = tuple(real_toys) + (("bucket",) if "bucket" not in set(real_toys) else ())   # (the test's room has no bucket body)
         plan._lesson(200, lane)
         assert asked[-1][0] == "hide", asked[-2:]
-        plan.hide_turn = True
+        plan.hide_turn = True; plan.reach_turn = False
         lane.toys = tuple(o for o in lane.toys if o != "bucket")                    # no bucket she knows of: no hide
         plan._lesson(300, lane)
         assert asked[-1][0] != "hide", asked[-2:]
         lane.toys = tuple(real_toys) + (("bucket",) if "bucket" not in set(real_toys) else ())   # the bucket's place known again
-        plan.hide_turn = False
+        plan.hide_turn = False; plan.reach_turn = False
         c.book["got"][toy] = 2 * DP.K.MASTERED_N                                   # mastered, the hide's turn spent: the handle rung
         lane._p = SimpleNamespace(seen=[S(toy, True)], events=[], child_holds=())    # (its lesson sets the turn with the bucket at hand)
         plan._lesson(400, lane)
@@ -1084,3 +1357,22 @@ def test_the_talk_over_frown_retired():
     f.harm()
     assert f.frown_active() and f.frown_amp == PF.FEEL["frown_hit"], (f.frown_active(), f.frown_amp)
     print("LANE 11 GREEN")
+
+
+def test_the_turn_toward_her_is_smiled_at():
+    """lane 25 (C360): a call's payments (lane.come_events): called with her off to its side (its bearing to her over TURN_FROM_RAD
+    at the first look), a turn of TURN_NEARER_RAD toward her pays 'turned_nearer' once a call, the turn away nothing; facing her
+    within TURN_TO_RAD pays 'turned_to' once; its own way toward her pays 'came_nearer' and, near her, 'came', which closes the call;
+    from a bearing under TURN_FROM_RAD no turn is paid"""
+    from body.sim.lang import consts as K_
+    cc = [0, 3.0, False, False, [0.0, 0.0], [3.0, 0.0]]
+    ev, done = L.come_events(cc, 1.2, 0.0, 3.0); assert ev == [] and not done and cc[7] == 1.2
+    ev, _ = L.come_events(cc, 1.6, 0.0, 3.0); assert ev == [], ev                              # away: nothing
+    ev, _ = L.come_events(cc, 1.2 - K_.TURN_NEARER_RAD, 0.0, 3.0); assert ev == [("turned_nearer", "mama")], ev
+    ev, _ = L.come_events(cc, 0.5, 0.0, 3.0); assert ev == [], ev                              # nearer still: once a call
+    ev, _ = L.come_events(cc, 0.2, 0.0, 3.0); assert ev == [("turned_to", "mama")], ev
+    ev, _ = L.come_events(cc, 0.1, K_.COME_NEARER_M, 2.0); assert ev == [("came_nearer", "mama")], ev
+    ev, done = L.come_events(cc, 0.1, K_.COME_OWN_M, K_.COME_M - 0.1); assert ev == [("came", "mama")] and done, ev
+    cc2 = [0, 3.0, False, False, [0.0, 0.0], [3.0, 0.0]]
+    L.come_events(cc2, 0.6, 0.0, 3.0)                                   # under TURN_FROM_RAD at the first look
+    ev, _ = L.come_events(cc2, 0.1, 0.0, 3.0); assert ev == [], ev

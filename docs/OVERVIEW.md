@@ -5,11 +5,12 @@
 One agent in a simulated Unitree G1 humanoid (MuJoCo), living one continuous life in one room with one teacher. It learns online,
 every 150 ms tick, from its own experience. There is no dataset, no pretraining and no task reward. Its one reward is the teacher's
 approval, read from her face, plus its own pain (and two small intrinsic terms, novelty and competence, each a fraction of a
-smile). It sleeps every night and has never been reset: 148 days, more than 7 million ticks, on one Mac.
+smile). It sleeps every night and has never been reset: 207 days, almost 10 million ticks, on one MacBook Air.
 
 The teacher is a program: she speaks, shows and names toys, asks, calls it to her, and smiles or frowns at what she sees. Below the
-brain sit a few declared reflexes (turning toward a face or a voice, a first approach, a grasp, balance) and Unitree's own walking
-controller, which the brain drives by sending a speed and a heading.
+brain sit a few declared reflexes (turning toward a face or a voice, a first approach, a grasp, balance) and a leg layer of the body's
+own, a small network that learned to step from Unitree's walking controller (which still catches its falls); the brain drives it by
+sending a speed and a heading.
 
 ## How it learns: five parts
 
@@ -22,6 +23,8 @@ controller, which the brain drives by sending a speed and a heading.
    learning. These are its own values, built from the one grounded reward.
 4. **Credit.** The policy (one per effector: gaze, voice, arms, hands, trunk, the walking command) learns by policy gradient with
    eligibility traces: when her approval arrives, the reward prediction error flows back along a fading trace of what it just did.
+   Beside each policy but the gaze's, an inverse model learns which act made each move, so a move she or the room makes through its
+   body (her hand on its arm, the guide on its walk) is a demonstration it learns from.
 5. **Sleep.** After 24,000 waking ticks it sleeps. The day's moments are replayed in proportion to their surprise and reward; the
    world model, the memory and the policies are consolidated. Every night has run whole; there are no ablations.
 
@@ -29,22 +32,25 @@ The full description, with the learning rules in six lines, is [`ARCHITECTURE.md
 
 ## What it has learned (read from the record)
 
-| days 146 to 148 | a day |
+| days 204 to 206 | a day |
 |---|---|
-| names the toy it is attending, judged right by her rule | 72 to 90 (near zero across days 6 to 43) |
-| comes when called from behind: a **born** approach reflex steering the gait, not yet the brain's own command | 10 to 12 |
+| names the toy it is attending, judged right by her rule | 83 to 120 (near zero across days 6 to 43) |
+| comes when called: on its own leg layer and its own turn; most of the forward drive still a **born** approach reflex's | 4 to 9 |
+| its own turns that point toward her when she calls (day 206) | 62 to 73 % |
+| walks on its own leg layer, the teacher controller only catching its falls | 152 to 221 m |
 | looks at the toy she asks for | 2 |
-| spells a word letter by letter that it was never given ("box") | 2 |
-| pain, as a share of ticks | 0.7 % |
+| pain, as a share of ticks | 0.6 to 0.8 % |
 
-**Against chance.** For days 110 to 148 (when the record carries what was in view), the toy it names is in view 20.3 % of the time,
-against 14.1 % when its own toy words are shuffled within each day: 1.44 times chance over 42,237 words, above chance on 38 of 39
-days. The grounding is real and modest. Its first days' hits were its born words, babbled hundreds of times a day.
+**Against chance.** For days 110 to 206 (when the record carries what was in view), the toy it names is in view 23.2 % of the time,
+against 16.2 % when its own toy words are shuffled within each day: 1.43 times chance over 94,720 words, above chance on 93 of 97
+days. The grounding is real and modest, and its level has held since day 148 rather than grown. Its first days' hits were its born
+words, babbled hundreds of times a day.
 
 ## What it is not, yet
 
-One seed, one room, one teacher program, simulation only. It does not speak in phrases. It does not walk by its own gait. Her face
-reaches it as a signed signal from a born face reader, not from pixels. There are no comparison runs against other learners: the
+One seed, one room, one teacher program, simulation only. It does not speak in phrases of its own. It does not walk without a
+teacher: its leg layer learned from Unitree's controller, which still catches its falls. Her face reaches it as a signed signal from
+a born face reader, not from pixels. There are no comparison runs against other learners: the
 life is measured by its own rulers and the chance control above.
 
 ## Check it yourself
@@ -52,13 +58,13 @@ life is measured by its own rulers and the chance control above.
 ```bash
 git clone https://github.com/LukeHamond1001/one-life-g1.git && cd one-life-g1
 pip install -r requirements.txt
-TAG=dawn-148 sh tools/replay.sh          # the dawn of day 148, replayed: identical to the life's record, tick for tick
-sh tools/replay.sh                       # a day-147 moment with three calls (a mid-day save replays as a close sibling)
+TAG=dawn-206 TICKS=4500 sh tools/replay.sh   # the dawn of day 206, replayed: identical to the life's record, tick for tick
+sh tools/replay.sh                           # a day-147 moment with three calls (a mid-day save replays as a sibling)
 ```
 
 The first command fetches Unitree's walking policy (`tools/get_gait.sh`) and a released checkpoint (about 0.8 GB), then replays
-1,500 ticks: five to ten minutes on a laptop CPU. On a fresh clone on 2026-10-12 the dawn replay matched the life's record on all
-1,500 ticks. `tools/sim_growth.py` and `tools/sim_naming_chance.py` recompute the numbers above from a life's record.
+4,500 ticks: about 20 minutes on a laptop CPU, through the moment in the film (her call, its turn, "you see the cup", its walk to
+her). `tools/sim_growth.py` and `tools/sim_naming_chance.py` recompute the numbers above from a life's record.
 
 ## Where to go next
 

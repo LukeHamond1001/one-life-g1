@@ -66,6 +66,7 @@ from body.sim import anatomy as AN
 from body.sim import ears as EA
 from body.sim import eyes as EY
 from body.sim import extras as X                    # A129: the bucket's sizes
+from body.sim import ghost as GH                     # C370: the born approach's forward share
 from body.sim import parent_feel as PF
 from body.sim import parent_kin as kin
 from body.sim.lang import conduct as C
@@ -77,6 +78,7 @@ from body.sim.lang import templates as TP
 from body.sim.lang.transcriber import Transcriber
 from body.sim.voice import synth as V
 from body.sim.voice.playback import TICK, Utterance
+from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swallowed unseen)
 
 SOURCE = "parent"                      # her voice's name among the ears' sources
 SIB_SOURCE = "sibling"                 # D2 step 4: the sibling's voice's name among the ears' sources
@@ -192,6 +194,34 @@ def _rung(run, base):
     L = q.bit_length() - 1
     return L if 1 <= L <= BEST_LEVELS else 0
 
+
+
+def come_events(cc, b_abs, moved, dist):
+    """C351/W9e/C360: a call's payments this tick, from its record `cc` ([tick, distance at the call, nearer paid, came paid, its place
+    and hers at the call, then (added here) turned paid, its bearing to her at the first look, turned nearer paid, faced her (C370)]), its bearing to her
+    now (|rad|), its own way toward where she called from (m) and its distance to her (m) -> (events, the call closed). Each paid once
+    a call: 'turned_nearer' (C360) its bearing TURN_NEARER_RAD smaller than at the first look, from beyond TURN_FROM_RAD; 'turned_to'
+    (W9e) facing her within TURN_TO_RAD from beyond TURN_FROM_RAD; 'came_nearer' COME_NEARER_M of its own way toward her; 'came' within
+    COME_M of her by COME_OWN_M of its own way (the call closed)"""
+    ev = []
+    if len(cc) < 8:
+        cc += [False, float(b_abs)]                                    # [6] turned paid, [7] her bearing at the first look
+    if len(cc) < 9:
+        cc += [False]                                                  # [8] C360: turned nearer paid
+    if len(cc) < 10:
+        cc += [False]                                                  # [9] C370: it faced her (within TURN_TO_RAD) in the window
+    if b_abs < K.TURN_TO_RAD:
+        cc[9] = True
+    if not cc[8] and cc[7] > K.TURN_FROM_RAD and cc[7] - b_abs >= K.TURN_NEARER_RAD:
+        ev.append(("turned_nearer", "mama")); cc[8] = True             # C360: the turn toward her begun, smiled at
+    if not cc[6] and cc[7] > K.TURN_FROM_RAD and b_abs < K.TURN_TO_RAD:
+        ev.append(("turned_to", "mama")); cc[6] = True
+    if not cc[2] and moved >= K.COME_NEARER_M:
+        ev.append(("came_nearer", "mama")); cc[2] = True
+    if not cc[3] and dist < K.COME_M and moved >= K.COME_OWN_M:
+        ev.append(("came", "mama")); cc[3] = True
+        return ev, True
+    return ev, False
 
 class ParentLane:
     """her lane over a G1World (module doc). voice: body/sim/voice/synth.VoiceCache (or anything with its clip()); None: her
@@ -444,6 +474,46 @@ class ParentLane:
                        levels=dict(getattr(self, "_lv", None) or {}))    # C262
         return PC.check_events(p), mouth, face
 
+    def _come_over(self):
+        """C371 (2026-10-17): A CALL'S REPEATS END WITH ITS WINDOW. When the come window closes (it came, or the window ran out) her
+        come-here still waiting in her queue is dropped, as at the block's end (C359). Day 189 at 9,087,397: it came, her smile judged
+        (1.81), and 12 ticks later she said 'mama here. pip.', a repeat asked before it arrived, ahead of her praise ('good. good!' at +20;
+        C364's late confirmation yields to her queue). A parent does not call a child that has just reached her"""
+        c_ = getattr(self, "conduct", None)
+        if c_ is not None:
+            c_.requests = [(i_, k_) for i_, k_ in c_.requests if i_ not in ("come_call", "come_again")]
+
+    def _go_after(self, world, cc, came, t):
+        """C370: a call's end moves the born approach's forward share (ghost.go_share_after) when it came, or when it faced her in the
+        call's window and did not come; a call it never faced leaves it (its turn's work, not its step's).
+        C373 (2026-10-17): AND THE TURN'S SHARE BY ITS OWN OUTCOME. A call whose first look found her beyond TURN_FROM_RAD of its heading
+        moves the approach's turn share (ghost.reflex_share) by the same law: down when it turned to face her (or came), up when it did
+        not; a call begun near her heading leaves it. Until now the share moved at a block's end by the brain's own turns' agreement
+        with her side (W9e/W9f/C361), which holds still at chance by design: day 191 read 0.49-0.56 and the share stood at 0.11, her
+        bearing after her calls 1.98 -> 1.96 rad in 30 ticks, the walk command's turn toward her 0.03 rad/s (the body following it at
+        0.05), the forward share at 1.0 and 3 comings"""
+        gh_ = getattr(world, "ghost", None)
+        if gh_ is None:
+            return
+        if len(cc) > 7 and float(cc[7]) > K.TURN_FROM_RAD:                     # C373: a turn was owed at the call
+            turned_ = bool(came) or bool(cc[6])
+            o0_ = getattr(gh_, "call_own0", None)
+            if turned_ and o0_ is not None:
+                # C375 (2026-10-18): THE TURN COUNTED IS ITS OWN. As 'came' asks its own way toward her (C351 amended), the turn's share
+                # falls only where its own turns in the call's window (the world's count on its acting ticks: W9e) pointed toward her
+                # more often than away; a call it ended facing her by her steps, its path's curve or the guide's push alone raises it.
+                # Day 205's first block: its turn command at 0.010 rad/s (29 own turns off her axis in 2,100 ticks), the guide's turn
+                # share at 0.013, faced her 4 times and came none; the share had fallen on calls its own turning had not answered
+                dn_ = int(getattr(gh_, "own_n", 0)) - int(o0_[0]); da_ = int(getattr(gh_, "own_agree", 0)) - int(o0_[1])
+                if dn_ >= 0 and da_ >= 0:                                        # (a block's end between: its counts begun again, as before)
+                    turned_ = dn_ > 0 and 2 * da_ > dn_
+            gh_.reflex_share = min(GH.TURN_SHARE_MAX, GH.go_share_after(float(gh_.reflex_share), turned_))   # (amended: capped at the legs' turn)
+            gh_.turn_log = (list(getattr(gh_, "turn_log", [])) + [[int(t), int(turned_), round(float(gh_.reflex_share), 4)]])[-40:]
+        if not (came or (len(cc) > 9 and cc[9])):
+            return
+        gh_.go_share = GH.go_share_after(float(getattr(gh_, "go_share", gh_.reflex_share)), bool(came))
+        gh_.go_log = (list(getattr(gh_, "go_log", [])) + [[int(t), int(bool(came)), round(float(gh_.go_share), 4)]])[-40:]
+
     def _events(self, world, t, pos, holds, her, ch, in_view, grasp=None, touch=None, reaches=()):
         ev = []
         self._lv = {}                                                   # C262: the personal-best rung of this tick's events, {(kind, object): rung}
@@ -593,7 +663,8 @@ class ParentLane:
         else:
             self.step_from = None; self.step_pend = None
         # C351 (2026-10-09): COME HERE. The day plan's command blocks have her call it from across the room (come_call) and set
-        # self.come_call = [tick, its distance to her then, nearer paid, came paid]; within COME_WINDOW of the call, nearer to her by
+        # self.come_call = [tick, its distance to her then, nearer paid, came paid] (C369: set below as her call sounds, not at the
+        # plan's ask); within COME_WINDOW of the call, nearer to her by
         # COME_NEARER_M than at the call pays 'came_nearer' once, and within COME_M of her pays 'came' and ends the call. Its coming
         # is its own act under the gait circuit it commands (W8: the room's gait, the brain's go and turn)
         cc_ = getattr(self, "come_call", None)
@@ -605,13 +676,20 @@ class ParentLane:
                 to_ = her0_ - xy0_; n_ = float(np.linalg.norm(to_)); to_ = to_ / n_ if n_ > 1e-6 else to_
                 moved_ = float((xy_ - xy0_) @ to_)                            # ITS OWN way toward where she called from (C351 amended, 00:40:
                 if t - int(cc_[0]) > K.COME_WINDOW:                              # the distance alone paid when SHE came back to it)
+                    self._go_after(world, cc_, False, t)                         # C370: it did not come
+                    self._come_over()                                            # C371
                     self.come_call = None
                 else:
-                    if not cc_[2] and moved_ >= K.COME_NEARER_M:
-                        ev.append(("came_nearer", "mama")); cc_[2] = True
-                    if not cc_[3] and d_ < K.COME_M and moved_ >= K.COME_OWN_M:
-                        ev.append(("came", "mama")); cc_[3] = True; self.come_call = None
-            except Exception:
+                    Rt_ = np.asarray(ch.torso_R); yaw_ = float(np.arctan2(Rt_[1, 0], Rt_[0, 0]))      # W9e: her bearing from its heading
+                    b_ = float(np.arctan2(her_xy_[1] - xy_[1], her_xy_[0] - xy_[0]) - yaw_); b_ = (b_ + np.pi) % (2 * np.pi) - np.pi
+                    ev_, done_ = come_events(cc_, abs(b_), moved_, d_)
+                    ev.extend(ev_)
+                    if done_:
+                        self._go_after(world, cc_, True, t)                      # C370: it came
+                        self._come_over()                                        # C371
+                        self.come_call = None
+            except Exception as e_i5:
+                _I5("lane.py:_events:668", e_i5)
                 self.come_call = None
         up = post == "front" and float(ch.head[2] - ch.pelvis[2]) > HEAD_UP_M
         self.head_up_run = self.head_up_run + 1 if up else 0
@@ -833,6 +911,20 @@ class ParentLane:
             self.feel.talk_over()
         if out.line is not None and out.line.intent == "peekaboo":
             self.reveal_t = t                               # her reveal: an act within PEEKABOO_ACT ticks answers it (A2)
+        if out.line is not None and out.line.intent == "come_call":
+            # C369 (2026-10-17): THE COME WINDOW OPENS AS HER CALL SOUNDS. Her day plan opened it as it asked the call (C351); day 189's
+            # calls sounded 6 to 79 ticks after the ask (she listened through its turns and answered them first), so up to two thirds of the 120-tick
+            # window ran before the call was heard, and a turn or a step in that time was paid as an answer to a call not yet made
+            try:
+                ch_xy_ = np.asarray(world.d.qpos[:2], float); her_xy_ = np.asarray(self.conduct.motion.base["at"], float)[:2]
+                self.come_call = [int(t), float(np.linalg.norm(ch_xy_ - her_xy_)), False, False,
+                                  [float(ch_xy_[0]), float(ch_xy_[1])], [float(her_xy_[0]), float(her_xy_[1])]]
+                gh0_ = getattr(world, "ghost", None)
+                if gh0_ is not None:                                            # C375: its own turns' counts as the call sounds
+                    gh0_.call_own0 = (int(getattr(gh0_, "own_n", 0)), int(getattr(gh0_, "own_agree", 0)))
+            except Exception as e_i5:
+                _I5("lane.py:tick:898", e_i5)
+                self.come_call = None
         for k, _o in p.events:
             if k == "pain":
                 self.feel.child_pain()
@@ -859,7 +951,7 @@ class ParentLane:
         sym = self.words.tick(t, audible) if scaffold else LX.ID[LX.REST]
         self.word_now = int(LX_TO_AN[int(sym)])
         self.last = dict(posture=self.last.get("posture"), target=p.child_target, holds=p.child_holds, seen=len(p.seen), in_bucket=sorted(getattr(self, "_in_bucket", ())),
-                         events=[list(e) for e in p.events], line=None if out.line is None else out.line.text,
+                         events=[list(e) for e in p.events], line=None if out.line is None else out.line.text, line_intent=None if out.line is None else getattr(out.line, "intent", None),   # C364: the line's intent (her confirmation readable)
                          levels=[[k_, o_, int(L_)] for (k_, o_), L_ in (getattr(p, "levels", None) or {}).items()],   # C262: the events' personal-best rungs
                          heard=[cw.word for cw in out.heard], judged=[list(j) for j in out.judgments], cut=bool(out.cut),
                          face_test=bool(test), reading=self.reading, word=self.word_now, in_view=p.child_in_view,
@@ -962,6 +1054,11 @@ class ParentLane:
                               sit_run=self.sit_run, last_sat=self.last_sat,
                               crawl_spell=None if getattr(self, "crawl_spell", None) is None else [float(x) for x in self.crawl_spell],   # C262
                               crawl_best=int(getattr(self, "crawl_best", 0)),
+                              stood_run=int(getattr(self, "stood_run", 0)), last_stood=int(getattr(self, "last_stood", -10 ** 9)),   # R9 (2026-10-16): the
+                              last_step=int(getattr(self, "last_step", -10 ** 9)), step_best=int(getattr(self, "step_best", 0)),    # stand's and the step's
+                              step_from=None if getattr(self, "step_from", None) is None else [float(x) for x in self.step_from],   # counters and rungs,
+                              step_spell=None if getattr(self, "step_spell", None) is None else [float(x) for x in self.step_spell],   # lost at each restart
+                              step_pend=None if getattr(self, "step_pend", None) is None else [int(x) for x in self.step_pend],
                               still_from=None if self.still_from is None else [float(x) for x in self.still_from], still_t=self.still_t,
                               cry_down=self.cry_down, distressed=self.distressed, touch_run=dict(self.touch_run),
                               got_arm=dict(self.got_arm)))
@@ -1037,6 +1134,12 @@ class ParentLane:
             self.sit_run, self.last_sat = int(e.get("sit_run", 0)), int(e.get("last_sat", -10 ** 9))
             cs_ = e.get("crawl_spell"); self.crawl_spell = None if cs_ is None else np.asarray(cs_, float)   # (C262; older saves: none)
             self.crawl_best = int(e.get("crawl_best", 0))
+            if "step_best" in e:                                           # R9: the stand's and the step's counters and rung (older saves: born)
+                self.stood_run, self.last_stood = int(e["stood_run"]), int(e["last_stood"])
+                self.last_step, self.step_best = int(e["last_step"]), int(e["step_best"])
+                self.step_from = None if e["step_from"] is None else np.asarray(e["step_from"], float)
+                self.step_spell = None if e["step_spell"] is None else np.asarray(e["step_spell"], float)
+                self.step_pend = None if e["step_pend"] is None else [int(x) for x in e["step_pend"]]
             sf = e.get("still_from"); self.still_from = None if sf is None else np.asarray(sf, float); self.still_t = int(e.get("still_t", -10 ** 9))
             self.last_head_up = int(e.get("last_head_up", -10 ** 9))
             self.cry_down, self.distressed = int(e.get("cry_down", 0)), bool(e.get("distressed", False))

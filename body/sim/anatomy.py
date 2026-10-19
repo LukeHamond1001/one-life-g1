@@ -149,7 +149,9 @@ TRACT_AT = GAZE_AT + 6                                                    # 221:
 BREATH_AT = TRACT_AT + 20                                                 # 241
 BODY_SIZE = TRACT_AT + 21                                                 # 242
 TOUCH_SIZE = 2 * len(ZONES) + 2 * len(BODY_JOINTS) + 2 * 6                # 130
-SIZES = dict(face=2, ears=1725, eye_p=172, eye_f=1536, body=BODY_SIZE, touch=TOUCH_SIZE, vestibular=24)
+SIZES = dict(face=2, ears=1725, eye_p=172, eye_f=1536, body=BODY_SIZE, touch=TOUCH_SIZE, vestibular=24,
+             loco_cmd=2)                # A224 (2026-10-16): the walk command's own drive felt, [commanded speed, commanded turn] (body/sim/ghost.py cmd_v,
+                                        # cmd_w): the corollary discharge of the brainstem's locomotor command, the sense the walk command's inverse reads
 # each limb's flexion joints and their flexion senses, measured on the G1 (the withdrawal's: sim-world's body/tests/test_sim_world.py,
 # world 8; 3.7): a leg's hip pitch -1, knee +1, ankle pitch -1; an arm's shoulder pitch -1 and elbow -1. The spinal pattern generator
 # moves these (A48)
@@ -437,6 +439,9 @@ class Gaze(Effector):
         return 0.03
 
 
+LOCO_TURN_AT = 20                     # W9e: the vestibular channel's pelvis gyro (yaw, the tick's mean): [torso acc, gyro; pelvis acc, gyro] x [mean, peak] x 3
+
+
 class Loco(Effector):
     """THE LOCOMOTION COMMAND (W8, 2026-10-09; effector 10, the last): the brain's drive to the body's gait circuit, go and turn, two
     channels of five settings stepping the commanded speed and turn (body/sim/world.py LOCO_*; the circuit: the expert gait the ghost
@@ -458,7 +463,7 @@ class SimAnatomy(LanguageAnatomy):
         words = EarChannel("words", "symbol", self.vocab, organ="E", field="x", forecast=True, rest_id=self.sil, end_id=self.end_id,
                            reserved=self.reserved, partner=True)
         chans = [words] + [Channel(n, "vector", SIZES[n], organ=f"encs.{n}", forecast=True)
-                           for n in ("face", "ears", "eye_p", "eye_f", "body", "touch", "vestibular")]
+                           for n in ("face", "ears", "eye_p", "eye_f", "body", "touch", "vestibular", "loco_cmd")]   # A224: loco_cmd last (the born codes before it unchanged)
         lim = list(limits) if limits is not None else None
 
         def idx(js):
@@ -497,7 +502,15 @@ class SimAnatomy(LanguageAnatomy):
             rewards.append(Novelty("novelty", clip=NOVELTY_GAIN, signs=(1.0,)))        # A127: the new pays (+), a switch of the body
         if int((cfg or {}).get("competence", SIM_CFG.get("competence", 0))):
             rewards.append(Competence("competence", clip=COMPETENCE_GAIN, signs=(1.0,)))   # A181: mastery of its own doing pays (+), a switch of
-        loco = Loco("loco", [5, 5], rest_id=12, sense=None, fwd_gate=False, n_in=2, inverse=False,   # W8 (the last: a loaded life's window grows at the end).
+        loco = Loco("loco", [5, 5], rest_id=12, sense="loco_cmd", sense_idx=[0, 1], fwd_gate=False, n_in=2, inverse=True,   # W8 (the last: a loaded life's window grows at the end).
+                    # A224 (2026-10-16): its consequence sense is its own drive, the command [speed, turn] the ghost integrates (the corollary discharge),
+                    # not the pelvis's felt turn rate (W9e): on that the inverse learned nothing in nine days (kappa 0.00 / -0.01: an act's step of 0.006
+                    # to 0.018 rad/s on a command decaying 0.97 a tick, against a yaw that sways by 0.3), so the turns the born approach made were never
+                    # labelled and act_pred never learned them. On the command the step is read exactly, and a step the reflex put into the command is
+                    # labelled as the act it equals: the cortex learns the reflex's turns as its own, the imitation road W9e meant
+                    # W9e: its inverse model reads the pelvis's felt turn rate (the vestibular channel's pelvis gyro, yaw, mean: one number,
+                    # not the raw graviceptor that broke night 138 through the forward half, which stays off), so a body turned toward her
+                    # by the guiding approach proposes the turn it felt: it learns from being moved, as the limbs do
                     orient={1: ("yaw", -1)}, orient_gate=True,                # A216: the turn's positive step (+ rad/s) turns the body left, so a cue on
                     approach={"go": 0, "turn": 1, "cues": ("named", "face", "sound"), "eye": ("body", GAZE_AT), "gyro": ("imu_torso", 5)})   # A216 amended twice: the heard word's look first (A208's order)   # the right is turned toward by its negative step: sense -1;
                                                         # the born approach on the command (body/core/cord.py _approach_step): her face's bearing
@@ -566,7 +579,7 @@ class SimAnatomy(LanguageAnatomy):
         for w in ("force.x", "force.y", "force.z", "torque.x", "torque.y", "torque.z"):
             fibre(f"contact base.{w}", 0.0, 1.0)
         self.mossy = tuple(mossy)
-        self.cerebellar = Cerebellar(off, half, joints=list(CEREB_JOINTS), vor=["yaw", "pitch"])
+        self.cerebellar = Cerebellar(off, half, joints=list(CEREB_JOINTS), vor=["yaw", "pitch"], loco=["turn"])   # A227: the walk's turn
         self.events = event_lines()                                    # R7a: the born event lines (the module's doc)
         # A191 (2026-10-04): THE AMYGDALA'S OWN LOW ROAD FOR STRAIN. A line only the amygdala reads (the nociceptive road to the
         # central amygdala through the parabrachial nucleus: Bernard and Besson 1990), firing while any gear is loaded over
@@ -696,6 +709,13 @@ SIM_CFG = dict(
     #   and grown by use), in place of a switch after birth (A20: a change of body)
     night_keep_bands=1,
     fast_input="striatum", fast_rls=1, stri_k=8, stri_m=2048, stri_quiet=1, fast_rls_prior=0.3, fast_rls_every=256,
+    actor_norm_tau=24000,   # D4 (2026-10-16): the actors' input centered and scaled by its running moments over a day (the band's state stands at a mean 70 times its variation)
+    actor_sense=1,   # A226 (2026-10-16): each later effector's actor also reads its own body sense (mouth._actor_sense: its joints, normalized per unit), its own pathway's unit power
+    actor_cues=1,   # A225 (2026-10-16): the actors also read the born orienting cues (cord._actor_cues; the tecto-thalamo-striatal road), each pathway at its own unit power
+    actor_input="band",   # D2 (2026-10-14): the later effectors' actors on the dopamine band's state (the striatal line, 1.2 s of its own babble, cannot see her); their heads born again at the load, as W8's were
+    shape_bands=(3, 4, 5, 6, 7), shape_gain=1.0,   # D3 (2026-10-15): a slower band's value change joins the actors' dopamine, less its running mean, at the gain that band has
+                                                   # earned (D3b, D3c); D3d: every band slower than the dopamine band, each at its own (clocks 64 to 16384)
+    dopamine_source="band",   # D1 (2026-10-14): dopamine is the clock-16 band's TD error (its head on the cortex's state); the striatum, its head and the actors stay as they were
     wm=1, wm_burst=0.5, wm_max=512,
     vcrit_rls=1, vcrit_auto=1, vcrit_ceiling="earned", vcrit_forget=36000, vcrit_traces=1, vcrit_clock=1, vcrit_norm_tau=36000,
     vcrit_rls_prior=3.0, vcrit_lambda=1.0, vcrit_center=0, vcrit_bands="0,1,2", vcrit_rls_every=256,

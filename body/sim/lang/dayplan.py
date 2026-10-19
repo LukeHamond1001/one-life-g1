@@ -44,6 +44,7 @@ import numpy as np
 from . import consts as K
 from . import templates as TP
 from ..parent_consts import NEVER_FETCHED
+from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swallowed unseen)
 
 PLAN_STREAM = 7                        # her day plan's random stream of the body's seed (ours; world 1, tract 2, lines 3, reading 4,
                                        # imperfection 5, trials 6)
@@ -51,8 +52,8 @@ DAY_TICKS = 24000                      # a life day (4.7)
 WAKE = 300                             # the wake episode (4.7)
 WIND = 1000                            # the winding down (4.7)
 GOODNIGHT = 300                        # goodnight (4.7)
-BLOCKS = (("floor", 3, 4000, 5000), ("command", 5, 2500, 3000), ("show", 1, 1500, 1500), ("away", 1, 400, 600),
-          ("tasks", 1, 600, 600))      # 4.7's table: kind, how many, shortest, longest. TRAINING MODE (2026-09-29, the owner's word: fix
+BLOCKS = (("floor", 2, 4000, 5000), ("command", 4, 2500, 3000), ("walk", 2, 2500, 3000), ("show", 1, 1500, 1500), ("away", 1, 400, 600),
+          ("tasks", 1, 600, 600))   # W9 (2026-10-13): two of the five command blocks become walk blocks, out on the practice ground      # 4.7's table: kind, how many, shortest, longest. TRAINING MODE (2026-09-29, the owner's word: fix
                                        # fast; her pace is the lead's): away 2-4 x 400-1,200 and her own tasks 3,000 cut to one short block
                                        # each, so the play blocks (drawn, then scaled to the day) carry about a quarter more of the day
 HER_HANDS = False               # C350 (2026-10-09, the owner's word at 15:00: her scripts the bottleneck, the ghost holds it): her hands' lessons for
@@ -61,9 +62,19 @@ HER_HANDS = False               # C350 (2026-10-09, the owner's word at 15:00: h
                                 # motor blocks: 4 x 2,500-3,000 ticks of the room's hold, lead and fade, the lure a step ahead (C348), her voice
                                 # and face as before (she follows at a distance; a step is paid by her smile, C284). Her shows and hand-overs stay
 GHOST_FOLLOW_M, GHOST_FOLLOW_GAP = 2.0, 100   # C350: in a ghost block she walks to the child when farther than this, this often at most (ours)
-COME_GAP, COME_DIST, COME_SPOT_WAIT, COME_MIN_M = 200, 1.2, 150, 0.9   # C351 amended five times: 1.3 m, crouched (her face in its eyes' field); under 0.9 m too near to teach
+HER_FLOOR_EVERY = 25                            # C366b: how often (ticks) she is checked for being off her floor outside a walk block (ours)
+COME_REPEAT = 12                        # C356 (2026-10-16): 12 (1.8 s; 20 under C353): the called turn is learned by count (its push a day grows with the trials, the actors' drift with their square root), so a floor block became a fourth command block and she calls oftener. C353 (2026-10-15): between her calls she calls again every this many ticks (3 s, a parent's 'come... come on... come here') while
+                                        # it has not turned to face her (within TURN_TO_RAD) and the call's window is open: the born turn toward a voice fires at an
+                                        # onset only (A216: a side, not a place), so one call every COME_GAP gave it one nudge toward her side every 30 s and then
+                                        # nothing until her face was in its eyes; days 167-170 paid 'turned_to' 5, 2, 5, 2 times a day and its own turns toward her
+                                        # stayed at chance (ours: a mother's cadence)
+COME_GAP, COME_DIST, COME_SPOT_WAIT, COME_MIN_M = 200, 1.6, 150, 0.9   # C354 (2): the spot 1.6 m off (1.2 under C351): to the child's side the child's own
+                                                                        # drift brought her within COME_MIN_M before she called (the dawn-165 copy: her distance 0.54 m, no call in a block)   # C351 amended five times: 1.3 m, crouched (her face in its eyes' field); under 0.9 m too near to teach
 WEDGE_CLEAR_M, WEDGE_EVERY, WEDGE_GAIN_M = 1.0, 50, 0.3      # C352: a lying child in pain this near (m) anything standing is carried to its mat, where the mat's centre is clearer by WEDGE_GAIN_M (amended); checked every this many ticks (ours: LAY_CLEAR_M's 1.0)
-COME_FAR_M = 1.8                        # C351 amended five times: a call from farther than this (the crouched face's reach in its eyes' field) is not made: another spot nearer
+COME_FAR_M = 3.5                        # C351 amended five times: a call from farther than this is not made: another spot nearer. C353 (2026-10-15): 1.8 m, the crouched
+                                        # face's reach in its eyes' field, had her abandon her spot whenever the gait had walked it off (the copy's block: six spots,
+                                        # no call in 900 ticks); the call is voice-led now (the born turn toward a voice at every repeat), and a voice carries
+                                        # across the room where a face does not, so she calls from where she stands up to the room's reach
 COME_AFTER = 300                        # C351 amended six times: after it has come (or is too near to teach) she stays with it this long before her next spot (ours: 45 s of praise and play)
 COME_STAY_MAX = 900                     # C351 amended four times: she keeps her spot, calling every COME_GAP, until it comes (within COME_MIN_M) or this long   # C351: in a command block she calls it from this far, this often; her walk to the spot waits
                                                                         # this long at most; no call from nearer than COME_MIN_M (the copy: a call from 0.74 m paid 'came' at once). Ours
@@ -164,6 +175,47 @@ def _may_give(seen, o):
     """a give may be asked of o (her conduct's own check, 4.8): in the child's view and within its reach as she sees it, not in her hands"""
     s = seen.get(o)
     return bool(s is not None and s.child_sees and s.child_can_reach and s.on != TP.PARENT_NAME)
+
+
+def _plain(x):
+    """a state of plain lists and numbers (numpy arrays and tuples as lists, tagged so they come back as they were)"""
+    if isinstance(x, dict):
+        return {k: _plain(v) for k, v in x.items()}
+    if isinstance(x, np.ndarray):
+        return {"__nd__": x.tolist()}
+    if isinstance(x, tuple):
+        return {"__tu__": [_plain(v) for v in x]}
+    if isinstance(x, list):
+        return [_plain(v) for v in x]
+    if isinstance(x, (np.floating, np.integer)):
+        return x.item()
+    return x
+
+
+def _unplain(x):
+    if isinstance(x, dict):
+        if "__nd__" in x:
+            return np.asarray(x["__nd__"], float)
+        if "__tu__" in x:
+            return tuple(_unplain(v) for v in x["__tu__"])
+        return {k: _unplain(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_unplain(v) for v in x]
+    return x
+
+
+def come_spots(ch_xy, heading, dist=None):
+    """C351/C354/C374: her come lesson's spots in the order she tries them, `dist` (COME_DIST) from the child at ch_xy facing `heading`:
+    to its left, to its right, then half way to its side (45 deg) left and right, then behind it, then ahead of it.
+    C374 (2026-10-17): the 45-degree spots before behind it. Day 191 her bearing at her calls was 1.98 rad on the mean (the room's walls
+    ruling out a side spot, so behind it), where the ears read a voice's side worst (behind reads as ahead) and the turn owed is
+    longest; at 45 deg the turn owed (0.79 rad) is still beyond TURN_FROM_RAD and her side reads clearly: the easier turn first, as a
+    parent shapes it"""
+    d_ = COME_DIST if dist is None else float(dist)
+    ch_xy = np.asarray(ch_xy, float); fwd = np.array([np.cos(heading), np.sin(heading)])
+    lf_, rt_ = np.array([-fwd[1], fwd[0]]), np.array([fwd[1], -fwd[0]])
+    return [ch_xy + lf_ * d_, ch_xy + rt_ * d_, ch_xy + (fwd + lf_) / np.sqrt(2.0) * d_, ch_xy + (fwd + rt_) / np.sqrt(2.0) * d_,
+            ch_xy - fwd * d_, ch_xy + fwd * d_]
 
 
 class DayPlan:
@@ -284,6 +336,8 @@ class DayPlan:
                 self.sit_due = True                                         # (C254: owed whatever its posture; a prone child is turned first)
                 self.log.append((t, "motor block two: a sit owed again (C220)" + ("" if self._lying_on_back(lane) else "; the child not on its back: turned over first (C254)")))
             self.block_i = bi
+        if kind != "walk" and world is not None and t % HER_FLOOR_EVERY == 0:
+            self._her_floor(t, lane, world)                             # C366b: off her floor outside a walk block: her way back
         if kind in ("ghost", "command"):
             self._ghost_tick(t, lane, world)
         if any(k == "pain" for k, _o in p.events):
@@ -334,7 +388,8 @@ class DayPlan:
             self.fell_seen.add(mid_)
             try:
                 a_ = c.motion._act(mid_)
-            except Exception:
+            except Exception as e_i5:
+                _I5("dayplan.py:tick:376", e_i5)
                 continue
             if a_.get("kind") == "stand_up":
                 # C346 amended (2026-10-09, 09:15): THE GAP IS A PAUSE AFTER THE STAND'S END. Counted from the stand's request, a stand
@@ -456,7 +511,8 @@ class DayPlan:
                 self.blocked_seen.add(mid)
                 try:
                     why_ = str(c.motion._act(mid).get("why", ""))
-                except Exception:
+                except Exception as e_i5:
+                    _I5("dayplan.py:tick:498", e_i5)
                     why_ = ""
                 if "no spot" in why_ or "every side is blocked" in why_ or "cannot get up without touching the child" in why_ \
                         or "did not arrive on it" in why_ or "cannot reach it from here" in why_ \
@@ -495,7 +551,8 @@ class DayPlan:
             for mid, st in (getattr(c, "ended", None) or {}).items():
                 try:
                     a_ = c.motion._act(mid)
-                except Exception:
+                except Exception as e_i5:
+                    _I5("dayplan.py:tick:537", e_i5)
                     a_ = {}
                 if a_.get("kind") == "stand_up" and st == "done" and mid not in self.stood_seen:
                     # C268: IT STOOD AND WALKED: AGAIN, after a rest. Standing and stepping are learned by doing them many times
@@ -525,7 +582,8 @@ class DayPlan:
                 try:
                     if c.motion._act(mid_).get("kind") in ("show", "hand_over", "bring_back"):
                         self.next_ask = min(getattr(self, "next_ask", 0), t)
-                except Exception:
+                except Exception as e_i5:
+                    _I5("dayplan.py:tick:567", e_i5)
                     pass
         if kind in ("floor", "motor", "show") and t >= getattr(self, "next_ask", 0) and c.pending is None and c.trial is None and \
                 c.fast.voice_free(t):                                       # (C289: also while her hands hold it standing: on its feet the
@@ -560,8 +618,8 @@ class DayPlan:
         # C330 (2026-10-08): IN FLOOR PLAY TOO, A STAND DUE COMES BEFORE HER SHOWS. Day 123: shows open on 46% of the day's ticks and
         # stands on 25%, 10 stands done of 26 offered (the offer waits for her hands and an act-free tick); the owner's first goal is
         # walking. From STAND_SOON ticks before the floor stand is due until it is asked, her conduct asks no show of its own (C315's rule)
-        c.stay_put = bool(kind == "command")                            # C351 amended three times: in a command block she stays where she calls from
-        c.quiet_shows = bool(kind == "command" or (kind == "motor" and self.sit_due) or
+        c.stay_put = bool(kind in ("command", "walk"))                  # C351 amended three times: in a command block she stays where she calls from (W9: and in a walk, the child away)
+        c.quiet_shows = bool(kind in ("command", "walk") or (kind == "motor" and self.sit_due) or
                              (kind == "floor" and t >= int(getattr(self, "next_floor_stand", 0)) - STAND_SOON))   # C315: a stand owed: her conduct asks no show of its own
         busy = (c.pending is not None or c.trial is not None or not c.fast.voice_free(t)
                 or any(a[5] not in ("done", "refused", "cancelled") for a in c.acts_open))
@@ -594,6 +652,15 @@ class DayPlan:
         """an episode begins"""
         c, feel = lane.conduct, lane.feel
         self.log.append((t, "episode", kind))
+        if self.kind == "walk" and kind != "walk" and getattr(world, "ghost", None) is not None:   # W9: the walk over: the field off, the
+            rec_ = list(world.ghost.rec or [])                      # child carried home to its mat from the practice ground
+            world.ghost.off_(world, at_once=True)
+            try:
+                world.carry_to_mat()
+            except Exception as e_:
+                self.log.append((t, "walk block over: the carry home failed (W9)", repr(e_)[:80]))
+            self.log.append((t, "walk block over: carried home (W9)", rec_))
+            print(f"walk block over at tick {t}: {rec_} [strength, carried, heading, falls, metres, walk, the layer's error, ticks alone, its median error over the block] (W9, C361)", flush=True)
         if self.kind in ("ghost", "command") and kind not in ("ghost", "command") and getattr(world, "ghost", None) is not None:   # C350: the ghost block over: the field
             rec_ = list(world.ghost.rec or [])                      # off at once and the body laid on its back where it stands (the
             world.ghost.off_(world, at_once=True)                   # environment's laying, C338 amended; her carry's rules for the mat)
@@ -609,9 +676,13 @@ class DayPlan:
             if getattr(self, "lure", None) is not None:
                 try:
                     world.unpin_toy(self.lure)
-                except Exception:
+                except Exception as e_i5:
+                    _I5("dayplan.py:_enter:660", e_i5)
                     pass
                 self.lure = None
+            c.requests = [(i_, k_) for i_, k_ in c.requests if i_ not in ("come_call", "come_again")]   # C359: her come-here is the
+            if getattr(lane, "come_call", None) is not None:                # block's: its queued lines dropped and its window closed
+                lane.come_call = None                                       # at the block's end (the window paid coming into the next block)
             self.log.append((t, "ghost block over: laid down (C350)", rec_))
             print(f"ghost block over at tick {t}: {rec_} [strength, carried, heading, falls, metres] (C350)", flush=True)
         feel.set_engagement(TASKS_ATTENTION if kind == "tasks" else 1.0)
@@ -640,9 +711,28 @@ class DayPlan:
                     world.ghost.command = (kind == "command"); world.ghost.cmd_v = 0.0; world.ghost.cmd_w = 0.0
                     if kind == "command": world.ghost.s = 1.0
                 else:
-                    world.ghost.on_(world, command=(kind == "command"))
+                    world.ghost.on_(world, command=(kind == "command"), walk=(kind == "command"))   # W9b: a command block on its own legs
                 self.log.append((t, f"{kind} block: the room holds it (C350/W8)"))
                 print(f"{kind} block at tick {t}: the room holds it (C350/W8)", flush=True)
+        elif kind == "walk":
+            # W9: THE WALK BLOCK (body/sim/ghost.py, body/sim/legs.py): carried out to the practice ground, stood and walked by the gait,
+            # the body's leg layer learning the teacher's push and taking the legs as the teacher lays off. She stays home
+            c.routine = None
+            self.next_play = t + 10 ** 9
+            pm_ = c.motion                                              # C366: her acts under way end as the child is carried out (she
+            for i_ in list(getattr(pm_, "live", ()) or ()):            # stays home: day 187's show of the book, begun as the block began,
+                try:                                                    # set her beside the child on the practice ground)
+                    pm_.cancel(i_)
+                except Exception as e_i5:
+                    _I5("dayplan.py:_enter:706", e_i5)
+                    pass
+            if getattr(world, "ghost", None) is not None:
+                if world.ghost.on:
+                    world.ghost.off_(world, at_once=True)
+                world.carry_to_mat(to=world.ghost.ground_mid())
+                world.ghost.on_(world, heading=0.0, walk=True)
+                self.log.append((t, "walk block: out to the practice ground (W9)"))
+                print(f"walk block at tick {t}: out to the practice ground (W9)", flush=True)
         elif kind in ("floor", "motor", "show", "wind"):
             c.routine = None
             self.next_play = t + int(self.rng.integers(*PLAY_GAP))
@@ -652,11 +742,42 @@ class DayPlan:
                 if not self._lying_on_back(lane):
                     self.log.append((t, "motor block: the child not on its back: turned over first for the sit (C254)"))
 
+    def _her_floor(self, t, lane, world):
+        """C366b (2026-10-17): SHE IS BROUGHT BACK TO HER FLOOR. Off the floor she can plan on (the practice ground) while the child is on
+        it, her acts end and her approach to the child is asked: the direct approach (T2) sets her beside it on her floor. Day 187: set out
+        there by a show begun as a walk block began (C366 ends such acts now), she could not get up off her floor and knelt there through
+        a command block, and again after the next walk block began under the old code. Logged in the run log"""
+        try:
+            pm_ = lane.conduct.motion
+            at_ = np.asarray(pm_.base["at"], float)[:2]
+            if pm_._in_plan(at_) or not pm_._in_plan(np.asarray(world.d.qpos[:2], float)):
+                return
+            for i_ in list(getattr(pm_, "live", ()) or ()):
+                try:
+                    pm_.cancel(i_)
+                except Exception:
+                    pass
+            pm_.request(_Plain("walk", "child"))
+            self.log.append((t, "she was off her floor: her way back beside the child (C366b)", [round(float(x), 2) for x in at_]))
+            print(f"she was off her floor at {[round(float(x), 2) for x in at_]} at tick {t}: her way back beside the child (C366b)", flush=True)
+        except Exception as e_:
+            self.log.append((t, "her way back failed (C366b)", repr(e_)[:80]))
+
     def _ghost_tick(self, t, lane, world):
         """C350: a tick of the ghost block: the lure a step ahead of its feet (C348), she follows at a distance"""
         c = lane.conduct; pm = c.motion
         gh = getattr(world, "ghost", None)
         if gh is None or not gh.on:
+            return
+        if gh.command:                                                      # C367 (2026-10-17): THE COME LESSON HAS NO LURE. A toy pinned a
+            if getattr(self, "lure", None) is not None:                     # step ahead of its feet (C348, the ghost blocks' guided walk) drew
+                try:                                                        # her follow-in naming ('oh! the ball.', 'you see the ball?') over her
+                    world.unpin_toy(self.lure)                              # calls (days 183, 184, 186: 283-310 toy lines in command blocks,
+                except Exception as e_i5:                                           # 27-55 calls, 3 comings a day; day 185: 23 and 61, came_nearer 11)
+                    _I5("dayplan.py:_ghost_tick:755", e_i5)
+                    pass                                                    # and walked the child after a toy that went with it, not to her
+                self.lure = None
+            self._come_tick(t, lane, world, c, pm)                          # C351: COME HERE, the command blocks' lesson
             return
         try:
             lure_ = getattr(self, "lure", None)
@@ -675,9 +796,6 @@ class DayPlan:
                 world.pin_toy(lure_, pos_, ticks=2)
         except Exception as e_:
             self.log.append((t, "ghost lure failed (C350)", repr(e_)[:80])); self.lure = None
-        if gh.command:                                                      # C351: COME HERE, the command blocks' lesson
-            self._come_tick(t, lane, world, c, pm)
-            return
         if t - int(getattr(self, "ghost_follow", 0)) >= GHOST_FOLLOW_GAP and not pm.holds:
             try:
                 ch_xy = np.asarray(world.d.qpos[:2], float); her_ = np.asarray(pm.base["at"], float)[:2]
@@ -697,11 +815,22 @@ class DayPlan:
             self.come = st = dict(next=t + 60, spot=None, at=None)
         try:
             ch_xy = np.asarray(world.d.qpos[:2], float); her_ = np.asarray(pm.base["at"], float)[:2]
-            if st["spot"] is None:
-                if t < st["next"] or pm.holds:
+            cc_ = getattr(lane, "come_call", None)                         # C369: the window open from her call's sounding (the lane's), and
+            if cc_ is not None and t - max(int(st.get("again", -10 ** 9)), int(cc_[0])) >= COME_REPEAT:   # her repeats timed from it
+                hd_ = float(world.ghost.heading); b_ = float(np.arctan2(her_[1] - ch_xy[1], her_[0] - ch_xy[0])) - hd_   # C353: while a call's window
+                b_ = (b_ + np.pi) % (2 * np.pi) - np.pi                                                                      # is open and it has not turned
+                if abs(b_) > float(K.TURN_TO_RAD):                                                                            # to her, she calls again
+                    c.request("come_again"); st["again"] = int(t)                                                             # (whatever her spot's state:
+                    self.log.append((t, "come here: called again (C353)", round(abs(b_), 2)))                                # the copy's block, 2026-10-15
+            if st["spot"] is None:                                                                                            # 21:50: 15 calls, 0 repeats
+                if t < st["next"] or pm.holds:                                                                                # from the between-calls branch)
                     return
                 gh = world.ghost; fwd = np.array([np.cos(gh.heading), np.sin(gh.heading)])
-                cands = [ch_xy - fwd * COME_DIST, ch_xy + np.array([-fwd[1], fwd[0]]) * COME_DIST, ch_xy + np.array([fwd[1], -fwd[0]]) * COME_DIST, ch_xy + fwd * COME_DIST]   # C351 amended six times: behind it first (its voice must turn it), then beside, then in front
+                cands = come_spots(ch_xy, gh.heading)                         # C354 (2026-10-16): her spot to its; C374: 45 deg before behind
+                # LEFT or RIGHT first (C374: then 45 deg), behind next, ahead last (C351 had behind first). The ears place a voice by the timing between them (the born
+                # lateral read, A216): a voice to the side reads its side right (0.94 at her onsets on the copies), a voice behind reads as straight
+                # ahead; day 175's command blocks had her bearing at 1.85 rad and 3.5 m off through the calls (C353 (3) lets her call from where
+                # she stands) and the body never came round. A mother calls from where the child can hear which way she is   # C351 amended six times: behind it first (its voice must turn it), then beside, then in front
                 for q_ in cands:
                     if not (-2.3 <= q_[0] <= 2.3 and -2.0 <= q_[1] <= 2.0):          # (her walk to a point knows the first room: 'no such place' beyond it)
                         continue
@@ -721,7 +850,8 @@ class DayPlan:
                         self.log.append((t, "come here: her crouch refused (C351)", str(a_.get("why"))[:80]))
                         st["spot"] = None; st["next"] = t + 40
                         return
-                except Exception:
+                except Exception as e_i5:
+                    _I5("dayplan.py:_come_tick:831", e_i5)
                     pass
             if t - int(st["at"]) == 6 and st.get("mid") is not None:            # (an instrument, 00:25: day 138's first blocks had her walk to no spot:
                 try:                                                         # five spots, no walk act in the record; its status and why, logged)
@@ -740,8 +870,7 @@ class DayPlan:
                 if t < int(st.get("called", -10 ** 9)) + COME_GAP:          # she keeps her spot and calls again every COME_GAP (02:30: the
                     return                                                  # first form chose a new spot 2 m off after every call, walking
                 c.request("come_call")                                      # away from a child coming to her; and at 2 to 3 m her face was
-                lane.come_call = [int(t), d0, False, False, [float(ch_xy[0]), float(ch_xy[1])], [float(her_[0]), float(her_[1])]]   # under the born
-                self.log.append((t, "come here: called (C351)", round(d0, 2)))                                                   # cue's size)
+                self.log.append((t, "come here: called (C351)", round(d0, 2)))   # under the born cue's size). C369: the lane opens its window as the call sounds
                 st["called"] = int(t)
         except Exception as e_:
             self.log.append((t, "come here failed (C351)", repr(e_)[:80])); self.come = None
@@ -1067,10 +1196,23 @@ class DayPlan:
                     block_i=int(self.block_i),                                        # C220
                     sit_tries=int(self.sit_tries),                                    # C224
                     sit_turns=int(getattr(self, "sit_turns", 0)),                     # C254
+                    next_ask=int(getattr(self, "next_ask", 0)), next_demo=int(getattr(self, "next_demo", 0)),   # R9 (2026-10-16): her ask's and her
+                    prone_run=int(getattr(self, "prone_run", 0)), prone_pain=int(getattr(self, "prone_pain", 0)),   # demo's next times and the prone
+                                                                                       # watch's counts, lost at each restart (she asked at once)
                     hide_turn=bool(self.hide_turn),
-                    reach_turn=bool(self.reach_turn))                                 # C261
+                    reach_turn=bool(self.reach_turn),                                 # C261
+                    lure=getattr(self, "lure", None), lure_steps0=int(getattr(self, "lure_steps0", 0)),   # W9b: the command block's lure, her
+                    ghost_follow=int(getattr(self, "ghost_follow", 0)),               # follow and her come-here calls survive a save (a mid-block
+                    come=None if getattr(self, "come", None) is None else _plain(self.come))   # save of a command block was a sibling without them)
 
     def load_state(self, s):
+        self.lure = s.get("lure", getattr(self, "lure", None)); self.lure_steps0 = int(s.get("lure_steps0", getattr(self, "lure_steps0", 0)))   # W9b
+        self.ghost_follow = int(s.get("ghost_follow", getattr(self, "ghost_follow", 0)))
+        if "next_ask" in s:                                                   # R9: the timers and the prone watch (older saves: as born)
+            self.next_ask, self.next_demo = int(s["next_ask"]), int(s["next_demo"])
+            self.prone_run, self.prone_pain = int(s["prone_run"]), int(s["prone_pain"])
+        if "come" in s:
+            self.come = None if s["come"] is None else _unplain(s["come"])
         self.rng.bit_generator.state = s["rng"]
         self.day_ticks, self.day = int(s["day_ticks"]), int(s["day"])
         self.blocks = [[int(a), int(b), str(k), dict(i)] for a, b, k, i in s["blocks"]]

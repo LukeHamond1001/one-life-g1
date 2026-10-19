@@ -189,6 +189,9 @@ PHYSIOLOGY = dict(
     explore_tau=64,
     explore_choice=0.0,   # novelty widens the planner's choice among its candidates
     # --- the striatum, working memory and the fast critic ---
+    shape_band=None,   # D3 (2026-10-15): a slower band whose value change (potential-based) joins the actors' dopamine; None: none (the G1: 4)
+    shape_gain=1.0,
+    dopamine_source="striatum",   # D1 (2026-10-14): where dopamine comes from: "striatum" = the striatal head's TD error where the striatum is on (as before), "band" = the dopamine band's own head on the cortex's state (the G1 from D1: the striatal line, 1.2 s of its own babble, predicted nothing)
     fast_input="band",   # the fast critic's input: "striatum" = a delay line of the stream's last events through a born expansion; "band" = the dopamine band's state. The sim: "striatum", the served value; A71 (the PFC study): matured by use, born at full strength
     stri_k=8,   # the sim: 8, the served value; A71 (the PFC study): matured by use, born at full strength
     stri_m=1024,   # the sim: 2048, the served value; A71 (the PFC study): matured by use, born at full strength
@@ -240,7 +243,7 @@ PHYSIOLOGY = dict(
     actor_voice="off",
     actor_horizon=16,
     actor_tau=36000,
-    actor_input="striatum",
+    actor_input="striatum",   # D2 (2026-10-14, the key was declared and unread until then): what the later effectors' actors read: "striatum" = the striatal line's expansion (as before), "band" = the dopamine band's state (the cortex's own features at the four-second clock: the critic's state, so the policy sees what its critic values)
     actor_wmax=3.0,
     actor_temp=1.0,
     chooser_k=4,
@@ -302,6 +305,9 @@ MOTOR = dict(
     # counts decaying over this many own acts (since 2026-09-24; before, the critics' estimator's samples, one per setting of each
     # joint of an act, so the memory in acts was this over the joints' settings); zero until 64 acts
     act_inv_tau=8192,
+    act_inv_std_tau=0,               # A229n (2026-10-17): the horizon (own-act pairs) of act_inv's input statistics (model.py inv_standardize);
+                                     # A229y (the same night): 0, the statistics held where they stand (no re-fold): A229x's, read from a
+                                     # first batch of one pair, pinned the voice's inverse (timing _inv_pinned_reborn); a robust reading owed
     # ACT_PRED'S PLAIN STEP (R6 fix 7; body/core/timing.py GatedDescent): act_pred and its correction learn by plain gradient descent,
     # the step per unit of the lesson's gradient act_pred_rate x sqrt(d) x the waking rate (live_lr; d act_pred's fan-in, the stream's
     # width); each element's step bounded by act_pred_bound x sqrt(d) such steps. Derived and measured in GatedDescent's docstring
@@ -391,6 +397,16 @@ CEREB = dict(
     # for the gain, 1 for the offset) normalized by their power and the granule layer's activity: an offset held in a constant context is
     # learned with a time constant of 1 / rate = 20 ticks (3 s), the gain with 1 / (rate turn^2) ticks; ours
     cereb_vor_rate=0.05,
+    # A227 (2026-10-17): THE WALK'S TURN READOUT (the vermis and the fastigial nucleus on the descending turn command: the cerebellum
+    # recalibrates walking when the body's turn and the asked turn part, as in split-belt adaptation, Morton and Bastian 2006, and its
+    # lesion leaves a veer). Once a tick, least mean squares on two regressors (the command over cereb_loco_ref for the gain, 1 for the
+    # offset) normalized by their power and the granule layer's activity: an offset held in one context is learned with a time constant
+    # of about 1 / (rate x the legs' own gain) ticks (about 125 ticks at the legs' 0.8); ours
+    cereb_loco_rate=0.01,
+    cereb_loco_ref=0.2,               # rad/s: the turn command's unit in the gain's regressor (a moderate turn; ours)
+    cereb_loco_gain_max=2.0,          # the gain correction's bound, above (the legs given at most 3 x the command) and -1/2 below (never
+                                      # less than half of it, never reversed); ours
+    cereb_loco_off_max=0.15,          # rad/s: the offset's bound (a quarter of the command's range; ours)
 )
 
 # THE BORN PATTERNS SUMMED AT THE CORD, AND THE BORN BIASES (the core refactor's step R6h, docs/SIM_DESIGN.md 3.5-3.7, 10, A43, A47, A48,
@@ -502,10 +518,14 @@ REFLEX = dict(
     approach_damp=0.5,
     approach_go=0.01,
     approach_zone=0.35,
+    approach_wide=0.7,              # A223 (2026-10-16): the forward step is whole within approach_zone and tapers to nothing at this bearing (rad): the body
+                                    # walks toward her when roughly facing her, not only inside a 20-degree gate (the copies hovered at the gate's edge)
     # the voice (A216 amended, 02:26): a sound's onset is one tick, so its step is a pulse, not a slew: approach_sound_gain x the ears'
     # angle, which under the command's decay (0.97 a tick, 0.15 s a tick: a pulse integrates to 5 times itself in radians) turns the body
     # by about the angle heard, as a head turns to a sound; at most approach_sound_max, the command's extreme. On the day-139 copy the
     # slewed pulse (0.05) turned it a quarter radian an onset and the ears' read flipped sign between onsets, so the body never came round
+    voice_hold=20,                  # A222 (2026-10-16): the voice's side is held this many ticks after the sound (3 s: C353's repeat gap), the
+                                    # colliculus's sensory memory: a head keeps turning toward where the voice was between the words
     approach_sound_gain=0.2,
     approach_sound_max=0.3,
     # THE VOR (3.7, A23; brainstem, present at birth): the gaze's window counter-turns by the torso gyro's rotation in each camera's frame

@@ -142,6 +142,12 @@ class SensesMixin:
                 p_[2] += r
             while self._act_pending and self.ticks - self._act_pending[0][0] >= H:
                 t0_, v_, g_ = self._act_pending.popleft(); self._arel_update(v_, g_)
+        if getattr(self, "_vte_pending", None):                   # A219: the lean's credit per effector, the same horizon
+            H = int(self.cfg.get("actor_horizon", 16))
+            for p_ in self._vte_pending:
+                p_[3] += r
+            while self._vte_pending and self.ticks - self._vte_pending[0][0] >= H:
+                _, n_, s_, g_ = self._vte_pending.popleft(); self._vte_moments(n_, s_, g_)
         for s_ in others:                                   # the reward's other terms, in their order; a silent source adds nothing
             v_ = s_.felt(frame, self)
             if v_ is not None:

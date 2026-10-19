@@ -98,14 +98,20 @@ REPLY_PAUSE_MS = (730.0, 543.6, 50.0, 2974.0)   # her switching pause after the 
                                       # (infant then mother) were 135.4 ms shorter than the infants' (their regression), a
                                       # split the paper gives no mean for, so she keeps the pooled figure (her replies, if
                                       # anything, a little slow)
+REQUEST_HOLD = 10                     # C358: a requested line the expectant pause refused waits the pause and this many ticks more (ours)
 COPY_GAP_S = 4.0                      # she copies its visible arm and hand movements (a raise, a wave, a shake, an open hand),
                                       # mirrored, at most as often as mothers match their infants' acts, about 6 times a minute
                                       # (Pawlby 1977, as cited by Ray and Heyes 2011 and de Klerk et al. 2019): after each copy
-                                      # the next waits an exponential gap of mean 10 s
+                                      # the next waits an exponential gap of mean COPY_GAP_S (10 s at Pawlby's rate; 4 s since
+                                      # C269, the teacher wasting no time: about 13 a minute when the child moves often)
 COPY_DELAY = (7, 13)                  # within 1-2 s of the movement (4.10): uniform in 7..13 ticks
 COPY_LATE = 8                         # C264: a copy held back by a pending ask is still made up to this many ticks past its time (with
                                       # COPY_DELAY's 7 to 13: at most about 3 s after the movement; Watson 1972's contingency window); ours
 COPY_KINDS = ("arm_raise", "wave", "shake", "open_hand")   # the movements she copies (percept events, the side as object)
+CONFIRM_LATE = 20                     # C364 (2026-10-17): her words for an act of its she judged ('yes! good.', C270's 'you got it!') wait
+                                      # for her voice up to this many ticks past the judgment (3 s: Watson 1972's contingency window, as
+                                      # COPY_LATE's); said only at the judged tick, half of them were lost while she spoke (life days
+                                      # 184-185: 125 of 252 motor judgments had her words at once, the rest none); ours
 # Her spells of distraction during her own tasks (A52) belong to the day plan's own-tasks episode (P4), from the same sources.
 # The day plan's (P4, body/sim/lang/day.py to come): disclosed here with their sources, read by no code of P3's.
 CALLS_UNANSWERED = (3, 720)           # after 3 calls unanswered in 720 ticks she carries on where the child looks (A13)
@@ -439,12 +445,30 @@ MOTOR_WORTH = {                       # event kind -> (its worth, the full act i
     "came": (2, None),                # C351 (2026-10-09, 23:00): COME HERE. Called from across the room (the command blocks' lesson, dayplan), it came
                                       # within COME_M of her: the walk toward a person who calls, the first walking a toddler's cortex learns
     "came_nearer": (1, "came"),      # C351: shaping toward it: nearer to her by COME_NEARER_M than when she called, within COME_WINDOW, once a call
+    "turned_nearer": (1, "came"),    # C360 (2026-10-16): shaping toward her face: called with her off to its side, it turned TURN_NEARER_RAD
+                                      # nearer to facing her than at the call, within COME_WINDOW, once a call (the head that starts to turn to
+                                      # her voice is smiled at; 'turned_to' asks the whole turn, six a day: the walk command learned to damp
+                                      # the born orienting, its weights on her cues growing away, 0.15 -> 0.45 in 18,000 ticks after A225)
+    "turned_to": (1, "came"),        # W9e (2026-10-14, the owner's word: 'physical force and reward to push it in the right direction'): called
+                                      # with her off to its side (more than TURN_FROM_RAD), it turned to face her (within TURN_TO_RAD), once a call:
+                                      # the first step of coming, smiled at as a parent smiles at the head that turns to her call
     "reach_nearer": (1, "got"),       # shaping (MacGlashan et al. 2017): a reach that ended nearer the toy than its best of the last
                                       # BOOK_LAST, worth 1 until "got" is mastered on that toy
     "half_roll": (1, "rolled"),       # onto its side, worth 1 until the whole roll is mastered
 }
-RECOVER_MOTOR = ("stood", "stepped", "came")  # C295: the motor acts whose smiles recover over the night, as words do (C159); C351: and coming when called
+COME_CHAIN = ("came_nearer", "turned_nearer", "turned_to")   # C365 (2026-10-17): coming's approximations (C351, C360, W9e): their smile
+                                      # recovers over the night as coming's does, and is past mastery only when coming answers COME_MASTERED of
+                                      # her last COME_REL_N calls. Under MASTERED_N (three smiles of 'came', a word's rule) and a count that
+                                      # never fell, the turn to her and the coming nearer stood worn to zero (30 smiles each: e^-3 under
+                                      # HABIT_FLOOR; most earned by the born approach while the guide was at full) or past mastery after the
+                                      # day's second coming, while coming answered about one call in a hundred (days 184-186: 3 a day)
+COME_REL_N, COME_MASTERED = 40, 0.5   # C365: her last 40 calls; coming mastered when it answers half of them (ours)
+RECOVER_MOTOR = ("stood", "stepped", "came") + COME_CHAIN   # C295: the motor acts whose smiles recover over the night, as words do (C159);
+                                      # C351: and coming when called; C365: and its approximations
 COME_M, COME_NEARER_M, COME_WINDOW = 0.7, 0.3, 120   # C351: arrived within this of her (m); nearer by this than at the call; the call's window (ticks; ours)
+TURN_NEARER_RAD = 0.35                 # C360: 'turned_nearer' asks its bearing to her this much smaller than at the call (rad; ours: the
+                                      # facing zone's width, a fifth of a right angle more than a glance)
+TURN_FROM_RAD, TURN_TO_RAD = 0.7, 0.35   # W9e: 'turned_to' asks her this far off its heading at the call, and this near after (rad; ours)
 COME_OWN_M = 0.5                      # C351 amended: 'came' asks its own way toward her of at least this (m), so her coming back to it pays nothing (ours)
 RECOVER_KEEP = 0.25                   # C295: ... to this share of their count (ours: at 30 steps a day the morning pays about 25 of them; at HABIT_KEEP, 7)
 HABIT_TAU = 10.0                      # the n-th smile for the same act and object is worth w e^(-n/10): A2's fall with mastery, its floor

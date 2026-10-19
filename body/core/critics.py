@@ -4,17 +4,45 @@ lesson); the reliability gain of the prefrontal voice (`_vrel_update`); and the 
 `_face_input_vec`, `_foresee`, `_frel_update`, `_face_weight`).
 
 Moved verbatim from body/life.py (review 2026-09-22 section 4, step 2); the floating-point order of every update is as it was."""
+import collections
 import math
 
 import torch
 import torch.nn.functional as F
 
 
+SHAPE_H = 64                      # D3c: the shaping band's anticipation is read against the reward of the next SHAPE_H ticks (the ledger's BAND_H)
+
+
 class CriticsMixin:
+    def _shape_track(self, b, v, r):
+        """D3c (2026-10-15, the owner's word: 'we don't want to rely on the longer bands too early'): a shaping band's own anticipation,
+        kept by the body: each tick's value of that band is held SHAPE_H ticks while the reward of those ticks sums, then its running
+        moments move (an exponential window of shape_tau ticks, a day by default). D3d: per band b. -> nothing; see _shape_rho"""
+        q = self._shape_q.setdefault(int(b), collections.deque()); q.append([int(self.ticks), float(v), 0.0])
+        for p_ in q:
+            p_[2] += float(r)
+        d = 1.0 - 1.0 / float(self.cfg.get("shape_tau", 24000)); m = self._shape_m.setdefault(int(b), [0.0] * 6)
+        while q and int(self.ticks) - q[0][0] >= SHAPE_H:
+            _, v_, g_ = q.popleft()
+            m[0] = d * m[0] + 1.0; m[1] = d * m[1] + v_; m[2] = d * m[2] + g_; m[3] = d * m[3] + v_ * v_; m[4] = d * m[4] + g_ * g_; m[5] = d * m[5] + v_ * g_
+
+    def _shape_rho(self, b):
+        """the shaping gain band b has earned: the correlation of its value with the reward of the SHAPE_H ticks after, clipped to
+        [0, 1]; 0 until SHAPE_H moments are in (born 0: a band's outlook is trusted as far as it has predicted reward)"""
+        m = self._shape_m.get(int(b)); n = m[0] if m else 0.0
+        if n < SHAPE_H:
+            return 0.0
+        mv, mg = m[1] / n, m[2] / n
+        vv, gg, vg = m[3] / n - mv * mv, m[4] / n - mg * mg, m[5] / n - mv * mg
+        if vv <= 1e-12 or gg <= 1e-12:
+            return 0.0
+        return max(0.0, min(1.0, vg / math.sqrt(vv * gg)))
+
     def fast_value(self):
         """the fast critic's value now (the striatal head on the delay line, or the dopamine band's head on its state)"""
         with torch.no_grad():
-            if str(self.cfg.get("fast_input", "band")) == "striatum" and self.m.stri_W.numel() > 0:
+            if str(self.cfg.get("fast_input", "band")) == "striatum" and self.m.stri_W.numel() > 0 and str(self.cfg.get("dopamine_source", "striatum")) != "band":
                 return float(self.m.fast_value(self.m.stri_in()))
             return float(self.m.values(self.bands)[int(self.cfg["dopamine_band"])])
 
@@ -47,8 +75,14 @@ class CriticsMixin:
         if ms is None:
             ms = self._actor_ms = {}
         with torch.no_grad():
+            x_ = self._actor_x()                                                 # (D2: the later effectors' actors' own input)
             for name, mod in [("voice", m.actor)] + [(e_.name, m.get_submodule(e_.actor)) for e_ in self.anatomy.motors]:
-                raw = mod(self._z_now); now_ = float((raw * raw).mean())
+                if mod is not m.actor and x_ is None:
+                    continue                                                 # (D2: the actors' input not there yet: nothing to scale)
+                if mod is not m.actor:
+                    e_ = next((q_ for q_ in self.anatomy.motors if q_.name == name), None)
+                    x_e = self._actor_x(e_) if e_ is not None else x_          # (A226: each actor on its own width)
+                raw = mod(self._z_now if mod is m.actor else x_e); now_ = float((raw * raw).mean())   # (the tract is named "voice" too: by identity)
                 ms[name] = ms.get(name, 1.0) + a_ * (now_ - ms.get(name, 1.0))
                 if now_ > 0.0:                                                 # A151: both ways; an actor born at zero stays zero until it learns
                     mod.weight.mul_(float(now_ ** (-0.5 / H)))
@@ -167,7 +201,7 @@ class CriticsMixin:
                     loss_vl = -(td_long.detach() * (m.vcrit.weight[0] @ self._vtrace[:-1] + m.vcrit.bias[0] * self._vtrace[-1]))   # gradient -error x trace
                 else:
                     loss_vl = td_long ** 2
-                if int(self.cfg.get("fast_rls", 0)):
+                if int(self.cfg.get("fast_rls", 0)) and str(self.cfg.get("dopamine_source", "striatum")) != "band":   # (D1: the band's head learns when it is dopamine's)
                     mask_ = torch.ones_like(td); mask_[int(self.cfg["dopamine_band"])] = 0.0; loss_v = ((td * mask_) ** 2).mean() + loss_vl
                 else:
                     loss_v = (td ** 2).mean() + loss_vl
@@ -198,14 +232,52 @@ class CriticsMixin:
                             v_.weight.mul_(1.0 - 1.0 / bvf)
                 # DOPAMINE: the TD error of the band whose discount matches dopamine's (clock 16,
                 # gamma 0.9375): an expected reward fires before it lands, a missed one dips
-                if stri and getattr(self, "_z_prev", None) is not None:
-                    with torch.no_grad():                        # the dopamine from the striatal head
+                if stri and str(self.cfg.get("dopamine_source", "striatum")) != "band" and getattr(self, "_z_prev", None) is not None:
+                    with torch.no_grad():                        # the dopamine from the striatal head (D1: unless the body takes the band's)
                         fb_ = int(self.cfg["dopamine_band"])
                         delta = float(r + float(gam[fb_]) * m.fast_value(self._z_now) - m.fast_value(self._z_prev))
                 else:
                     delta = float(td[int(self.cfg["dopamine_band"])].detach())
                 self._dop_last = float(delta)                   # C186 (2026-10-01): the tick's dopamine, for the record (a ruler)
                 delta_a = float(delta)                           # the dopamine the actors learn from
+                sbs_ = self.cfg.get("shape_bands")                       # D3d: the bands whose outlook may shape the credit
+                if sbs_ is None and self.cfg.get("shape_band") is not None:
+                    sbs_ = (int(self.cfg["shape_band"]),)
+                self._dop_shape_last = 0.0
+                if sbs_ and v_prev_live is not None:
+                    # (D3d fix, 2026-10-16 01:40: the day state restores the life's attributes generically, so a save from D3c brings these
+                    # back in their one-band shapes (a float, a six-list, a deque); made whole here before use. The dawn-173 landing fell
+                    # at its first record on a float's .items())
+                    if not isinstance(getattr(self, "_shape_rho_last", None), dict):
+                        self._shape_rho_last = {}
+                    if not isinstance(getattr(self, "_dop_shape_m", None), dict):
+                        v0_ = getattr(self, "_dop_shape_m", None); self._dop_shape_m = {4: float(v0_)} if isinstance(v0_, (int, float)) else {}
+                    if not isinstance(getattr(self, "_shape_m", None), dict):
+                        v0_ = getattr(self, "_shape_m", None); self._shape_m = {4: [float(x) for x in v0_]} if isinstance(v0_, (list, tuple)) and len(v0_) == 6 else {}
+                    if not isinstance(getattr(self, "_shape_q", None), dict):
+                        self._shape_q = {}
+                    # D3 (2026-10-15): THE LONGER HORIZON FEEDS THE CREDIT. The actors' dopamine takes, besides the four-second band's error,
+                    # the change of a slower band's value across the tick, discounted at that band's own gamma (D3b: that band's error less
+                    # the reward, so the reward reaches the actors once), less its running mean at the band's clock (D3b: every band's term
+                    # carries the reward rate's negative as a standing mean, which a 64-tick trace integrates to four times the fast
+                    # error's), times the gain that band has earned (D3c, the owner's word: a band's outlook is trusted as far as it has
+                    # predicted reward; _shape_rho, born 0). D3d (the owner's word: 'do it'): the same for every band in shape_bands, each
+                    # at its own gamma, baseline and earned gain, summed: the body takes as many horizons into its credit as have proved
+                    # themselves. The critics' own errors, the gates and the record's dopamine are untouched; the sum is in the record
+                    # (dop_shape), the gains too (shape_rho). shape_gain ours
+                    sh_ = 0.0; rhos_ = {}
+                    with torch.no_grad():
+                        for s_ in sbs_:
+                            s_ = int(s_)
+                            rho_ = float(self._shape_rho(s_)); rhos_[s_] = rho_
+                            raw_ = rho_ * float(self.cfg.get("shape_gain", 1.0)) * float(float(gam[s_]) * float(v_now[s_]) - float(v_prev_live[s_]))
+                            self._shape_track(s_, float(v_now[s_]), float(r))
+                            m_ = float(self._dop_shape_m.get(s_, 0.0))
+                            sh_ += raw_ - m_
+                            self._dop_shape_m[s_] = m_ + (raw_ - m_) / float(m.clocks[s_])
+                    self._shape_rho_last = rhos_
+                    self._dop_shape_last = sh_
+                    delta_a = delta_a + sh_
                 if int(self.cfg.get("dopamine_adapt", 0)):
                     # A172 (2026-10-02): DOPAMINE'S ADAPTIVE CODING FOR THE ACTORS' LESSON. Dopamine neurons scale their phasic response to
                     # the spread of the rewards at hand, so a burst means "better than usual" in units of the usual (Tobler, Fiorillo and
@@ -220,11 +292,11 @@ class CriticsMixin:
                     # no louder than before); saved with the life (a landing a few times a day would otherwise mute the actors for the tau each time)
                     tau_ = float(self.cfg.get("dopamine_adapt_tau", 256))
                     ms_ = float(getattr(self, "_dop_ms", 1.0))
-                    ms_ = ms_ + (float(delta) ** 2 - ms_) / tau_
+                    ms_ = ms_ + (float(delta_a) ** 2 - ms_) / tau_          # (D3b: the actors' whole signal, the shaping term in it)
                     self._dop_ms = ms_
                     gain_ = 1.0 / math.sqrt(max(ms_, float(self.cfg.get("dopamine_adapt_floor", 1e-4))))
                     self._dop_gain = gain_
-                    delta_a = float(delta) * gain_
+                    delta_a = float(delta_a) * gain_
                 if int(self.cfg.get("actor", 0)) and str(self.cfg.get("actor_form", "add")) == "softmax":
                     self._chooser_learn(delta)
                 elif int(self.cfg.get("actor", 0)) and getattr(self, "_e_actor", None) is not None:

@@ -431,3 +431,70 @@ A216 amended (2026-10-10 02:20, her voice the approach's second cue): the stub w
 A217 (2026-10-10 03:10, GROUND_CUE_MARGIN 0 for the heard word's cue): the stub world hears no word, so no cue can fire in the pin's run: sim digests unchanged (threaded 21752f901a8d9b533a9d0e19, one-thread fbfc83b0d3a69ba2f4f7d538, consts 1d89d1f17d95); the language default 7c54199e3c72cf77d45a8e94 kept (the diary has no grounding organ).
 W8 amended three times (2026-10-10 03:40, the striatum grown at a load for a joined effector): a born body loads nothing, so the sim digests are unchanged by construction (threaded 21752f901a8d9b533a9d0e19, one-thread fbfc83b0d3a69ba2f4f7d538, consts 1d89d1f17d95); the language default 7c54199e3c72cf77d45a8e94 kept.
 R8 amended (2026-10-10 03:50, the night's row carries the lesson's parts, nrem_parts): the saved night report is in the digest's working state, so the threaded sim digest moves to b56e9427aff7691652626b90 (organs 199e530e7517, store 5ad1e909926e, optim 9b12cc944b83, rng 79c885977692 and cfg afc4272a669c unchanged: work 889a2b37ce7a -> abc799fde554, the report alone); the one-thread digest 930db7745cd3f8da1cb433f1 (organs 30825681eddd, store 0b03eaad4e07, optim 0452f6927d34, rng 79c885977692, cfg unchanged: work d5470efb73e6 -> 5ab7b48185d4); consts 1d89d1f17d95 unchanged; the language default 7c54199e3c72cf77d45a8e94 kept by construction (the diary's night is the words').
+Catch-up (2026-10-16, the lead, branch a225 at 87caa952): the notes stopped at R8 amended (2026-10-10) while many commits changed the
+sim's life (D3/D4, W9 and its amendments, A216-A225, the chain; R9 amended's save; C3xx's teacher). The sim digest re-taken at a225's tip:
+threaded 4546c6c703e93d4f687ddd5a under PYTHONHASHSEED 1 and 4242 alike (a224's tip: 804377d95cd058959447e4f4; a225 before R9 amended:
+bb54096b3dcfb5e3f852e4b1). The one-thread digest was not re-taken (owed: the harness's one-thread switch to be found). The language
+default 7c54199e3c72cf77d45a8e94 is unchanged by every commit since (the language default's cfg has none of the sim's switches).
+A227 (2026-10-17, the lead, branch a227 on c361 c94d217a; A226, C360 and C361 between it and the last note): the cerebellum's walk
+readout (lc_w and its eligibility) is in the organs' state, so the sim digest moves: threaded 768b9d1208fb2c96bbe1ff9c under
+PYTHONHASHSEED 1 and 4242 alike, consts 035b0052e710. The one-thread digest re-taken at last (the harness's switch is the language
+pins' own: OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 under PYTHONHASHSEED 1): 1421e750a069dc31e68513cb. The language default
+7c54199e3c72cf77d45a8e94 (consts 92e828037353) unchanged at this tree (the language body has no cerebellum and its cfg none of the
+sim's switches).
+C362, I3 (2026-10-17, branch c362 at its tip on a227): the stub world's ghost is off and its save's imaginings' count leaves the digest's
+state as it was: sim digest unchanged (threaded 768b9d1208fb2c96bbe1ff9c, consts 035b0052e710); the language default
+7c54199e3c72cf77d45a8e94 unchanged.
+C363-C368, I4, C369, C370 (2026-10-17, the lead; sim = 7fb00fe6 since 14:20): I4 moves the sim digest (the ledger's per-clock band
+scores, band_own and band_c, are in the life's working state): threaded 9ca06389e8042c564f9a1668 under PYTHONHASHSEED 1, consts
+035b0052e710 (C367 fde3c16d still reads A227's 768b9d1208fb2c96bbe1ff9c; I4 8c3181ae reads the new one). C368, C369 and C370 leave it
+(the stub world has no plan, lane or ghost walk; c370's tip and the live tree read alike before the landing). The language default
+7c54199e3c72cf77d45a8e94 not re-run: no change since touches the language body.
+A228 (2026-10-17, the lead, branch a228 on c371 38872137): the stub world's face and voice cues (tools/sim_profile.py) step its walk
+command's born approach, whose joints A228 leaves out of act_inv's lesson and reliability on those ticks, so the sim digest moves:
+threaded a71abe254c62f0b152071113, one-thread e38dbdee876f75074d4f4054 (PYTHONHASHSEED 1; consts 035b0052e710). With A228's mask
+forced off (_inv_keep -> None) the a228 tree reads the live tree's threaded 9ca06389e8042c564f9a1668: the rest of A228 is R6's
+arithmetic to the bit. The live tree's one-thread digest (since I4) is 0945f3f05bc9b2469e16b68f (A227's 1421e750a069dc31e68513cb
+before I4). The language default 7c54199e3c72cf77d45a8e94 unchanged at a228; the served profile reads d2914af5a8a56eecc840053c at
+the live tree and at a228 alike (R1's fc81c03dec606afb62c3fc35 moved at an earlier commit, not bisected).
+A228b, I5, C372 (2026-10-17, the lead, branch a228b on i5 on c372): the stub world shows no loco_cmd_push (A228's mask stands there),
+I5 changes nothing that does not fail, C372 is the sim's teacher: the sim digest stays A228's (threaded a71abe254c62f0b152071113).
+A228c (2026-10-17, the lead, branch a228c on c373 on a228b): the stub world shows no push, so its walk command's own acts are no longer
+replayed at night (their push unknown): sim threaded 05970eafccb33d28323371f2, one-thread 5ba94f7c4a353983a102c209 (PYTHONHASHSEED 1;
+consts 035b0052e710 unchanged). With the push columns forced off (_tape_pushers -> []) the a228c tree reads A228's threaded
+a71abe254c62f0b152071113: the rest of A228c (and C373, C374 and the cap, which the stub's teacher never reaches) is the arithmetic as it
+was, to the bit. The language default 7c54199e3c72cf77d45a8e94 unchanged at a228c.
+A229 (2026-10-17, the lead, branch a229 on t1 on a228c): act_pred's lesson labels only the rests act_inv reads as acts: sim threaded
+8c3ca9befb28250bae046e62, one-thread 6bb283e4839ff2a6373b179d (PYTHONHASHSEED 1; consts 035b0052e710 unchanged); the diff is the gate's
+lines in timing._timing_loss and the tests alone (T1 a test), so the tree without them is a228c's (05970eaf). The language default
+7c54199e3c72cf77d45a8e94 unchanged (the language body has no inverse model).
+A229n + A229x (2026-10-17, the lead with the forked session's A229n; branch a229x = a229 + A229n + A229x): act_inv's input statistics
+(bias-corrected from zero, floored at 1e-2 of the RMS scale), five new buffers per inverse: sim threaded ae89ce41298df53aa296148f,
+one-thread fb7a8d741f6e8abd0e4df6a5 (PYTHONHASHSEED 1; consts 035b0052e710 unchanged). With the statistics held (act_inv_std_tau 0) the tree
+reads 277174c086e671ff4a3196a2, every section A229's but the organs (store, optim, rng, work, cfg the same); with the five buffers also
+left out of the organs' hash it reads A229's 8c3ca9befb28250bae046e62 exactly. The language default 7c54199e3c72cf77d45a8e94 unchanged.
+A229x amended (the input saturating at +-10 scales): sim threaded 8f2c650948ca95fedbfa0e04, one-thread 689b4a4b058f7beaecefbc66 (in place
+of ae89ce41/fb7a8d74: the stub's bursts carry inputs past 10 scales once the statistics have moved); with the statistics held and the
+five buffers out of the organs' hash the tree still reads A229's 8c3ca9befb28250bae046e62.
+A229y (2026-10-17, the lead, branch a229y on a229x's live tree): the statistics held (act_inv_std_tau 0): sim threaded
+277174c086e671ff4a3196a2 (a229x's own with the statistics held, measured before it landed), one-thread f3ba98fe8bc297b345d9704c; the
+load's repair touches no organ the profile builds. The language default 7c54199e3c72cf77d45a8e94 unchanged.
+A230 (2026-10-18, the lead, branch a230 on a229y's live tree): the stub world drives nothing, so nothing is marked or taped:
+sim threaded 277174c086e671ff4a3196a2, one-thread f3ba98fe8bc297b345d9704c unchanged; the language default 7c54199e3c72cf77d45a8e94.
+A231 (2026-10-18, the lead, branch a231 on a230's live tree): sim threaded cb9b368905f3ce9d5a85feef, one-thread 652c14375c340fb521733eeb:
+the motor state's new 'disengaged' key (False everywhere in the stub, which shows no engagement); with it left out of the hash the tree
+reads A230's 277174c086e671ff4a3196a2 exactly, every section. The language default 7c54199e3c72cf77d45a8e94 unchanged.
+A232 (2026-10-18, the lead, branch a232 on a231's live tree): the stub world shows no range: sim threaded cb9b368905f3ce9d5a85feef,
+one-thread 652c14375c340fb521733eeb unchanged; the language default 7c54199e3c72cf77d45a8e94.
+A233 (2026-10-18, the lead, branch a233 on a232's live tree): sim threaded 181cbd348e0224e62f8c6e1c, one-thread
+c194a4ada7c3a987adea3711: the motor state's new 'blk' key (None everywhere in the stub, which shows no range and no push into the
+window); with it left out of the hash the tree reads A232's cb9b368905f3ce9d5a85feef exactly, every section. The language default
+7c54199e3c72cf77d45a8e94 unchanged.
+A235 (2026-10-18, the lead, branch a235 on a233's live tree): sim threaded 685fd2c3f7df333fa3e431d6, one-thread
+531c1ce0eb095b021a9b429d: the motor state's new 'guess' key (the stub shows no push, so no rest is counted and every readout is
+A233's); with it left out of the hash the tree reads A233's 181cbd348e0224e62f8c6e1c exactly, every section. The language default
+7c54199e3c72cf77d45a8e94 unchanged.
+A236 + A237 (2026-10-18, the lead, branch a236 on a235's live tree): sim threaded 9150fc3b493e81db1c3b559f, one-thread
+2f538fcb8ee966d8c0bfddf4: A237's walk command orienting to its approach's cues alone (the stub's cues fire); with that filter off the
+tree reads A235's 685fd2c3f7df333fa3e431d6 exactly, every section (A236's sounds are the MuJoCo world's: the stub has none). The
+language default 7c54199e3c72cf77d45a8e94 unchanged.

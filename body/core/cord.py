@@ -298,6 +298,32 @@ class CordMixin:
         self._orient_now = (self.ticks, out)
         return out
 
+    def _actor_cues(self, frame):
+        """A225 (2026-10-16): THE BORN ORIENTING CUES AS A LINE INTO THE STRIATUM (the tecto-thalamo-striatal road: the colliculus's
+        sensory map reaches the striatum through the thalamus, McHaffie, Stanford, Stein, Coizet and Redgrave 2005). [fired, direction on
+        yaw] per cue in the anatomy's order (+ right; the voice's side held voice_hold ticks after its sound, as the reflex holds it, A222);
+        zeros where the cue is silent. Cached for the tick. Why: her side is in the ears' born read (0.94 at her onsets) and in no band of
+        the cortex (the dawn-178 copy: 663 onsets in 32 spots, the state's change after her voice decoded at chance, leave-one-spot-out),
+        so actors reading the band alone could never learn to turn to her. The actors learn their own weights on these numbers"""
+        now_ = getattr(self, "_acue_now", None)
+        if now_ is not None and now_[0] == self.ticks:
+            return now_[1]
+        out = []
+        for c in (self.anatomy.orienting or ()):
+            o_ = frame.obs.get(c.obs) if frame is not None else None
+            f_, y_ = 0.0, 0.0
+            if o_ is not None:
+                y_ = float(o_[int(c.yaw)]) if c.yaw is not None else 0.0
+                f_ = 1.0 if (float(o_[int(c.fired)]) > 0.0 or (c.side_only and y_ != 0.0)) else 0.0
+            if c.side_only and y_ == 0.0:
+                vh_ = getattr(self, "_voice_hold", None)
+                if vh_ is not None and 0 < int(self.ticks) - int(vh_[0]) <= int(self._reflex_const("voice_hold")):
+                    y_ = float(vh_[1]); f_ = 1.0
+            out += [f_, max(-1.0, min(1.0, float(c.sense) * y_)) if f_ else 0.0]
+        t_ = torch.tensor(out, dtype=torch.float32)
+        self._acue_now = (int(self.ticks), t_)
+        return t_
+
     def _orient_in(self, frame):
         """THE BORN GATE INPUT (3.7): 1 on a tick a face, a sound's onset or a sudden change appeared, else 0 (0 while orienting is off)"""
         if not int(self._reflex_const("orient")):
@@ -306,8 +332,18 @@ class CordMixin:
 
     def _orient_bias(self, e, frame, tab):
         """the born orienting bias on effector e's joints this tick: one piece of logits per joint (zeros where it declares none), or None
-        when nothing pulls"""
+        when nothing pulls.
+        A237 (2026-10-18): AN EFFECTOR WITH A BORN APPROACH ORIENTS TO WHAT IT APPROACHES. Where the effector declares the approach (the
+        walk command: its cues the heard word's look, her face, the sound's side), its orienting bias sums those cues alone, the ones its
+        approach steps toward, not every cue the eyes turn to (its own hand in view, the salient, a sudden change): the eyes look at what
+        appears; the body turns to whom it goes to. The dawn-203 copy (the bucket quiet, A236): in a command block her face pointed toward
+        her 0.92 of the ticks it fired, the sound's side 0.86 while she spoke, her cues together 0.64; the summed pull of all cues 0.54,
+        its own hand firing on 548 off-axis ticks of 1,000 (toward her 0.56), the salient 294 (0.51), a change 444 (0.49)"""
         cues = self._orient_cues(frame)
+        ap_ = getattr(e, "approach", None)
+        if ap_:
+            names_ = tuple(ap_.get("cues", ("face",)))
+            cues = [c_ for c_ in cues if c_[0].name in names_]
         if not any(dy or dp for _, dy, dp, _ in cues):
             return None
         g = float(self._orient_gain()) * float(self._reflex_const("orient_bias"))
@@ -380,8 +416,20 @@ class CordMixin:
             if c is None or c.yaw is None:
                 continue
             o_ = frame.obs.get(c.obs)
-            if o_ is None or float(o_[int(c.fired)]) <= 0.0:
-                continue
+            if o_ is not None and c.side_only:                              # A222 (2026-10-16): THE VOICE'S SIDE IS HELD BETWEEN ITS SOUNDS. The gait
+                if float(o_[int(c.yaw)]) != 0.0:                            # answers a command held a second or more and not a command that comes and
+                    self._voice_hold = (int(self.ticks), float(o_[int(c.yaw)]))   # goes with each word (the day-175 copy: the drive toward her +0.12 a tick
+                else:                                                       # after her onsets, her bearing opening from 0.59 to 0.72 in 30 ticks); the
+                    vh_ = getattr(self, "_voice_hold", None)                # cord keeps the last side read for voice_hold ticks after the sound, the
+                    if vh_ is not None and 0 < int(self.ticks) - vh_[0] <= int(self._reflex_const("voice_hold")):   # colliculus's sensory
+                        o_ = list(o_); o_[int(c.yaw)] = vh_[1]              # memory, so with her calls repeated every 3 s (C353) the drive holds through
+            if o_ is None or (float(o_[int(c.fired)]) <= 0.0 and not (c.side_only and float(o_[int(c.yaw)]) != 0.0)):   # the call
+                continue                                                    # A221 (2026-10-16): a voice drives the turn WHILE IT SOUNDS (its side read
+                                                                            # nonzero), as a face does while it is seen, not at its onset alone: on the
+                                                                            # copies the gait answered a steady command (0.4 rad/s: the layer's legs
+                                                                            # 0.34, the expert's 0.13) and a one-tick pulse hardly at all (cmd_w against
+                                                                            # the yaw achieved: corr 0.00 in a command block); a newborn's head turns to a
+                                                                            # voice through the sound, and keeps turning while the mother keeps talking
             heard = bool(c.onset or c.side_only)                            # a sound's side at its onset (the ears' angle in the head: no eye
             bearing = float(c.sense) * float(o_[int(c.yaw)])                # term; a turn toward the voice, never a step: its angle is a
             eye = ap.get("eye")                                             # side, not a place, and a voice behind reads as straight ahead)
@@ -402,12 +450,25 @@ class CordMixin:
                     if gb_ is not None:
                         rate = float(gb_[int(gy[1])])
                 c = float(self._reflex_const("approach_damp"))
-                if heard:                                                   # a voice: one onset, one pulse that turns it by about the angle
-                    k = float(self._reflex_const("approach_sound_gain")); mx = float(self._reflex_const("approach_sound_max"))
+                # (A221: a voice sounding drives the turn by the face's gain and cap; the voice's own pulse gain (approach_sound_gain, sized
+                # for one tick to integrate to the angle) is retired with the pulse. A221 (4): the voice's drive takes no vestibular damping:
+                # the damping steadies a slew toward a seen face, but on the side cue, with the body's yaw swaying at 0.2 to 0.5 rad/s, it
+                # flickered the command's sign tick to tick and the gait answered nothing (the copy's block under the damped drive: the
+                # command toward her +0.23 a tick after her onsets, her bearing 0.65 to 0.71 in 30 ticks; the gait answers a steady command,
+                # 0.4 rad/s forced giving 0.34, and not a flickering one). The command's own decay (0.97 a tick) is the voice drive's damping
+                if heard:
+                    c = 0.0
                 out[int(jt)] = g * max(-mx, min(mx, sg * k * bearing - c * rate)); moved = True
             jg = ap.get("go")
-            if jg is not None and not heard and abs(bearing) <= float(self._reflex_const("approach_zone")):
-                out[int(jg)] = g * float(self._reflex_const("approach_go")); moved = True
+            if jg is not None and not heard:
+                # A223 (2026-10-16): THE FORWARD STEP TAPERS WITH THE BEARING. It was whole inside approach_zone and nothing outside: under the
+                # turn chain the copies came round to her and hovered at 0.35 to 0.37 rad, the gate's edge, and never stepped (the dawn-165
+                # copy's blocks, C355). A child who has mostly turned to its mother walks as it finishes turning: the step is whole within
+                # approach_zone and falls linearly to nothing at approach_wide
+                z_ = float(self._reflex_const("approach_zone")); wd_ = float(self._reflex_const("approach_wide"))
+                f_ = 1.0 if abs(bearing) <= z_ else max(0.0, (wd_ - abs(bearing)) / max(1e-9, wd_ - z_))
+                if f_ > 0.0:
+                    out[int(jg)] = g * f_ * float(self._reflex_const("approach_go")); moved = True
             return out if moved else None
         return None
 

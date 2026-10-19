@@ -98,7 +98,7 @@ def test_the_tape():
     assert n == 300 == int(L._rec_n) and len(L._tape) == math.ceil(300 / TAPE_BLOCK)
     sym = [c for c in L.anatomy.channels if c.kind == "symbol"]; vec = [c for c in L.anatomy.channels if c.kind == "vector"]
     V = sum(int(c.size) for c in vec)
-    assert [c.name for c in sym] == ["words"] and V == sum(SIZES.values()) == 3831        # A88: no charge (3833 with it)
+    assert [c.name for c in sym] == ["words"] and V == sum(SIZES.values()) == 3833        # A88: no charge (3831 then); A224: the walk command's own drive (+2)
     rows = L._tape_rows(n); ends = 0; words = 0
     for t, w in enumerate(seen):
         assert w["tape"] == t
@@ -343,9 +343,14 @@ def test_the_night_over_frames():
         grads[tag_] = {n_: (p_.grad.clone() if p_.grad is not None else None) for n_, p_ in L.m.named_parameters()}
     L.m.zero_grad(set_to_none=True)
     gnames = {n_ for n_, p_ in L.m.named_parameters() if id(p_) in gated}
-    for n_ in gnames:
-        g_ = grads["harm"][n_]
-        assert g_ is None or float(g_.abs().max()) == 0.0, n_
+    against_ = 0
+    for n_ in gnames:                                                   # A152 (the own acts by dopamine's credit alone): a harmful episode's
+        g_, f_ = grads["harm"][n_], grads["full"][n_]                    # acts are taught AGAINST (act_pred's weight clamp(G, -1, 1) = -1),
+        if ".pred." in n_ and g_ is not None and f_ is not None and float(f_.abs().max()) > 0.0:   # never toward: its act forecast's step
+            dot_ = float((g_ * f_).sum())                                # the opposite of a rewarded episode's, or none where the effector
+            assert dot_ <= 0.0, n_                                       # did not act (its rewarded step then the labels' alone, which a
+            against_ += dot_ < 0.0                                       # harmful episode does not teach)
+    assert against_ > 0, "no effector taught against a harmful episode's acts"
     assert any(grads["full"][n_] is not None and float(grads["full"][n_].abs().max()) > 0.0 for n_ in gnames if ".pred." in n_)
     fwd = [n_ for n_ in grads["harm"] if ".fwd." in n_]
     assert fwd and all(grads["harm"][n_] is not None and float(grads["harm"][n_].abs().max()) > 0.0 for n_ in fwd if n_.endswith("weight"))
@@ -459,7 +464,9 @@ def test_the_limbs_dream():
                           error=rep.get("error"))
         assert not rep.get("error"), rep.get("error")
     on, off = got[1], got[0]
-    assert on["spy"] > 0 and on["n"] == on["not_rest"] > 0, (on, off)          # imagined acts, counted as the night reports them
+    assert on["spy"] > 0 and 0 < on["n"] <= on["not_rest"], (on, off)         # imagined acts, counted as the night reports them (REM's; the
+                                                                               # day's last event's imagining at the night's start, A180/A190,
+                                                                               # draws limb acts too, before REM's count begins)
     assert off["spy"] == 0 and off["n"] == 0, off                               # off: no imagining, every effector at rest
     assert on["dreams"] == off["dreams"] and on["rem_cos"] is not None, (on, off)
     print(f"night 5: the limbs dream: {on['n']} imagined acts not at rest of {on['spy']} drawn along REM's free runs ({on['dreams']} dreams,",
@@ -708,8 +715,206 @@ def test_the_night_rests_the_slow_states():
           f"(the law {want['stress']:.3f}), mood {slow['before']['mood']} -> {slow['after']['mood']} ({want['mood']:.3f}), fatigue",
           f"{slow['before']['fatigue']} -> {slow['after']['fatigue']} ({want['fatigue']:.3f}); each motor effector's fatigue likewise (A106)")
 
+
+def test_the_night_replays_the_move_less_the_push():
+    """night 10 (A228c, 2026-10-17): THE NIGHT REPLAYS THE LESSON THE DAY LEARNED. The G1 lives 300 ticks in the events stub whose frames
+    show the cord's push on the walk command (loco_cmd_push) from tick 100 on: the tape keeps each row's push, as its frame showed it,
+    beside the move (unknown before the first, and on every row of a block taped before it); the reels keep it through the night's
+    compaction; and act_inv's night replay of the walk command (the effector with the born approach) teaches only the own acts whose
+    next position's push the tape knows, on the move less that push, every other effector's pairs as before. Fails without A228c: the
+    tape keeps no push, and the replay teaches the whole move on every own act"""
+    import body.core.sleep as S
+    base = _events_world(); frames = []; FIRST = 100
+
+    class PushWorld(type(base)):
+        def frame(self):
+            f_ = super().frame()
+            t_ = int(f_.tick)
+            if t_ >= FIRST:
+                f_.obs["loco_cmd_push"] = [0.004 * ((t_ % 5) - 2), -0.003 * ((t_ % 3) - 1)]
+            frames.append(f_.obs.get("loco_cmd_push"))
+            return f_
+    W = PushWorld.__new__(PushWorld); W.__dict__.update(base.__dict__)
+    L = _g1(_cfg(night_starts=12, night_starts_max=12, night_rounds=1, night_batch=4), W)
+    run = WorldLoop(L)
+    for _ in range(300):
+        run.step()
+    pu = L._tape_pushers()
+    j_loco = [j_ for j_, e_ in enumerate(L.anatomy.motors) if e_.name == "loco"][0]
+    assert [(j_, e_.name, w_) for j_, e_, w_ in pu] == [(j_loco, "loco", 2)], pu
+    n = int(L._tape_n); rows = L._tape_rows(n)
+    assert n == len(frames) == 300 and "p" in rows and "pk" in rows, (n, len(frames), rows.keys())
+    want_k = torch.tensor([p_ is not None for p_ in frames])
+    want_p = torch.tensor([list(p_) if p_ is not None else [0.0, 0.0] for p_ in frames], dtype=torch.float32)
+    assert torch.equal(rows["pk"], want_k) and torch.equal(rows["p"][want_k], want_p[want_k]), "the tape's push is not the frames'"
+    assert float(rows["p"][~want_k].abs().sum()) == 0.0
+    # the night: act_inv's replay of the walk command, spied
+    e_loco = L.anatomy.motors[j_loco]; tm = L.m.timing["loco"]; seen = []; fi = L._frames_inverse
+
+    def spy_fi(parts, fi=fi, seen=seen, tm=tm):
+        got = []; il = tm.inverse_logits
+        tm.inverse_logits = lambda S0, S1, il=il, got=got: (got.append((S0.detach().clone(), S1.detach().clone())), il(S0, S1))[1]
+        try:
+            out = fi(parts)
+        finally:
+            del tm.inverse_logits
+        seen.append((parts, got, out)); return out
+    L._frames_inverse = spy_fi
+    try:
+        rep = L.night()
+    finally:
+        del L._frames_inverse
+    assert not rep.get("error"), rep.get("error")
+    kn = un = 0
+    for parts, got, out in seen:
+        obs, lens = parts["obs"], parts["lens"]
+        S0w, S1w = [], []
+        for b, L_ in enumerate(lens):
+            if L_ < 2:
+                continue
+            s = L._window_sense(e_loco, {e_loco.sense: obs[e_loco.sense][b, :L_]}); a = obs["loco"][b, :L_]
+            own = a[:-1] != int(e_loco.rest_id)
+            k_ = obs["@pushk"][b, 1:L_] if "@pushk" in obs else torch.zeros(L_ - 1, dtype=torch.bool)
+            kn += int((own & k_).sum()); un += int((own & ~k_).sum())
+            idx = torch.nonzero(own & k_).flatten()
+            if idx.numel():
+                S0w.append(s[idx]); S1w.append(s[1:][idx] - obs["@push"][b, 1:L_][idx])
+        if S0w:
+            assert len(got) == 1 and torch.equal(got[0][0], torch.cat(S0w)) and torch.allclose(got[0][1], torch.cat(S1w), atol=0, rtol=0), "not the move less the push"
+        else:
+            assert got == [], "a walk command's pair replayed with its push unknown"
+    assert kn > 0 and un > 0, (kn, un)
+    for ep in L._episodes:
+        r_ = L._episode_rows(ep)
+        assert "p" in r_ and int(r_["p"].shape[0]) == int(r_["pk"].shape[0]) == int(r_["v"].shape[0]), ep["serial"]
+    print(f"night 10: the tape keeps the cord's push from the frames (rows {int(want_k.sum())} known of {n}), the reels keep it through",
+          f"the compaction; the walk command's night replay taught {kn} own acts on the move less the push and left out {un} whose push",
+          "was unknown (A228c)")
+
+
+def test_the_night_skips_the_moves_the_world_made():
+    """night 11 (A230, 2026-10-17): THE NIGHT SKIPS THE MOVES THE WORLD MADE. The G1 lives 300 ticks in the events stub whose frames
+    show, from tick 50 on, whether the world drove the left leg in the tick before ('leg_l_driven', two ticks on and two off: the
+    gait's walk): the tape keeps each row's flag per effector (-1 before the first shown), and act_inv's night replay of the left leg
+    teaches only its own acts whose next position the world did not drive; every other effector's replay as before. Fails without A230"""
+    base = _events_world(); frames = []; FIRST = 50
+
+    class DriveWorld(type(base)):
+        def frame(self):
+            f_ = super().frame()
+            t_ = int(f_.tick)
+            if t_ >= FIRST:
+                f_.obs["leg_l_driven"] = [1.0 if t_ % 4 < 2 else 0.0]
+            frames.append(f_.obs.get("leg_l_driven"))
+            return f_
+    W = DriveWorld.__new__(DriveWorld); W.__dict__.update(base.__dict__)
+    L = _g1(_cfg(night_starts=12, night_starts_max=12, night_rounds=1, night_batch=4), W)
+    run = WorldLoop(L)
+    for _ in range(300):
+        run.step()
+    j_leg = [j_ for j_, e_ in enumerate(L.anatomy.motors) if e_.name == "leg_l"][0]
+    n = int(L._tape_n); rows = L._tape_rows(n)
+    assert n == len(frames) == 300 and "dv" in rows, (n, len(frames), rows.keys())
+    want = torch.tensor([-1 if v_ is None else int(v_[0] > 0.5) for v_ in frames], dtype=torch.int8)
+    assert torch.equal(rows["dv"][:, j_leg], want), "the tape's drive is not the frames'"
+    assert bool((rows["dv"][:, [j_ for j_ in range(len(L.anatomy.motors)) if j_ != j_leg]] == -1).all()), "another effector taped as driven"
+    e_leg = L.anatomy.motors[j_leg]; tm = L.m.timing["leg_l"]; seen = []; fi = L._frames_inverse
+
+    def spy_fi(parts, fi=fi, seen=seen, tm=tm):
+        got = []; il = tm.inverse_logits
+        tm.inverse_logits = lambda S0, S1, il=il, got=got: (got.append((S0.detach().clone(), S1.detach().clone())), il(S0, S1))[1]
+        try:
+            out = fi(parts)
+        finally:
+            del tm.inverse_logits
+        seen.append((parts, got)); return out
+    L._frames_inverse = spy_fi
+    try:
+        rep = L.night()
+    finally:
+        del L._frames_inverse
+    assert not rep.get("error"), rep.get("error")
+    kept = skipped = 0
+    for parts, got in seen:
+        obs, lens = parts["obs"], parts["lens"]
+        S0w, S1w = [], []
+        for b, L_ in enumerate(lens):
+            if L_ < 2:
+                continue
+            s = L._window_sense(e_leg, {e_leg.sense: obs[e_leg.sense][b, :L_]}); a = obs["leg_l"][b, :L_]
+            own = a[:-1] != int(e_leg.rest_id)
+            drv = (obs["@driven"][b, 1:L_, j_leg] == 1) if "@driven" in obs else torch.zeros(L_ - 1, dtype=torch.bool)
+            kept += int((own & ~drv).sum()); skipped += int((own & drv).sum())
+            idx = torch.nonzero(own & ~drv).flatten()
+            if idx.numel():
+                S0w.append(s[idx]); S1w.append(s[1:][idx])
+        if S0w:
+            assert len(got) == 1 and torch.equal(got[0][0], torch.cat(S0w)) and torch.equal(got[0][1], torch.cat(S1w)), "a driven pair replayed"
+        else:
+            assert got == [], "a driven pair replayed"
+    assert kept > 0 and skipped > 0, (kept, skipped)
+    print(f"night 11: the tape keeps the world's drive per effector ({int((want == 1).sum())} of {n} rows driven, the left leg's alone); the",
+          f"left leg's night replay taught {kept} own acts and left out {skipped} the world had driven (A230)")
+
+def test_the_night_reads_a_blocked_setting_as_rest():
+    """night 12 (A233, 2026-10-18): THE NIGHT READS A BLOCKED SETTING AS THE DAY DOES. The G1 lives 300 ticks in the events stub whose
+    frames show, from tick 50 on, the walk command's two steps back blocked on two ticks of every three ('loco_blocked') and the cord's
+    push on it: the tape keeps each row's flags ("bk:loco", -1 before the first shown); the day's window holds the push shown into each
+    position ('@push', '@pushk'); and the night's lesson over its windows receives the flags and the push at every position of the walk
+    command's windows, where its timing lesson reads a blocked setting, and a joint nothing pushed, as the rest (anatomies 38 and 39).
+    Fails without A233"""
+    base = _events_world(); shown = []; pushes = []; FIRST = 50
+
+    class BlkWorld(type(base)):
+        def frame(self):
+            f_ = super().frame()
+            t_ = int(f_.tick)
+            if t_ >= FIRST:
+                on_ = t_ % 3 != 0
+                f_.obs["loco_blocked"] = [1.0 if on_ else 0.0] * 2 + [0.0] * 8
+                shown.append([int(on_)] * 2 + [0] * 8)
+                f_.obs["loco_cmd_push"] = [0.004 * (t_ % 2), 0.0]
+            else:
+                shown.append([-1] * 10)
+            pushes.append(f_.obs.get("loco_cmd_push"))
+            return f_
+    W = BlkWorld.__new__(BlkWorld); W.__dict__.update(base.__dict__)
+    L = _g1(_cfg(night_starts=12, night_starts_max=12, night_rounds=1, night_batch=4), W)
+    run = WorldLoop(L)
+    for _ in range(300):
+        run.step()
+    n = int(L._tape_n); rows = L._tape_rows(n)
+    assert n == len(shown) == 300 and "bk:loco" in rows, (n, len(shown), sorted(rows))
+    assert rows["bk:loco"].tolist() == shown, "the tape's blocked settings are not the frames'"
+    obs_d = L._window_tensors()[0]; T_ = int(obs_d["@push"].shape[0])            # the day's window: the push shown into each position
+    want_k = [p_ is not None for p_ in pushes[-T_:]]
+    assert obs_d["@pushk"].tolist() == want_k and all(torch.equal(obs_d["@push"][t_].cpu(), torch.tensor(pushes[-T_:][t_], dtype=torch.float32))
+                                                       for t_ in range(T_) if want_k[t_]), "the window's push is not the frames'"
+    i_loco = [i_ + 1 for i_, e_ in enumerate(L.anatomy.motors) if e_.name == "loco"][0]
+    seen = []; seen_p = []; tl = L._timing_loss
+
+    def spy_tl(i_, C, ob, *a, tl=tl, seen=seen, **k):
+        if i_ == i_loco and k.get("night"):
+            seen.append(ob.get("@blk:loco")); seen_p.append(ob.get("@push"))
+        return tl(i_, C, ob, *a, **k)
+    L._timing_loss = spy_tl
+    try:
+        rep = L.night()
+    finally:
+        del L._timing_loss
+    assert not rep.get("error"), rep.get("error")
+    assert seen and all(b_ is not None for b_ in seen), (len(seen), sum(b_ is None for b_ in seen))
+    assert all(p_ is not None for p_ in seen_p), "a night window without the push"
+    nb = sum(int(b_[:, 0].sum()) for b_ in seen); npos = sum(int(b_.shape[0]) for b_ in seen)
+    assert nb > 0 and all(bool((b_[:, 0] == b_[:, 1]).all()) and not bool(b_[:, 2:].any()) for b_ in seen), nb
+    print(f"night 12: the tape keeps the walk command's blocked settings ({sum(r_[0] == 1 for r_ in shown)} of {n} rows); the night's",
+          f"lessons over its windows read them at every position ({nb} of {npos} blocked) (A233)")
+
+
 NIGHT_TESTS = [test_night_inert_for_language, test_the_tape, test_the_episodes, test_the_night_over_frames, test_the_live_dark_night,
-               test_the_heading_drift, test_the_born_config, test_value_sweep, test_the_night_rests_the_slow_states]
+               test_the_heading_drift, test_the_born_config, test_value_sweep, test_the_night_rests_the_slow_states,
+               test_the_night_replays_the_move_less_the_push, test_the_night_skips_the_moves_the_world_made,
+               test_the_night_reads_a_blocked_setting_as_rest]
 
 
 if __name__ == "__main__":

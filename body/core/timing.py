@@ -38,6 +38,8 @@ margin, in place of act_pred's best guess; ACT_INV BATCHED (`_inverse_batch`, ac
 every so many ticks, a batch of one R6's lesson; THE KAPPA CORRECTION (`_act_chance`, act_inv_chance): each label's chance the act's own
 choice's probability of it; THE FORWARD ERROR AT THE GATE (`_fwd_err_in`, the effector's `fwd_gate`): the size of the error its body
 sense shows now against its forward half's foresight, one of its gate's own inputs."""
+import math
+
 import torch
 import torch.nn.functional as F
 
@@ -155,6 +157,46 @@ class TimingMixin:
         """a motor timing constant: the body's cfg when it was given, else MOTOR's"""
         return self.cfg.get(k, MOTOR[k])
 
+    def _inv_std_rate(self, n):
+        """A229n: the share by which act_inv's input statistics move toward a batch of n own-act pairs, 1 - (1 - 1/act_inv_std_tau)^n
+        (a pair a time: 1/tau); 0 where the horizon is 0 (the statistics held: the raw pair, as before A229n)"""
+        tau = float(self._motor_const("act_inv_std_tau"))
+        return 0.0 if tau <= 0.0 else 1.0 - (1.0 - 1.0 / tau) ** int(n)
+
+    def _inv_pinned_reborn(self):
+        """A229Y (2026-10-17): AN INVERSE MODEL PINNED BY ITS STATISTICS IS BORN AGAIN, at a load. A229x read act_inv's input statistics
+        from the first batch: an effector whose first batches held one or two pairs (the voice: its own sounds are few) had its scales
+        read near zero (a lone pair has no variance, and the floor, a share of the dimensions' RMS scale, fell with them); Adam stepped
+        those columns by about its rate whatever their scale, a change in the function the input's saturation hid, and as the scales
+        grew to the data's the exact re-fold multiplied those columns back up to a million times: the voice's inverse, raw weights 0.47
+        on the copy of 2026-10-10, held raw weights of 4,273 and biases of 2.2 million at dawn 194, every hidden unit pinned whatever it
+        heard. Such a model reads every move as one act. Probed at each load with inputs of one scale each (a fixed generator), a model
+        whose hidden units sit beyond 20 on 95% of them is born again: its weights drawn fresh, its statistics born (0 and 1), its
+        optimizer's moments let go, its reliability earned again from its next act. Its pairs in hand are kept"""
+        from body.model import INV_CLIP
+        probe = torch.Generator().manual_seed(229)
+        for i_, e in enumerate(self.anatomy.motors):
+            if not e.inverse:
+                continue
+            tm = self.m.timing[e.name]
+            with torch.no_grad():
+                W, b = tm.inv[0].weight, tm.inv[0].bias
+                u = torch.randn(256, int(W.shape[1]), generator=probe).clamp(-INV_CLIP, INV_CLIP).to(W.device, W.dtype)
+                pinned = float(((u @ W.T + b).abs() > 20.0).float().mean())
+                if pinned < 0.95:
+                    continue
+                gen = torch.Generator().manual_seed(2290 + i_)
+                h_, n_ = int(W.shape[0]), int(W.shape[1]); W2 = tm.inv[2].weight
+                W.copy_((torch.randn(h_, n_, generator=gen) / math.sqrt(float(n_))).to(W.device, W.dtype)); b.zero_()
+                W2.copy_((torch.randn(tuple(W2.shape), generator=gen) / math.sqrt(float(h_))).to(W2.device, W2.dtype)); tm.inv[2].bias.zero_()
+                tm.inv_mu.zero_(); tm.inv_sd.fill_(1.0); tm.inv_m1.zero_(); tm.inv_m2.zero_(); tm.inv_c.zero_()
+            for p_ in tm.inv.parameters():
+                self.opt_inv.state.pop(p_, None)
+            st = self.motor[i_]
+            st["inv_conf"] = None; st["inv_ch"] = None; st["inv_kappa"] = [0.0] * len(e.factors); st["inv_gain"] = 0.0
+            print(f"load: {e.name}'s act_inv was pinned ({100 * pinned:.0f}% of its hidden units beyond 20 on inputs of one scale): born "
+                  f"again, its statistics born, its moments let go, its reliability earned again from its next act (A229y)", flush=True)
+
     def _gated_params(self, e):
         """later effector e's parameters whose waking plasticity its labels' reliability gates (`GatedDescent`): act_pred and the
         correction, the proposal's two terms (the forward half's lesson is its body sense's, a label felt, never read by act_inv), and
@@ -211,8 +253,8 @@ class TimingMixin:
         untouched. Homeostatic synaptic scaling (Turrigiano 2008), as A147/A151 hold the actors' drive; the set point is the rows' own,
         no new constant. The measured scales come from _timing_loss (`_fc_scale`, by effector), consumed here"""
         fs = getattr(self, "_fc_scale", None)
-        if not fs:
-            return
+        if not fs or not int(self.cfg.get("forecast_scaling", 1)):           # (2026-10-16: a switch, on by default, so a lesson's own arithmetic
+            return                                                          # can be read apart from the scaling, anatomy 31/35/44)
         from .physiology import FRAMES
         reach = float(self.cfg.get("tag_reach", FRAMES["tag_reach"]))
         with torch.no_grad():
@@ -250,20 +292,151 @@ class TimingMixin:
         if e.sense is None:
             return
         s_now = self._body_sense(e)
+        n_ = int(s_now.numel())                                                        # A224b (2026-10-16): a sense whose width changed
+        if st["sense"] is not None and int(st["sense"].numel()) != n_:                 # at a load (A224: the walk command's, one number to
+            st["sense"] = None                                                         # two) leaves the save's last sense and its gathered
+        if any(int(p_[0].numel()) != n_ or int(p_[1].numel()) != n_ for p_ in (st.get("inv_batch") or [])):   # pairs (reloaded even when
+            st["inv_batch"] = [p_ for p_ in st["inv_batch"] if int(p_[0].numel()) == n_ == int(p_[1].numel())]   # the day's state is
+                                                                                       # not) at the old width: dropped, not fed to the new
+                                                                                       # inverse (the live pair's first tick under A224 faulted)
         prev = st["now"]
         every_ = int(self._motor_const("act_inv_every")); chance_ = int(self._motor_const("act_inv_chance"))
-        if e.inverse and st["sense"] is not None and prev is not None and prev["acted"]:
+        push_ = self._sense_push(e) if prev is not None else None                 # A228b: what the cord's push made of the move
+        drv_ = self._sense_driven(e) if prev is not None else None                # A230: the world drove its joints itself (its own act moved nothing)
+        keep_ = None if push_ is not None else (self._inv_keep(e, prev) if prev is not None else None)   # A228: else the joints its act alone moved
+        s_own_ = s_now if push_ is None else s_now - push_                        # A228b: the move its own act made
+        if e.inverse and st["sense"] is not None and prev is not None and prev["acted"] and (keep_ is None or any(keep_)) and not drv_:
             if every_ <= 1 and not chance_:
-                self._inverse_lesson(i, st["sense"], s_now, int(prev["act"]))       # R6's: a step a tick, its reliability Cohen's kappa
+                if keep_ is None:
+                    self._inverse_lesson(i, st["sense"], s_own_, int(prev["act"]))   # R6's: a step a tick, its reliability Cohen's kappa
+                else:
+                    self._inverse_lesson(i, st["sense"], s_own_, int(prev["act"]), keep=keep_)   # (A228: R6's call where no joint is masked)
             else:
-                # STEP R6h: the pair gathered for the batch, with the chance the act's own choice gave each setting (the kappa correction)
-                st["inv_batch"].append((st["sense"], s_now, int(prev["act"]), self._act_chance(e, prev) if chance_ else None))
+                # STEP R6h: the pair gathered for the batch, with the chance the act's own choice gave each setting (the kappa correction);
+                # A228: and, where the born approach also stepped a joint that tick, the joints its act alone moved; A228b: where the
+                # world shows the push, the move less it, every joint kept
+                pr_ = (st["sense"], s_own_, int(prev["act"]), self._act_chance(e, prev) if chance_ else None)
+                st["inv_batch"].append(pr_ if keep_ is None else pr_ + (keep_,))
+        if e.inverse and st["sense"] is not None and prev is not None and not prev.get("acted") and not drv_:
+            self._prop_agree(e, st, st["sense"], s_now, prev, push_)            # A235: act_pred's guess against the demonstration of a rest
         if e.inverse and st.get("inv_batch") and self.ticks % max(1, every_) == 0:
             self._inverse_batch(i)                                             # step R6h: one step on the pairs gathered since the last
         st["err"] = (s_now - st["fwd"]) if st["fwd"] is not None else None
         st["sense"] = s_now
 
-    def _inverse_lesson(self, i, s0, s1, act):
+    def _sense_push(self, e):
+        """A228b (2026-10-17): THE MOVE LESS WHAT THE BRAINSTEM PUSHED. For an effector that declares the born approach, the part of its
+        body sense's last change the cord's push made, as the world applied it (the frame's '<sense>_push': the walk command's
+        loco_cmd_push, the approach's step times the share the room's hand gives it, the corollary discharge of the brainstem's actual
+        drive), on the sense's own numbers -> [sense_n], or None (no approach, or no such observation: A228's mask stands). act_inv
+        learns from the move less it, on every joint of every own act: under A228's mask the walk command's turn, pushed on nearly every
+        tick (her voice's side held between her words, the damping of every rotation), kept 6 pairs in 1,000 ticks against the go's 770,
+        and its reliability never came on"""
+        if not getattr(e, "approach", None) or e.sense is None:
+            return None
+        f_ = getattr(getattr(self, "world", None), "now", None)
+        p_ = None if f_ is None else f_.obs.get(e.sense + "_push")
+        if p_ is None:
+            return None
+        x = torch.as_tensor(p_, dtype=torch.float32, device=self.dev).reshape(-1)
+        if e.sense_idx is not None:
+            x = x[torch.tensor([int(j) for j in e.sense_idx], device=x.device)]
+        return x
+
+    def _prop_agree(self, e, st, s0, s1, prev, push_):
+        """A235 (2026-10-18): A PROPOSAL'S DECISIVENESS IS EARNED BY AGREEING WITH WHAT IT IS SHOWN. A rest the effector's lesson reads as
+        a demonstration (`_timing_loss`: act_inv's reading of the move, its blocked settings and its joints nothing pushed read as their
+        rest, A233; read as the rest act, none, A229) is set against act_pred's own best setting per joint at that tick
+        (st["now"]["guess"]), joint by joint, where both name a direction (a setting on either side of the joint's rest setting): each
+        joint keeps a running count of such pairs and of those whose directions agree, over act_inv_tau of them (st["prop_agree"]:
+        [pairs, agreed]); `_prop_agreement` reads it into the joint's earned decisiveness (mouth `_motor_read`). A97 earned a proposal's
+        decisiveness by its inverse model's reliability, A140 by its acts' variety: neither asks whether the proposal is right, so a
+        proposal that ignores what it is shown read as decisively as one that follows it. The dawn-202 copy: the walk command's turn
+        read at sharpness 12.7 (its kappa 1.0, its variety 0.79), its proposal's lean toward her side +0.03 against the born orienting
+        bias's +1.43, and held by the movement unit, turned 1,092 times left to 22 right in a command block while its 65 demonstrations
+        were 80% toward her; read at sharpness 1, 57% left and 0.57 toward her.
+        ONLY WHERE THE WORLD SHOWS WHAT PUSHED IT (A228b: the push one number a joint, the walk command's): a rest of a limb whose world
+        shows no push moves by the parent's hand, by gravity's sag, by a fall, and act_inv's reading of it is no teacher's to be agreed
+        with; its decisiveness stays as A140 earns it"""
+        guess = prev.get("guess")
+        if guess is None or len(guess) != len(e.factors) or prev.get("reflex"):
+            return
+        if push_ is None or int(push_.numel()) != len(e.factors):
+            return                                                        # shown only where the world shows what pushed it (below)
+        tm = self.m.timing[e.name]; tab = self.m.get_submodule(e.organ)
+        with torch.no_grad():
+            dg = [int(lg.argmax()) for lg in tm.inverse_logits(s0, s1)]
+        rd = [int(x_) for x_ in tab.digits(torch.tensor(int(e.rest_id))).tolist()]
+        bk = prev.get("blk")
+        if bk is not None and len(bk) == sum(int(k_) for k_ in e.factors):
+            o_ = 0
+            for j_, k_ in enumerate(e.factors):
+                if bk[o_ + dg[j_]]:
+                    dg[j_] = rd[j_]
+                o_ += int(k_)
+        dg = [rd[j_] if abs(float(x_)) <= 1e-12 else dg[j_] for j_, x_ in enumerate(push_.reshape(-1).tolist())]
+        if dg == rd:
+            return                                                        # a rest read as the rest: no demonstration (A229)
+        d = 1.0 - 1.0 / float(self._motor_const("act_inv_tau"))
+        ag = st.get("prop_agree")
+        if ag is None or len(ag) != len(dg):
+            ag = st["prop_agree"] = [[0.0, 0.0] for _ in dg]
+        for j_, (g_, t_) in enumerate(zip(guess, dg)):
+            dg_, dt_ = (int(g_) > rd[j_]) - (int(g_) < rd[j_]), (int(t_) > rd[j_]) - (int(t_) < rd[j_])
+            if dg_ and dt_:
+                ag[j_][0] = d * ag[j_][0] + 1.0; ag[j_][1] = d * ag[j_][1] + float(dg_ == dt_)
+
+    def _prop_agreement(self, st, j):
+        """A235: joint j's share of its earned decisiveness, its proposal's agreement in direction with its demonstrations beyond a
+        coin's (2 x the agreement - 1, in [0, 1]: a guess that always turns one way against demonstrations either way half the time
+        earns nothing, one that follows them all the whole); 1 (as before A235) until 64 pairs have been counted"""
+        ag = st.get("prop_agree")
+        if not ag or j >= len(ag) or ag[j][0] <= 64.0:
+            return 1.0
+        return max(0.0, min(1.0, 2.0 * ag[j][1] / ag[j][0] - 1.0))
+
+    def _push_slice(self, e):
+        """A233: effector e's place among the pushers' push columns (sleep `_tape_pushers`: the window's and the night's '@push'), as
+        (offset, width), or None for an effector whose push the world does not show"""
+        o_ = 0
+        for _, e_, w_ in (self._tape_pushers() if hasattr(self, "_tape_pushers") else ()):
+            if e_.name == e.name:
+                return o_, int(w_)
+            o_ += int(w_)
+        return None
+
+    def _sense_driven(self, e):
+        """A230 (2026-10-17): AN ACT THE WORLD DID NOT CARRY OUT TEACHES act_inv NOTHING. The frame the tick is lived on shows, for an
+        effector whose joints the world can set itself ('<name>_driven': the gait's in a walk sets the twelve leg joints' and the waist's
+        targets, ghost.py _expert_step), whether it set them in the tick before: then the effector's own act moved nothing and the move
+        was the gait's, and the pair is not act_inv's lesson (nor its reliability's). -> True / False, or None where the frame shows
+        nothing (a world that never drives it). Day 195 walked 57% of its ticks with the legs' and the waist's own acts on 87% of them:
+        their inverses learned the gait's moves as their acts, their reliability 0.13 -> 0.05 as the walking grew"""
+        f_ = getattr(getattr(self, "world", None), "now", None)
+        v_ = None if f_ is None else f_.obs.get(e.name + "_driven")
+        if v_ is None:
+            return None
+        return bool(float(torch.as_tensor(v_, dtype=torch.float32).reshape(-1)[0]) > 0.5)
+
+    @staticmethod
+    def _inv_keep(e, now):
+        """A228 (2026-10-17): THE INVERSE MODEL LEARNS ITS OWN ACT'S MOVES. For an effector that declares the born approach (A216: the walk
+        command), the joints of an own act's tick that the cord also stepped (its approach summed with the act on the command: st["now"]
+        ["cord"], the brain's own copy of what its brainstem added) are not act_inv's to learn from on that tick: their move is the act's
+        and the approach's together, and act_inv, which maps a move to the act that equals it, cannot tell them apart. -> per joint True
+        (the act alone moved it), or None (no joint the approach stepped: every joint the act's). The labels act_inv gives the rests
+        (timing `_timing_loss`) still read the whole move, so the approach's own steps go on being read as the acts they equal.
+        Day 190: as the walk command's forward share rose 0.13 -> 1.0 (C370) the go joint's kappa fell 0.92 -> 0.50 (its pushes on the
+        brain's own-act ticks, read as the brain's), and the turn's, pushed on most ticks, stood at 0.12-0.15 since A224"""
+        if not getattr(e, "approach", None) or now is None:
+            return None
+        c_ = now.get("cord")
+        if not c_:
+            return None
+        keep = [abs(float(x_)) <= 1e-12 for x_ in c_]
+        return None if all(keep) else keep
+
+    def _inverse_lesson(self, i, s0, s1, act, keep=None):
         """ACT_INV LEARNS ONLINE (step R6; SIM_DESIGN.md 5.4): the pair of senses (s0 before the act, s1 after it) and the act the body
         made, its efference copy, the label. Its reliability is updated first, on the label it gives now against the efference copy
         (a prediction, not a fit), then one step of its own optimizer on the cross-entropy of each joint's setting"""
@@ -272,12 +445,18 @@ class TimingMixin:
         true = [int(x) for x in tab.digits(torch.tensor(int(act))).tolist()]
         with torch.no_grad():
             label = [int(lg.argmax()) for lg in tm.inverse_logits(s0, s1)]
-        self._inv_rel_update(e, st, label, true)
+        if keep is None:
+            self._inv_rel_update(e, st, label, true)
+        else:
+            self._inv_rel_update(e, st, label, true, keep=keep)
+        tm.inv_standardize(torch.cat([s0, s1 - s0], -1).reshape(1, -1), self._inv_std_rate(1))   # A229n: its input's statistics (the function unchanged)
         with torch.enable_grad():
             self.opt_inv.zero_grad(set_to_none=True)
             lg = tm.inverse_logits(s0, s1)
             loss = None
-            for l_, t_ in zip(lg, true):
+            for j_, (l_, t_) in enumerate(zip(lg, true)):
+                if keep is not None and not keep[j_]:
+                    continue                                                     # A228: the approach moved it too
                 ce = F.cross_entropy(l_.unsqueeze(0), torch.tensor([t_], device=l_.device))
                 loss = ce if loss is None else loss + ce
             loss.backward()
@@ -324,22 +503,35 @@ class TimingMixin:
         trues = [[int(x_) for x_ in tab.digits(torch.tensor(int(p_[2]))).tolist()] for p_ in pairs]
         with torch.no_grad():
             labels = torch.stack([lg.argmax(-1) for lg in tm.inverse_logits(S0, S1)], dim=-1).tolist()
-        for lab_, true_, p_ in zip(labels, trues, pairs):
-            self._inv_rel_update(e, st, lab_, true_, chance=p_[3], held=p_[3] is None)
+        keeps = [p_[4] if len(p_) > 4 else None for p_ in pairs]                      # A228: the joints each act alone moved
+        for lab_, true_, p_, k_ in zip(labels, trues, pairs, keeps):
+            if k_ is None:
+                self._inv_rel_update(e, st, lab_, true_, chance=p_[3], held=p_[3] is None)
+            else:
+                self._inv_rel_update(e, st, lab_, true_, chance=p_[3], held=p_[3] is None, keep=k_)
         tt = torch.tensor(trues, dtype=torch.long)
+        tm.inv_standardize(torch.cat([S0, S1 - S0], -1), self._inv_std_rate(len(pairs)))   # A229n: its input's statistics (the function unchanged)
         with torch.enable_grad():
             self.opt_inv.zero_grad(set_to_none=True)
             lg = tm.inverse_logits(S0, S1)
             loss = None
             for j_, l_ in enumerate(lg):
-                ce = F.cross_entropy(l_, tt[:, j_].to(l_.device))
+                if all(k_ is None for k_ in keeps):
+                    ce = F.cross_entropy(l_, tt[:, j_].to(l_.device))
+                else:
+                    m_ = torch.tensor([k_ is None or bool(k_[j_]) for k_ in keeps], device=l_.device)
+                    if not bool(m_.any()):
+                        continue                                                 # (every pair's joint j the approach's too)
+                    ce = F.cross_entropy(l_[m_], tt[:, j_].to(l_.device)[m_])
                 loss = ce if loss is None else loss + ce
             loss.backward()
             self.opt_inv.step()
             self.opt_inv.zero_grad(set_to_none=True)
         st["inv_n"] = int(st["inv_n"]) + len(pairs)
         st["inv_last"] = {"tick": self.ticks, "loss": round(float(loss.detach()), 4), "n": len(pairs),
-                          "hit": [round(sum(int(a == b) for a, b in zip(lab_, true_)) / len(true_), 3) for lab_, true_ in zip(labels, trues)]}
+                          "hit": [round(sum(int(a == b) for a, b in zip(lab_, true_)) / len(true_), 3) for lab_, true_ in zip(labels, trues)],
+                          **({"kept": [sum(1 for k_ in keeps if k_ is None or k_[j_]) for j_ in range(len(trues[0]))]}   # A228: each joint's
+                             if any(k_ is not None for k_ in keeps) else {})}                                           # pairs learned
 
     @staticmethod
     def _inv_conf_new(e):
@@ -347,7 +539,7 @@ class TimingMixin:
         column the setting the efference copy made)"""
         return [[[0.0] * int(K) for _ in range(int(K))] for K in e.factors]
 
-    def _inv_rel_update(self, e, st, label, true, chance=None, held=False):
+    def _inv_rel_update(self, e, st, label, true, chance=None, held=False, keep=None):
         """ACT_INV'S RELIABILITY: COHEN'S KAPPA OVER ITS RUNNING CONFUSION, JOINT BY JOINT (the R6 verifier's second finding,
         2026-09-24). Each own act adds one count to each joint's confusion (st["inv_conf"][j]: the row the setting act_inv's label
         chose, the column the setting the efference copy made), every count decaying over act_inv_tau acts. A joint's kappa is its
@@ -381,19 +573,23 @@ class TimingMixin:
         d = 1.0 - 1.0 / float(self._motor_const("act_inv_tau"))
         if st.get("inv_conf") is None:
             st["inv_conf"] = self._inv_conf_new(e)
-        kap = []; n = 0.0
+        kap = []; ns = []
         for j, Cj in enumerate(st["inv_conf"]):
-            for row in Cj:
-                for k in range(len(row)):
-                    row[k] *= d
-            Cj[int(label[j])][int(true[j])] += 1.0
-            K = len(Cj); n = sum(sum(r) for r in Cj)
+            if keep is None or keep[j]:                                     # A228: a joint the approach also moved this act: no count, no decay
+                for row in Cj:
+                    for k in range(len(row)):
+                        row[k] *= d
+                Cj[int(label[j])][int(true[j])] += 1.0
+            K = len(Cj); n = sum(sum(r) for r in Cj); ns.append(n)
+            if n <= 0.0:
+                kap.append(0.0)
+                continue
             po = sum(Cj[k][k] for k in range(K)) / n
             pe = sum(sum(Cj[k]) * sum(Cj[r][k] for r in range(K)) for k in range(K)) / (n * n)
             kap.append((po - pe) / (1.0 - pe) if 1.0 - pe > 1e-9 else 0.0)
-        on = n > 64
-        st["inv_kappa"] = [float(k) if on else 0.0 for k in kap]
-        st["inv_gain"] = float(sum(max(0.0, min(1.0, k)) for k in kap) / len(kap)) if on else 0.0
+        kap = [float(k) if n_ > 64 else 0.0 for k, n_ in zip(kap, ns)]       # (each joint on at its own 64 acts; without A228's masks they
+        st["inv_kappa"] = kap                                               # count alike, R6's rule)
+        st["inv_gain"] = float(sum(max(0.0, min(1.0, k)) for k in kap) / len(kap))
         if int(self._motor_const("act_inv_chance")):
             # STEP R6h, THE KAPPA CORRECTION (6d6d246's proposal): per joint the running agreement and the running chance the act's own
             # choice gave the label's setting (`_act_chance`; an act chosen without a draw: 1 where the label names its setting, else 0),
@@ -403,14 +599,18 @@ class TimingMixin:
                 st["inv_ch"] = [[0.0, 0.0, 0.0] for _ in e.factors]
             kc = []
             for j, row in enumerate(st["inv_ch"]):
-                c_ = (1.0 if int(label[j]) == int(true[j]) else 0.0) if (held or chance is None) else float(chance[j][int(label[j])])
-                row[0] = d * row[0] + 1.0; row[1] = d * row[1] + (1.0 if int(label[j]) == int(true[j]) else 0.0); row[2] = d * row[2] + c_
+                if keep is None or keep[j]:                                 # A228: as the confusion's
+                    c_ = (1.0 if int(label[j]) == int(true[j]) else 0.0) if (held or chance is None) else float(chance[j][int(label[j])])
+                    row[0] = d * row[0] + 1.0; row[1] = d * row[1] + (1.0 if int(label[j]) == int(true[j]) else 0.0); row[2] = d * row[2] + c_
+                if row[0] <= 0.0:
+                    kc.append(0.0)
+                    continue
                 pc = row[2] / row[0]
                 kc.append((row[1] / row[0] - pc) / (1.0 - pc) if 1.0 - pc > 1e-9 else 0.0)
-            on = st["inv_ch"][0][0] > 64
+            kc = [float(k) if row[0] > 64 else 0.0 for k, row in zip(kc, st["inv_ch"])]
             st["inv_kappa_pooled"] = st["inv_kappa"]
-            st["inv_kappa"] = [float(k) if on else 0.0 for k in kc]
-            st["inv_gain"] = float(sum(max(0.0, min(1.0, k)) for k in kc) / len(kc)) if on else 0.0
+            st["inv_kappa"] = kc
+            st["inv_gain"] = float(sum(max(0.0, min(1.0, k)) for k in kc) / len(kc))
 
     def _timing_propose(self, e, C):
         """ACT_PRED'S PROPOSAL (the base Effector's `propose`; step R6): the forecast of its own next act from the stream C, plus the
@@ -420,10 +620,15 @@ class TimingMixin:
         p = tm.pred(C)
         if e.sense is not None and st["err"] is not None:
             p = p + tm.cor(st["err"])
+        rt_ = vt_ = None
         if self._recall_on():
-            p = p + self._recall_term(e, self._frec_now)               # step R7f: the recalled act through its map (body/core/frames.py)
+            rt_ = self._recall_term(e, self._frec_now)                 # step R7f: the recalled act through its map (body/core/frames.py)
+            p = p + rt_
         if int(self.cfg.get("imagine_vte", 0)):
-            p = p + self._vte_term(e)                                  # A182: the lean toward the better imagined future's first act
+            vt_ = self._vte_term(e)                                    # A182: the lean toward the better imagined future's first act
+            p = p + vt_
+        if hasattr(self, "ledger_terms"):
+            self.ledger_terms(e.name, rt_, vt_)                         # I1: each term read against the act taken (an instrument)
         return p
 
     def _timing_foresee(self, i):
@@ -456,15 +661,17 @@ class TimingMixin:
             out.append(b_ if float(lg[b_]) - float(lg[int(h_)]) > float(margin) else int(h_))
         return self.m.get_submodule(e.organ).flat(out)
 
-    def _best_guess(self, e, pred):
-        """act_pred's best guess: each joint's most likely setting under its proposal (a one-joint alphabet's reserved acts never), as
-        the flat act; the rest when it proposes nothing"""
+    def _best_guess(self, e, pred, blocked=None):
+        """act_pred's best guess: each joint's most likely setting under its proposal (a one-joint alphabet's reserved acts never; A232:
+        nor a setting its actuator cannot carry out now, `blocked` {joint: [settings]}), as the flat act; the rest when it proposes nothing"""
         if pred is None:
             return int(e.rest_id)
         tab = self.m.get_submodule(e.organ)
         lg = tab.logits(pred, 1.0)
         if e.reserved:
             lg[0] = lg[0].clone(); lg[0][list(e.reserved)] = float("-inf")
+        for j_, b_ in (blocked or {}).items():
+            lg[j_] = lg[j_].clone(); lg[j_][b_] = float("-inf")
         return tab.flat([int(x.argmax()) for x in lg])
 
     def _timing_loss(self, i, C, obs, wpos=None, night=False, wlab=None):
@@ -529,12 +736,40 @@ class TimingMixin:
         if e.inverse:
             gain = float(st["inv_gain"])
             with torch.no_grad():
-                lab = tab.flat_many([lg.argmax(-1) for lg in tm.inverse_logits(s[:-1], s[1:])])   # [T-1]: what moved it from t to t+1
+                dg_ = [lg.argmax(-1) for lg in tm.inverse_logits(s[:-1], s[1:])]   # each joint's setting that moved it from t to t+1
+                bk_ = obs.get("@blk:" + e.name)
+                if bk_ is not None:
+                    # A233 (2026-10-18): A SETTING ITS ACTUATOR COULD NOT CARRY OUT IS READ AS THE REST. Where the world showed a joint's
+                    # setting blocked at t (A232: the walk command's step back at a standing speed), that setting would have done what
+                    # the joint's rest does, nothing, so act_inv's reading of it is the rest digit (and a pair so read as the rest act
+                    # teaches nothing, A229). The live model read the bare decay at speed 0 as 'small back' at 0.98 (its own inert
+                    # presses there had taught it so), and every rested tick at a standing speed (since A231 every tick outside the
+                    # command blocks) taught act_pred the step back at the labels' reliability (0.97 to 0.99)
+                    rd_ = [int(x_) for x_ in tab.digits(torch.tensor(rest)).tolist()]
+                    o_ = 0
+                    for j_, k_ in enumerate(e.factors):
+                        hit_ = bk_[:-1, o_:o_ + int(k_)].to(dg_[j_].device).gather(1, dg_[j_].unsqueeze(1)).squeeze(1)
+                        dg_[j_] = torch.where(hit_, torch.full_like(dg_[j_], rd_[j_]), dg_[j_])
+                        o_ += int(k_)
+                pu_, pk_, sl_ = obs.get("@push"), obs.get("@pushk"), self._push_slice(e)
+                if pu_ is not None and pk_ is not None and sl_ is not None and sl_[1] == len(e.factors):
+                    # A233: A JOINT THE WORLD SHOWS NOTHING PUSHED MOVED BY ITS REST ALONE. For an effector whose world shows the push
+                    # into each position (A228b: the walk command's, one number a joint in the joints' order: the speed's, the turn's),
+                    # at a rested move from t to t+1 whose push the world shows as nothing on a joint, nothing but its rest moved that
+                    # joint: act_inv's reading of it is the rest digit (the walk command's decay after the approach's push, read as
+                    # 'small back' on 93 of 174 labelled positions in 500 ticks of the dawn-201 copy, its standing speed folded above)
+                    rd_ = [int(x_) for x_ in tab.digits(torch.tensor(rest)).tolist()]
+                    P1_ = pu_[1:, sl_[0]:sl_[0] + sl_[1]].to(dg_[0].device); K1_ = pk_[1:].to(dg_[0].device)
+                    for j_ in range(len(e.factors)):
+                        still_ = K1_ & (P1_[:, j_].abs() <= 1e-12)
+                        dg_[j_] = torch.where(still_, torch.full_like(dg_[j_], rd_[j_]), dg_[j_])
+                lab = tab.flat_many(dg_)                                    # [T-1]: what moved it from t to t+1
             rested = ~own
             tgt[:-1] = torch.where(rested[:-1], lab, acts[:-1])
             wt = torch.where(rested, torch.full_like(wt, gain), wt)
             if bool(rested[-1]):
                 wt[-1] = 0.0                                               # its next sense is not yet felt: no label
+            wt[:-1] = torch.where(rested[:-1] & (tgt[:-1] == rest), torch.zeros_like(wt[:-1]), wt[:-1])   # A229: a rest read as rest, no label (below)
         Cp = C[:-1]
         if night:
             Cp = Cp.detach()                                               # step R8b: the night's weighted targets never reach the stream
@@ -564,6 +799,14 @@ class TimingMixin:
             lab_f = lab1.clone()
             if bool(rested[-1]):
                 lab_f[-1] = False                                          # the last rest: its next sense not felt, no label
+            # A229 (2026-10-17): A DEMONSTRATION IS A MOVE AT REST THAT REST CANNOT EXPLAIN. A rested tick whose label is the rest act
+            # itself (the move what the body's own rest makes: the walk command's decay, an arm's sag under gravity, read as the zero act
+            # by an inverse model trained on own zero acts that feel the same drift) teaches nothing; a move act_inv reads as an act (a
+            # push, a parent's hand: exafference, von Holst and Mittelstaedt 1950) teaches at the reliability, as before. Until now every
+            # rested tick taught its label: on the walk command (A228b's clean model reading the bare decay as rest, correctly) rest
+            # taught rest at the labels' weight on every rested tick, and day 192's first command block under A228b made 9 forward acts
+            # in 2,247 (13-22% on days 190-191), its own acts a zero-speed turn dither (11 and 13: 1,683 of them)
+            lab_f = lab_f & (tgt[1:] != rest)
             w_own = torch.where(lab1, torch.zeros_like(w1), w1)
         if wpos is not None:                                              # step R7d: the weight on act_pred's error at its own acts (A152: dopamine's credit)
             w_ = wpos[1:].to(err.dtype)

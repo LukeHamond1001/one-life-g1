@@ -2363,3 +2363,63 @@ if __name__ == "__main__":
             failed += 1; print("ERROR", t.__name__, ":", type(e).__name__, str(e)[:300])
     print(f"{len(tests) - failed}/{len(tests)} passed in {time.time() - t0:.0f}s")
     sys.exit(1 if failed else 0)
+
+
+def test_the_shaping_reaches_the_actors():
+    """D3b (2026-10-15): the slow band's value change (shape_band) reaches the actors' lesson under A172's adaptive coding (D3 as landed
+    lost it there: the actors' dopamine was rebuilt from the fast error after the term was added), at the slow band's own gamma (the fast
+    band's gamma on the slow value carried a standing offset of (gamma - 1) x V); the adaptive coding's mean square is the sum's"""
+    def run(gain):
+        life = _watched(seed=0, dopamine_adapt=1)
+        life.cfg["shape_bands"] = (len(life.m.clocks) - 1,); life.cfg["shape_gain"] = gain
+        life._shape_m = {len(life.m.clocks) - 1: [1e6, 0.0, 0.0, 1e6, 1e6, 1e6]}   # D3c: a band that has predicted reward perfectly (the gain earned at 1)
+        for _ in range(4):
+            say(life, "dog will go", 2); life.set_face(2.0); life.tick(); life.set_face(0.0); say(life, "give milk", 2)
+        _live(life, 60)
+        return life
+    A, B = run(0.0), run(1.0)
+    assert not torch.equal(A.m.actor.weight, B.m.actor.weight), "the shaping term did not reach the actors' lesson"
+    assert A._dop_ms != B._dop_ms, "the adaptive coding's mean square is not the sum's"
+    m = B.m; s = int(B.cfg["shape_bands"][0]); gam = m.gammas(); calls = []; orig = m.values
+    m.values = lambda x: (calls.append(orig(x)) or calls[-1])     # the values the tick computes, in order
+    m0 = float(B._dop_shape_m.get(s, 0.0)); B.set_face(2.0); B.tick(); m.values = orig
+    sh = float(B._dop_shape_last) + m0; vals = [float(c.detach().reshape(-1)[s]) for c in calls]   # (the term less its running mean before this tick)
+    rho = float(B._shape_rho_last[s]); assert rho > 0.99, rho
+    ok = any(abs(sh - rho * (gam[s] * vals[k] - vals[j])) < 1e-9 for j in range(len(vals)) for k in range(len(vals)) if k != j)   # (now before prev)
+    assert B._dop_shape_m.get(s, 0.0) != m0, "the running mean did not move"
+    assert ok, (sh, gam[s], vals)
+    print("the shaping reaches the actors: weights differ", float((A.m.actor.weight - B.m.actor.weight).abs().max()), "| ms", A._dop_ms, B._dop_ms, "| the term", sh, "at gamma", gam[s])
+
+
+def test_the_shaping_gain_is_earned():
+    """D3c: the shaping gain is the shaping band's own anticipation (its value's correlation with the next 64 ticks' reward), born 0: a
+    band whose value foretells the reward earns its gain; one whose value is noise against the reward earns none"""
+    import math as _m
+    life = _watched(seed=0); b = len(life.m.clocks) - 1; assert life._shape_rho(b) == 0.0
+    for t in range(1200):                                                 # a slow value whose level the next ticks' reward follows
+        life.ticks = t; x = _m.sin(t / 320.0); life._shape_track(b, x, 0.02 * _m.sin((t - 1) / 320.0))   # (a 64-tick window on a 250-tick sine would read 0.7 by phase alone)
+    rho_good = life._shape_rho(b); assert rho_good > 0.8, rho_good
+    life2 = _watched(seed=0); rng = torch.Generator().manual_seed(3)
+    for t in range(6000):                                                 # the same value against a reward that ignores it (three periods: a slow value's chance correlation with noise needs the cycles)
+        life2.ticks = t; life2._shape_track(b, _m.sin(t / 320.0), 0.02 * float(torch.randn(1, generator=rng)))
+    rho_noise = life2._shape_rho(b); assert rho_noise < 0.3, rho_noise
+    print("the shaping gain earned: a foretelling band", round(rho_good, 3), "| a band against noise", round(rho_noise, 3))
+
+
+def test_the_actors_read_the_bands_departure():
+    """D4: under actor_input "band" the actors read the dopamine band's state less its running mean, in units of its running spread:
+    after a stretch the read is centered near 0 at a spread near 1 over its units, while the band's own state stands at a level"""
+    life = _watched(seed=0); life.cfg["actor_input"] = "band"; life.cfg["actor_norm_tau"] = 200
+    for _ in range(3):
+        say(life, "dog will go", 2); life.set_face(2.0); life.tick(); life.set_face(0.0); say(life, "give milk", 2)
+    _live(life, 400)
+    x = life._actor_x(); b = life.bands[int(life.cfg["dopamine_band"])].detach()
+    assert x is not None and x.shape == b.shape
+    assert abs(float(x.mean())) < 0.5 and 0.2 < float(x.std()) < 5.0, (float(x.mean()), float(x.std()))
+    life2 = _watched(seed=1); life2.cfg["actor_input"] = "band"
+    say(life2, "dog will go", 1); x0 = life2._actor_x()
+    assert x0 is not None and life2._actor_in_m is not None, "the moments are born at the first read"
+    life._actor_in_m = life._actor_in_m.double(); life._actor_in_v = life._actor_in_v.double()   # D4b: as a save brings them back
+    x2 = life._actor_x(); assert x2.dtype == b.dtype, (x2.dtype, b.dtype)
+    _live(life, 3)                                                  # the actors read it without a fault (every reload faulted before D4b)
+    print("the actors' read: mean", round(float(x.mean()), 3), "std", round(float(x.std()), 3), "| the band's raw state: |mean|", round(float(b.abs().mean()), 3), "std", round(float(b.std()), 3))

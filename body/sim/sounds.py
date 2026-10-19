@@ -140,6 +140,8 @@ class Sounds:
         self.floorish = frozenset(g for g in range(m.ngeom) if int(m.geom_bodyid[g]) == 0)
         self.body_of_toy = {k: b for b, k in self.kind_of_body.items() if k != "g1"}
         self.prev_pairs = set()
+        self.tick_pairs = set()          # A236: the pairs in contact at any step of this tick so far, and of the tick before
+        self.last_tick_pairs = set()
         self.voices = []                 # [source, kind, start sample (from the tick's start), gain, position]
         self.toy_pos = {}                # toy -> its position at the last tick's end (the motion sounds)
         self.events = []                 # the tick's events (instruments): (step, source, kind, speed, position)
@@ -164,7 +166,12 @@ class Sounds:
                     continue                                     # its own links pressing each other: no sound here
                 key = (min(a, b), max(a, b))
                 pairs.add(key)
-                if key in self.prev_pairs:
+                if key in self.prev_pairs or key in self.tick_pairs or key in self.last_tick_pairs:
+                    # A236 (2026-10-18): AN IMPACT IS A CONTACT AFTER A SEPARATION. A pair counts as new only when it touched at no step of
+                    # this tick so far nor of the tick before; a resting contact the solver drops and finds again step by step is no
+                    # landing. The dawn-203 copy: the toy bucket, tipped on the room's floor, knocked 14,720 times in 200 ticks (its edge's
+                    # contact flickering at 0.13 to 0.35 m/s), heard from 20 m away on every tick, and the side of the sounds the child
+                    # orients to pointed toward her 28% of the time while she was silent (0.64 while she spoke)
                     continue
                 c = d.contact[i]
                 p, nrm = np.asarray(c.pos, float), np.asarray(c.frame[:3], float)
@@ -184,6 +191,7 @@ class Sounds:
                 self.voices.append([src, kind, k * STEP_SAMPLES, g, p.copy()])
                 self.events.append((k, src, kind, round(speed, 3), p.round(3).tolist()))
         self.prev_pairs = pairs
+        self.tick_pairs |= pairs
 
     # ------------------------------------------------------------------ the tick's end
     def tick_end(self, world):
@@ -222,16 +230,20 @@ class Sounds:
             self.events.append((-1, "toy_" + toy, "motion", round(speed, 3), p.round(3).tolist()))
         ev, self.events = self.events, []
         self.last_events = ev
+        self.last_tick_pairs, self.tick_pairs = self.tick_pairs, set()   # A236
         return {k: (v[0], v[1]) for k, v in out.items()}
 
     # ------------------------------------------------------------------ the save
     def state(self):
         return dict(prev_pairs=sorted([list(k) for k in self.prev_pairs]),
+                    tick_pairs=sorted([list(k) for k in self.tick_pairs]), last_tick_pairs=sorted([list(k) for k in self.last_tick_pairs]),   # A236
                     voices=[[s, k, int(st), float(g), np.asarray(p, float).tolist()] for s, k, st, g, p in self.voices],
                     toy_pos={k: np.asarray(v, float).tolist() for k, v in self.toy_pos.items()})
 
     def load_state(self, s):
         self.prev_pairs = {tuple(int(x) for x in k) for k in s["prev_pairs"]}
+        self.tick_pairs = {tuple(int(x) for x in k) for k in s.get("tick_pairs", [])}                     # A236 (a save before it: the
+        self.last_tick_pairs = {tuple(int(x) for x in k) for k in s.get("last_tick_pairs", s["prev_pairs"])}   # last step's pairs)
         self.voices = [[str(a), str(k), int(st), float(g), np.array(p, dtype=np.float64)] for a, k, st, g, p in s["voices"]]
         self.toy_pos = {k: np.array(v, dtype=np.float64) for k, v in s["toy_pos"].items()}
         self.events = []

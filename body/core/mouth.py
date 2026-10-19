@@ -20,6 +20,7 @@ import math
 
 import torch
 import torch.nn.functional as F
+from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swallowed unseen)
 
 
 # A104: kappa's established scale (Landis and Koch 1977, Biometrics 33:159): below 0.2 "slight", 0.2-0.4 "fair", 0.4-0.6 "moderate",
@@ -640,6 +641,7 @@ class MouthMixin:
         prev = st["now"]
         with torch.no_grad():
             pred = e.propose(self, C1)                                    # act_pred's, corrected by the forward half's error (step R6)
+            guess_ = ([int(lg_.argmax()) for lg_ in tab.logits(pred, 1.0)] if (pred is not None and getattr(e, "inverse", False)) else None)   # A235
             sal = float(self.cfg["gate_salience"]) * (float(pred.norm()) if pred is not None else 0.0)
             own = torch.as_tensor(e.gate_inputs(frame, self, st), dtype=torch.float32, device=self.dev).reshape(-1)
             if own.numel() != int(e.n_in):
@@ -698,15 +700,16 @@ class MouthMixin:
             else:
                 p_act = fl + (1.0 - fl) * float(torch.sigmoid(z))
             rfx = e.reflex(frame, self, st)                               # its spinal reflex this tick (step R6), or None
+            dis_ = self._disengaged(e, frame) if rfx is None else False  # A231: its actuator will not carry its act this tick
             rest = int(e.rest_id)
             going = bool(int(self.cfg.get("chunk_gate", 0))) and bool(st["acted_last"]) and int(st["chunk"]) > 0   # a chunk under way
             ended = e.end_id is not None and prev is not None and int(prev["act"]) == int(e.end_id)            # closed by its declared end
-            cont = going and not ended and rfx is None and int(st["chunk"]) < int(self.cfg.get("chunk_max", 12))
+            cont = going and not ended and rfx is None and not dis_ and int(st["chunk"]) < int(self.cfg.get("chunk_max", 12))
             stop = None
-            drew = bool(torch.rand(1, generator=self.gen).item() < p_act) if rfx is None else False   # no draw on a reflex's tick
+            drew = bool(torch.rand(1, generator=self.gen).item() < p_act) if (rfx is None and not dis_) else False   # no draw on a reflex's tick (nor a disengaged one: A231)
             sharp_e = self._motor_sharp(e, st)                            # A97: its decisiveness earned by its inverse model
             logits = tab.logits(pred, sharp_e, earned=self._motor_earned(e, st))   # C148: and its proposal's certainty with it
-            act_on = bool(int(self.cfg.get("actor", 0)) and stri and getattr(self, "_z_now", None) is not None)
+            act_on = bool(int(self.cfg.get("actor", 0)) and stri and getattr(self, "_z_now", None) is not None and self._actor_x() is not None)   # (D2)
             if e.orient and int(self._reflex_const("orient")):            # STEP R6h: the born orienting bias (body/core/cord.py; 3.7, A43)
                 ob_ = self._orient_bias(e, frame, tab)
                 if ob_ is not None:
@@ -714,23 +717,47 @@ class MouthMixin:
             proposal = logits                                             # A176: the cortex's proposal with the born orienting bias, the
             if act_on:                                                    # striatum's bias not in it: what a unit under way is held against
                 # the striatum disposes: its bias on each joint's proposal
-                a_bias = float(self.cfg.get("actor_beta", 1.0)) * torch.tanh(m.get_submodule(e.actor)(self._z_now))
-                logits = [lg + b_ for lg, b_ in zip(logits, tab.split(a_bias))]
+                if int(self.cfg.get("actor_cues", 0)):
+                    self._actor_cues(frame)                                     # A225: the tick's cues, read before the actors read them
+                a_bias = float(self.cfg.get("actor_beta", 1.0)) * torch.tanh(m.get_submodule(e.actor)(self._actor_x(e)))   # (D2: the actor's own input; A226: with its limb's)
+                sb_ = tab.split(a_bias); self.ledger_vote(e.name, sb_)       # (I1: the vote, read against the act taken)
+                fav0_ = [int(lg.argmax()) for lg in logits]
+                mg_ = [float(v_[0] - v_[1]) for v_ in (torch.topk(lg.detach(), 2).values for lg in logits if lg.numel() > 1)]   # I1e: the proposal's margin
+                logits = [lg + b_ for lg, b_ in zip(logits, sb_)]
+                self.ledger_sway(e.name, sum(int(int(lg.argmax()) != f_) for lg, f_ in zip(logits, fav0_)) / max(1, len(fav0_)),
+                                 margin=(sum(mg_) / len(mg_)) if mg_ else 0.0, drew=drew, size=float(a_bias.detach().abs().mean()))   # (I1: the bias's sway; I1e: the margin, draws only; I1g: the bias's size)
             if e.reserved:                                                # a one-joint alphabet's reserved acts are never drawn
                 logits[0] = logits[0].clone(); logits[0][list(e.reserved)] = float("-inf")
                 if proposal is not logits:
                     proposal[0] = proposal[0].clone(); proposal[0][list(e.reserved)] = float("-inf")
+            blk_ = self._blocked(e, frame, tab)                           # A232: the settings its actuator cannot carry out now, never drawn
+            if blk_:
+                same_ = proposal is logits
+                logits = [lg.clone() for lg in logits]
+                for j_, b_ in blk_.items():
+                    logits[j_][b_] = float("-inf")
+                if same_:
+                    proposal = logits
+                else:
+                    proposal = [lg.clone() for lg in proposal]
+                    for j_, b_ in blk_.items():
+                        proposal[j_][b_] = float("-inf")
             probs = [torch.softmax(lg, -1) for lg in logits]
             if rfx is not None:                                           # THE REFLEX: its act to the world; the effector's own, its rest
                 act = rest; acted = False; p_choice = 0.0
                 dig = [int(x_) for x_ in tab.digits(torch.tensor(act)).tolist()]
                 if going:
                     stop = "reflex"
+            elif dis_:                                                    # A231: DISENGAGED: its actuator will not carry an act this tick (the
+                act = rest; acted = False; p_choice = 0.0                 # gait owns its joints, or does not take its command): its own act its
+                dig = [int(x_) for x_ in tab.digits(torch.tensor(act)).tolist()]   # rest, no draw, no credit, no lesson of its gate
+                if going:
+                    stop = "disengaged"
             elif cont:                                                    # THE CHUNK GOES ON while its gate's own draw says so
                 if drew:
                     um_ = self._motor_const("unit_margin")
                     if um_ is None:
-                        act = self._best_guess(e, pred)                   # act_pred's best guess, no draw (R6)
+                        act = self._best_guess(e, pred, blocked=blk_)     # act_pred's best guess, no draw (R6; A232: never a blocked setting)
                     else:
                         act = self._unit_hold(e, st, proposal, float(um_))   # STEP R6h: the movement unit holds its act (the persistence margin);
                                                                             # A176 (2026-10-02): against the cortex's proposal, not the striatum's
@@ -775,10 +802,68 @@ class MouthMixin:
                 st["stops"][stop] = int(st["stops"].get(stop, 0)) + 1
         st["now"] = {"act": int(act), "acted": bool(acted), "drew": bool(drew), "p_act": float(p_act), "p_choice": float(p_choice),
                      "digits": dig, "probs": probs, "feat": feat.cpu(), "act_on": act_on, "cost": 0.0, "sharp": float(sum(sharp_e) / len(sharp_e)) if isinstance(sharp_e, list) else float(sharp_e),
-                     "cont": bool(cont), "stop": stop, "reflex": rfx is not None, "world": int(rfx) if rfx is not None else int(act), "int": 0.0}
+                     "cont": bool(cont), "stop": stop, "reflex": rfx is not None, "world": int(rfx) if rfx is not None else int(act), "int": 0.0,
+                     "disengaged": bool(dis_),
+                     "blk": self._blocked_flags(e, frame, tab),                  # A233: the settings its actuator could not carry out this tick, every tick
+                     "guess": guess_}                                             # A235: act_pred's own best setting per joint this tick
         # STEP R6h: THE CORD'S PATTERNS (body/core/cord.py): its spinal pattern generator and its born cry, added below the gate to the act
         # this tick (the world adds them to the targets it re-anchors: acts.cord); the gate's draw and the act's eligibility are the gate's
         st["now"]["cord"] = self._cord(i, frame, p_act, dig, rfx is not None) if (e.spg or e.cry or (e.orient and e.vor) or e.approach) else None   # (A216: the born approach)
+
+    @staticmethod
+    def _blocked(e, frame, tab):
+        """A232 (2026-10-18): THE SETTINGS ITS ACTUATOR CANNOT CARRY OUT NOW ARE NOT DRAWN. The world's frame shows, for an effector whose
+        actuator has a range ('<name>_blocked', one flag per setting of each joint in order: the walk command's integrator, a speed at its
+        floor that no step back can lower, a speed or a turn at its ceiling), which settings would do nothing; their logits are taken
+        out of the draw, the unit's hold and the best guess, as a one-joint alphabet's reserved acts are (the zero setting, the joint's
+        rest digit, never). -> {joint: [settings]} or {} where the frame shows nothing. Day 200's two standing blocks: the walk
+        command at speed 0 on 52 to 72% of their ticks, 53 to 73% of their steps back pressed there (the command is a speed: nothing is
+        slower than 0), each copied as its own act, and the block's habit held whatever came (85 to 87% back, a coming in neither)"""
+        flags = MouthMixin._blocked_flags(e, frame, tab)
+        if flags is None:
+            return {}
+        out = {}; o_ = 0
+        for j_, k_ in enumerate(e.factors):
+            b_ = [s_ for s_ in range(int(k_)) if flags[o_ + s_]]
+            if b_:
+                out[j_] = b_
+            o_ += int(k_)
+        return out
+
+    @staticmethod
+    def _blocked_flags(e, frame, tab):
+        """A232/A233: the frame's '<name>_blocked' as one flag per setting of each joint in order, each joint's rest digit never
+        blocked; None where the frame shows none (or not one flag per setting)"""
+        v_ = None if frame is None else getattr(frame, "obs", {}).get(e.name + "_blocked")
+        if v_ is None:
+            return None
+        flags = [float(x_) > 0.5 for x_ in (v_.tolist() if hasattr(v_, "tolist") else list(v_))]
+        if len(flags) != sum(int(k_) for k_ in e.factors):
+            return None
+        rest_d = [int(x_) for x_ in tab.digits(torch.tensor(int(e.rest_id))).tolist()]
+        o_ = 0
+        for j_, k_ in enumerate(e.factors):
+            flags[o_ + rest_d[j_]] = False
+            o_ += int(k_)
+        return flags
+
+    @staticmethod
+    def _disengaged(e, frame):
+        """A231 (2026-10-18): AN EFFECTOR WHOSE ACTUATOR IS NOT ENGAGED DOES NOT ACT. The world's frame shows, for an effector its body can
+        take out of the brain's hands ('<name>_engaged': the walk command outside a command block, where the gait takes no command; the
+        legs and the waist in a walk, where the gait sets their targets), whether its act will be carried out this tick; where it will
+        not, the effector does not act: its own act its rest, its gate does not draw, its actor takes no credit, its gate no lesson, and
+        nothing of the tick is its own act's (a reflex's tick, the same). -> True where the frame shows it disengaged. Days 197 to 199:
+        every flip of the walk command's habit (forward, turning in place, backward) came on the floor, in a walk block or over a
+        night, where its acts moved nothing and were still cloned as its own and credited with what befell the body (falls); day 199's
+        flip to stepping back (80%) came in a walk block with two falls, and the day came to her once"""
+        v_ = None if frame is None else getattr(frame, "obs", {}).get(e.name + "_engaged")
+        if v_ is None:
+            return False
+        try:
+            return float(v_[0]) < 0.5
+        except (TypeError, IndexError):
+            return float(v_) < 0.5
 
     def _act(self, u, felt, stri, gam, delta, acted, nxt, p_act, p_choice, probs, feat, act_on, drew=None):
         """the act: the actor's credit, the intrinsic credit, its own symbol (or its rest) enters the stream, the gate's tag; each later
@@ -807,7 +892,7 @@ class MouthMixin:
                     self._chooser_credit(nxt, g_act)
                 else:
                     oh = torch.zeros_like(probs); oh[nxt] = 1.0
-                    e_new = torch.outer((oh - probs.detach()) * self._actor_squash_grad(m.actor), self._actor_input())   # A147: through the tanh; A148: at unit power
+                    e_new = torch.outer((oh - probs.detach()) * self._actor_squash_grad(m.actor), self._actor_input(self._z_now))   # A147: through the tanh; A148: at unit power (D2: the voice's on the striatal input)
                     ea = getattr(self, "_e_actor", None)
                     self._e_actor = (g_act * ea if ea is not None else torch.zeros_like(e_new)) + e_new
         if acted:
@@ -923,7 +1008,7 @@ class MouthMixin:
                     cols = [sum(Cj[r][c] for r in range(K)) for c in range(K)]; n = sum(cols)
                     if n > 0 and K > 1:
                         var = (1.0 - max(cols) / n) / (1.0 - 1.0 / K)
-                out.append(s ** (rel * max(0.0, min(1.0, var))))
+                out.append(s ** (rel * max(0.0, min(1.0, var)) * self._prop_agreement(st, j)))   # (A235: and by its direction's agreement with what it is shown)
             g_ = [math.log(o_) / math.log(s) if s > 1.0 else 1.0 for o_ in out]          # C148: the exponents that earned each sharpness
             return out, g_
         kappa = float(st.get("inv_gain", 0.0) or 0.0)
@@ -935,7 +1020,7 @@ class MouthMixin:
                                                                             # and every limb's top probability was back above 0.9 within
                                                                             # half of life day 3, the day's earning gone with the variety
 
-    def _actor_input(self):
+    def _actor_input(self, x=None, e=None):
         """A148 (2026-10-01): THE ACTOR'S LESSON AT THE INPUT'S UNIT POWER. The actor's weights step by lr x dopamine x (one-hot - p) x
         beta(1 - tanh^2) outer z (A147), so one step moves the bias's pre-activation by lr x dopamine x |z|^2: on the G1's striatal
         expansion (4,096 units, 1,700 of them active near 3, |z|^2 some 22,000) a single tick of dopamine moved it by hundreds, the
@@ -944,10 +1029,86 @@ class MouthMixin:
         1): the normalized LMS step (Haykin; divisive normalization of the input's power, the gain the RLS critics already carry), so a
         unit of dopamine moves the pre-activation by at most lr x beta whatever the line's load; the readout w . z is unchanged. The
         floor 1 is the unit (an empty line, z = 0, learns nothing either way)"""
-        z = self._z_now
+        z = self._actor_x(e) if x is None else x
+        band_ = str(self.cfg.get("actor_input", "striatum")) == "band"
+        n_ = 2 * len(self.anatomy.orienting or ()) if int(self.cfg.get("actor_cues", 0)) and band_ else 0
+        k_ = self._actor_sense_n(e) if e is not None else 0
+        if (n_ or k_) and z is not None and int(z.numel()) > n_ + k_:          # A225, A226: each pathway at its own unit power (the band's 512,
+            cuts_ = [int(z.numel()) - n_ - k_, n_, k_]                          # the cues' 14, the limb's own 30 or 35: on one norm the cues'
+            parts_ = [p_ for p_ in torch.split(z, cuts_) if int(p_.numel())]    # share of a step was 14 in 500)
+            return torch.cat([p_ / max(float(torch.dot(p_, p_)), 1.0) for p_ in parts_])
         return z / max(float(torch.dot(z, z)), 1.0)
 
-    def _actor_squash_grad(self, actor):
+    def _actor_x(self, e=None):
+        """D2 (2026-10-14): what a later effector's actor reads: the striatal input (as before), or under actor_input "band" the dopamine
+        band's state, the cortex's own features at the four-second clock (the critic's state: the policy sees what its critic values;
+        the striatal line is 1.2 s of its own babble and could not see her). None before the first stream"""
+        if str(self.cfg.get("actor_input", "striatum")) == "band":
+            b_ = getattr(self, "bands", None)
+            if b_ is None:
+                return None
+            x = b_[int(self.cfg["dopamine_band"])].detach()
+            # D4 (2026-10-16): THE ACTORS READ THE BAND'S DEPARTURE FROM ITS RUNNING MEAN, IN UNITS OF ITS RUNNING SPREAD. The band's
+            # state stands at a mean of size 9 and varies by 0.037 a unit (the dawn-165 copy, 600 ticks): read raw, every actor's
+            # pre-activation was 99 % the constant w . mean (0.87 to 0.92 against a varying part of 0.01), the eligibility (A148: the
+            # input itself) piled every lesson onto that one direction, and each actor became a habit with no state in it: the ledger's
+            # fourteen days (worth 0, causal 0, the walk command's lean 1.5, 2.1, 2.9 toward the same side). Centered and scaled per unit
+            # by exponential moments over actor_norm_tau ticks (a day; born from the first state, so the first vote is none), the
+            # readout and the eligibility both carry the state and nothing standing. Adaptation at the striatal input (the normalization
+            # every sense shows; Carandini and Heeger 2012). The moments are the body's, saved with the life
+            m_ = getattr(self, "_actor_in_m", None); v_ = getattr(self, "_actor_in_v", None)
+            if m_ is not None and v_ is not None and (m_.dtype != x.dtype or v_.dtype != x.dtype):   # D4b (2026-10-16): a save brings the moments
+                m_ = m_.to(x.dtype); v_ = v_.to(x.dtype); self._actor_in_m, self._actor_in_v = m_, v_   # back at double precision (persistence),
+                                                                                                       # the band and the actors run at single:
+                                                                                                       # every reload of a D4 pair faulted on its first tick
+            if m_ is None or v_ is None or m_.shape != x.shape:
+                m_ = x.clone(); v_ = torch.full_like(x, 1e-4); self._actor_in_m, self._actor_in_v = m_, v_; self._actor_in_t = int(self.ticks); self._actor_in_n = 1
+            elif int(getattr(self, "_actor_in_t", -1)) != int(self.ticks):      # one move a tick (the read is asked for many times a tick)
+                n_ = int(getattr(self, "_actor_in_n", 0)) + 1; self._actor_in_n = n_
+                r_ = max(1.0 / float(self.cfg.get("actor_norm_tau", 24000)), 1.0 / float(n_))   # the plain mean and variance over the first
+                d_ = x - m_                                                                        # ticks, the exponential window after tau
+                m_ = m_ + r_ * d_; v_ = v_ + r_ * (d_ * d_ - v_)                                  # (the copy's block: the spread born at 1e-4
+                self._actor_in_m, self._actor_in_v, self._actor_in_t = m_, v_, int(self.ticks)    # read the first hours' votes four times too large)
+            xn_ = (x - m_) / torch.sqrt(v_ + 1e-6)
+            if int(self.cfg.get("actor_cues", 0)):                              # A225: the born orienting cues beside the band (cord._actor_cues)
+                c_ = getattr(self, "_acue_now", None)
+                n_ = 2 * len(self.anatomy.orienting or ())
+                c_ = c_[1] if (c_ is not None and c_[0] == self.ticks) else torch.zeros(n_)
+                xn_ = torch.cat([xn_, c_.to(dtype=xn_.dtype, device=xn_.device)])
+            if e is not None and self._actor_sense_n(e):                    # A226: the effector's own body sense after them
+                xn_ = torch.cat([xn_, self._actor_sense(e).to(dtype=xn_.dtype, device=xn_.device)])
+            return xn_
+        return self._z_now
+
+    def _actor_sense_n(self, e):
+        """A226: the size of later effector e's own body sense its actor reads (0: none, or the switch off)"""
+        if not int(self.cfg.get("actor_sense", 0)) or str(self.cfg.get("actor_input", "striatum")) != "band" or e.sense is None \
+                or e is getattr(self.anatomy, "voice", None) or e.name == "voice":
+            return 0
+        return len(e.sense_idx) if e.sense_idx is not None else int(self.anatomy.channel(e.sense).size)
+
+    def _actor_sense(self, e):
+        """A226 (2026-10-16): THE ACTOR READS ITS OWN LIMB. Each later effector's actor also reads its own body sense (`_body_sense`: its
+        joints' angles and motion, the walk command's own drive), each unit's departure from its running mean in units of its running
+        spread (D4's adaptation, per effector, moments over actor_norm_tau ticks, born at the first read). Why: the arms' tipped draws
+        were followed by pain on that arm five times as often as untipped draws of the same bias (arm_l 7.4% against 1.4%, 15,385 live
+        ticks, I1h): an actor reading the cortex's slow band alone does not feel its shoulder at its limit and cannot learn 'not further
+        here'. The striatum reads the body's own state from the somatosensory cortex (corticostriatal; Alexander, DeLong and Strick 1986)"""
+        s_ = self._body_sense(e).double()
+        M = getattr(self, "_asense_m", None)
+        if M is None:
+            M = self._asense_m = {}; self._asense_v = {}; self._asense_t = {}; self._asense_n = {}
+        m_ = M.get(e.name); v_ = self._asense_v.get(e.name)
+        if m_ is None or m_.shape != s_.shape:
+            m_ = s_.clone(); v_ = torch.full_like(s_, 1e-4); self._asense_n[e.name] = 1; self._asense_t[e.name] = int(self.ticks)
+        elif int(self._asense_t.get(e.name, -1)) != int(self.ticks):
+            n_ = int(self._asense_n.get(e.name, 0)) + 1; self._asense_n[e.name] = n_
+            r_ = max(1.0 / float(self.cfg.get("actor_norm_tau", 24000)), 1.0 / float(n_))
+            d_ = s_ - m_; m_ = m_ + r_ * d_; v_ = v_ + r_ * (d_ * d_ - v_); self._asense_t[e.name] = int(self.ticks)
+        M[e.name] = m_; self._asense_v[e.name] = v_
+        return ((s_ - m_) / torch.sqrt(v_ + 1e-6)).float()
+
+    def _actor_squash_grad(self, actor, e=None):
         """A147 (2026-10-01): THE ACTOR'S ELIGIBILITY GOES THROUGH ITS SQUASHING. The striatum's bias on a logit is beta x tanh(w . z)
         (`_choose`, `_act_effectors`' readout), so the gradient of the act's log-probability with respect to w is
         (one-hot - p) x beta x (1 - tanh^2(w . z)) x z; until now the eligibility was (one-hot - p) x z, the squashing's derivative and
@@ -955,10 +1116,11 @@ class MouthMixin:
         of 2,000 to 11,000 against a range of 1 (the voice's 550), every setting's bias at +-1, a bang-bang policy dopamine could no
         longer move (the left shoulder's pitch at +small on 85% of its draws, the positional pain 142 onsets a day for five days).
         The factor per setting, [the actor's rows]; 1 where no striatal input stands"""
-        if getattr(self, "_z_now", None) is None:
+        x_ = self._z_now if actor is self.m.actor else self._actor_x(e)        # (D2: the voice's actor keeps the striatal input; A226: its limb's)
+        if x_ is None:
             return 1.0
         with torch.no_grad():
-            t_ = torch.tanh(actor(self._z_now))
+            t_ = torch.tanh(actor(x_))
             return float(self.cfg.get("actor_beta", 1.0)) * (1.0 - t_ * t_)
 
     def _act_effectors(self, u, stri, gam, tick_tr):
@@ -976,12 +1138,15 @@ class MouthMixin:
             if tick_tr and st_["e_actor"] is not None:
                 st_["e_actor"] = g_ * st_["e_actor"]
             self._actor_tag_step(st_, None)                          # A142: the tag decays at the long critic's horizon every tick
-            if now["acted"] and now["act_on"] and not now["cont"]:
+            if now["acted"]:
+                self.ledger_act(e_, now)                                 # I1: the vote for the act taken, the lean's following
+                self._vte_credit(e_, now)                                # A219: the lean's credit (the share that followed, the reward after)
+            if now["acted"] and now["act_on"] and not now["cont"] and self._actor_x() is not None:   # (D2: no input yet, no credit)
                 with torch.no_grad():
                     oh = torch.cat([F.one_hot(torch.tensor(a_), int(k_)).to(p_.dtype).to(p_.device) - p_
                                     for a_, k_, p_ in zip(now["digits"], e_.factors, now["probs"])])
-                    oh = oh * self._actor_squash_grad(m.get_submodule(e_.actor))   # A147: the gradient through the bias's tanh
-                    e_new = torch.outer(oh, self._actor_input())                 # A148: on the striatal input at unit power
+                    oh = oh * self._actor_squash_grad(m.get_submodule(e_.actor), e_)   # A147: the gradient through the bias's tanh
+                    e_new = torch.outer(oh, self._actor_input(e=e_))             # A148: on the striatal input at unit power (A226: its limb's too)
                     ea = st_["e_actor"]
                     st_["e_actor"] = ((1.0 if tick_tr else g_) * ea if ea is not None else torch.zeros_like(e_new)) + e_new
                     self._actor_tag_step(st_, e_new)                 # A142: and takes this act's eligibility
@@ -1043,24 +1208,27 @@ class MouthMixin:
         for st_ in getattr(self, "motor", ()):                         # the later effectors' rows (step R5): its draw and its act's cost always;
             n_ = st_["now"]                                             # step R6: whether a reflex took the tick (no eligibility)
             st_["buf"].append([n_["feat"], n_["acted"], credit, n_["int"], (float(st_["fatigue"]) if int(self._motor_const("own_fatigue")) else self.fatigue),
-                               r_tr, n_["p_act"], n_["drew"], n_["cost"], n_["reflex"]])
+                               r_tr, n_["p_act"], n_["drew"], n_["cost"], bool(n_["reflex"] or n_.get("disengaged", False))])   # (A231: a disengaged tick too)
         lesson_now = self.ticks > 0 and self.ticks % int(self.cfg["gate_every"]) == 0
         if lesson_now and len(self.gate_buf) >= 16 + int(self.cfg["elig_ticks"]):
             try:
                 self._gate_lesson()
             except Exception as e:
+                _I5("mouth.py:_feel_and_learn:1138", e)
                 self._gate_last = {"error": str(e)[:120]}
         for i_, st_ in enumerate(getattr(self, "motor", ()), 1):
             if lesson_now and len(st_["buf"]) >= 16 + int(self.cfg["elig_ticks"]):
                 try:
                     self._gate_lesson(i_)
                 except Exception as e:
+                    _I5("mouth.py:_feel_and_learn:1144", e)
                     st_["last"] = {"error": str(e)[:120]}
         # --- the waking cortex ---
         if self.ticks > 0 and self.ticks % int(self.cfg["wake_every"]) == 0:
             try:
                 self._wake_lesson()
             except Exception as e:
+                _I5("mouth.py:_feel_and_learn:1150", e)
                 self._wake_last = {"error": str(e)[:120]}
 
     # ---------------- the gate's lesson (the striatum's opponent rule) ----------------

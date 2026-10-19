@@ -196,6 +196,7 @@ from .percept import Reader
 from ..parent_consts import NEVER_FETCHED
 from ..voice.playback import CUT_MAX, TICK
 from ..voice.synth import SR
+from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swallowed unseen)
 
 STREAM = 3                                    # the fast layer's random stream of the body's seed (ours; world 1, tract 2)
 REFUSED_KEEP = 500                            # refusals kept for the digest and the instruments (the ledger keeps what she said)
@@ -504,6 +505,7 @@ INTENTS = {
                                                              # teaching's call: the name test is trial_name's (4.8)
     "hall_call": Intent("calling", True, None),                      # not judged: from the hall no look can answer it (4.7)
     "come_call": Intent("calling", True, None),                      # C351: from across the room in a command block; the lane judges the coming, not the look
+    "come_again": Intent("calling", True, None),                     # C353: her call repeated every few seconds while it has not turned to her (not under CALL_EVERY)
     "greet": Intent("plain", False, None, (Act("lean_in", "child_periphery"), EYES)),
     "return": Intent("plain", False, None, (Act("walk", "child"), Act("lean_in", "child_periphery"))),
     "answer_bid": Intent("calling"),
@@ -528,6 +530,7 @@ INTENTS = {
     "confirm_got": Intent("approval", False, None, (Act("lean_in", "child_line"), EYES)),   # C270: her words for its own act
     "confirm_stood": Intent("approval", False, None, (EYES,)),      # C284: her words for its stand and its step (her hands may be on it:
     "confirm_stepped": Intent("approval", False, None, (EYES,)),    # no lean)
+    "confirm_came": Intent("approval", False, None, (EYES,)),       # C372: her words for its coming to her (it is at her: no lean)
     "confirm_held": Intent("approval", False, None, (Act("lean_in", "child_line"), EYES)),   # C270: her words for its own act
     "confirm_lifted": Intent("approval", False, None, (Act("lean_in", "child_line"), EYES)),   # C270: her words for its own act
     "confirm_shook": Intent("approval", False, None, (Act("lean_in", "child_line"), EYES)),   # C270: her words for its own act
@@ -758,8 +761,14 @@ class FastLayer:
             return False, "her voice is busy"
         if in_set:
             return (t >= self.last_line + K.PAUSE_RELATED), "a set's 6-tick pause"
-        if not reply and t < self.last_expect + K.PAUSE_EXPECT:
-            return False, "the expectant pause"
+        if not reply and line.intent not in ("come_again", "come_call") and t < self.last_expect + K.PAUSE_EXPECT:   # C355 (2026-10-16): 'come... come on' waits for no
+            return False, "the expectant pause"                                                 # answer: the repeated call (C353) is not held by the pause
+                                                                                                # her own call set (the teacher watch, day 176: come_again
+                                                                                                # refused 4 in a window for 'the expectant pause')
+                                                                                                # C357 (2026-10-16): nor her call from a new spot, which
+                                                                                                # came within 20 ticks of her own repeat and was dropped
+                                                                                                # whole (1-4 a ten minutes on day 179; the plan opened the
+                                                                                                # come window and logged a call that never sounded)
         if line.intent in ("call", "hall_call", "come_call") and t < self.last_call + K.CALL_EVERY:
             return False, "the call at most once per 240 ticks"
         if self.last_said.get(TP.key(line.text), NEVER) > t - K.SAME_LINE:
@@ -960,6 +969,9 @@ def _line_l(d):
 ASKS_NEEDING_O = {"ask_where", "ask_give", "ask_what"}                # asks about an object: refused without one
 
 
+ONE_PENDING = ("come_call", "come_again")   # C359: intents queued at most once (a repeat of a call needs no backlog)
+
+
 class Conduct:
     """the speech side of L2. voice: anything with clip(text, register, emphasis=) -> a clip with .words [(word, first sample,
     end sample)], .pcm, .key and .digest (body/sim/voice/synth.VoiceCache; None: a line is timed at 3 ticks a word and has no
@@ -1022,6 +1034,7 @@ class Conduct:
         self.distress_due = None              # A102: the tick of a distress event whose turn she owes while it lies face down (None: none)
         self.set_level = {}                   # C261: toy -> the reach rung's level her last reach lesson set it at (the day plan's; 0 absent)
         self.got_raw = {}                     # C261: toy -> every "got" she saw on it, smiled at or not (the day plan's ladder reads it)
+        self.come_calls = []                  # C365: her last COME_REL_N calls from across the room: [tick, answered by 'came']
         self.book = {}                        # A89: the smiles she has given for each motor act and object, {kind: {object: n}}: the
                                               # n-th is worth w e^(-n/HABIT_TAU) (consts.MOTOR_WORTH, _motor_judgments)
         self.book_log = []                    # (tick, kind, object, the worth given or why not, n): an instrument, the last 200
@@ -1209,7 +1222,8 @@ class Conduct:
         the motion cannot say (fail-closed)."""
         try:
             st = self.motion.status(a[0], t)
-        except Exception:                                   # noqa: BLE001 (a motion that cannot say: running)
+        except Exception as e_i5:                                   # noqa: BLE001 (a motion that cannot say: running)
+            _I5("conduct.py:_status:1224", e_i5)
             return "unreported"
         return st if st in ENDED else "unreported"
 
@@ -1756,6 +1770,10 @@ class Conduct:
     def request(self, intent, **kw):
         """an episode's or Claude's intent (L3, P4; P5), said when the priorities allow (a request that cannot be said is
         dropped and logged in fast.refused)."""
+        if intent in ONE_PENDING and any(i_ == intent for i_, _k in self.requests):   # C359 (2026-10-16): her come-here is never queued
+            return                                                          # twice: while she was busy her repeat (every COME_REPEAT
+                                                                            # ticks) piled up and drained after the block, 'here. pip.'
+                                                                            # through day 180's away block
         self.requests.append((intent, dict(kw)))
 
     def night(self):
@@ -1922,6 +1940,8 @@ class Conduct:
         got = self._choose(t, p, sounding)
         if got is not None:
             self._say(got[0], t, p, out, in_set=got[1])
+            if getattr(got[0], "intent", None) == "come_call":          # C365: a call from across the room, its answer to come
+                self.come_calls = (getattr(self, "come_calls", []) + [[int(t), False]])[-K.COME_REL_N:]
             if got[2] == "follow_in":
                 f.follow_in += 1
             elif got[2] == "redirect":
@@ -1950,6 +1970,8 @@ class Conduct:
                                                             # A111 (C95): her approach to it is not that: day 8's turn approaches ran
                                                             # 890 and 346 ticks and 29 of 105 acts of the child's fell in them unjudged
         for k, o in p.events:
+            if k == "came" and getattr(self, "come_calls", None):          # C365: her latest call answered
+                self.come_calls[-1][1] = True
             row = K.MOTOR_WORTH.get(k)
             if row is None or (guided and k not in K.HELD_PAID):            # C285: in her hands only its stand and its step are its own
                 continue
@@ -1958,7 +1980,13 @@ class Conduct:
             if k == "got" and o:
                 self.got_raw[o] = int(self.got_raw.get(o, 0)) + 1
             fkey = self._book_key(full, o) if full is not None else None
-            if full is not None and self.book.get(full, {}).get(fkey, 0) >= K.MASTERED_N:
+            if k in K.COME_CHAIN:                                           # C365: coming's approximations are past mastery only when coming
+                cc_ = getattr(self, "come_calls", None) or []                # is reliable (it answers COME_MASTERED of her last calls)
+                rel_ = sum(1 for c_ in cc_ if c_[1]) / float(max(1, len(cc_)))
+                if len(cc_) >= K.COME_REL_N // 2 and rel_ >= K.COME_MASTERED:
+                    self.book_log.append((t, k, o, f"past mastery: coming answers {rel_:.2f} of her last {len(cc_)} calls (C365)", len(cc_))); del self.book_log[:-200]
+                    continue
+            elif full is not None and self.book.get(full, {}).get(fkey, 0) >= K.MASTERED_N:
                 self.book_log.append((t, k, o, "past mastery", self.book[full][fkey])); del self.book_log[:-200]
                 continue
             n = self.book.get(k, {}).get(key, 0)
@@ -2124,6 +2152,9 @@ class Conduct:
             mem = self.last_seen = {}
         for s_ in p.seen:                                            # C135: her last sight of each thing (an instrument of her memory,
             mem[s_.id] = (int(t), s_)                                # not saved: it spans TOLD_MEMORY ticks)
+        if self.confirm_act_due != NEVER and t - self.confirm_act_due > K.CONFIRM_LATE:   # C364: her words for its act not said within
+            f.refused.append((t, "confirm_act", "her voice busy past CONFIRM_LATE: the smile alone (C364)"))   # the window: the smile
+            self.confirm_act_due = NEVER                                                   # stands, the words are dropped (logged once)
         if not f.voice_free(t):
             return None
         ev = {k for k, _ in p.events}
@@ -2154,9 +2185,13 @@ class Conduct:
         #     turns toward (A43), so its eyes come to her face and the smile is seen before social referencing is learned. Not
         #     while a new word's set is under way (its lines are said in full, 4.5, 4.8), nor while she judges an ask (its X
         #     unnamed, A51): the smile stands, the word is dropped (fast.refused); her own label set gives way to it
-        if self.confirm_act_due == t and p.present:
+        if self.confirm_act_due != NEVER and t - self.confirm_act_due <= K.CONFIRM_LATE and p.present and \
+                not (t > self.confirm_act_due and self.requests):       # C364: at the judged tick, or her first free tick within CONFIRM_LATE;
+                                                                        # late, it yields to what her plan has asked (a new word's set, her
+                                                                        # goodbye: judged acts every 10 ticks held a new word off 48 ticks)
             if any(ln_.intent == "new_word" for ln_ in f.queue) or self.pending is not None:
                 f.refused.append((t, "confirm_act", "a new word's set under way or an ask pending: the smile alone"))
+                self.confirm_act_due = NEVER
             else:
                 f.queue = []                                # her own label set gives way to the "yes!" (its lines were about the act)
                 o = p.obj(self.confirm_obj) if self.confirm_obj else None
@@ -2167,12 +2202,17 @@ class Conduct:
                 # talk: Tomasello and Kruger 1992). The act's own frames first (the line check holds them to her words and the
                 # truth, as any line), then the thing's, then the bare 'yes!'
                 kf_ = "confirm_" + str(getattr(self, "confirm_kind", "") or "")
-                ln = f.compose(kf_, t, p, o=o) if (o is not None and kf_ in TP.FRAMES) else None
+                ln = f.compose(kf_, t, p, o=o) if kf_ in TP.FRAMES else None   # C372 (2026-10-17): an act with no thing has its own
+                # words too. They were tried only with the act's thing in her view, so the words of its stand, its step (C284: 'you stand!',
+                # 'you walk!') and its coming were never said: none in four days of the record, where every stand, step and coming she
+                # smiled at heard 'yes! good.' or 'good. good!', the frames worn by every praise of a command block (said within 60
+                # ticks: skipped) and the praise dropped. A frame with a thing's slot fills nothing without one (the thing's frames next)
                 if ln is None:
                     ln = f.compose("confirm", t, p, o=o) if o is not None else None
                 if ln is None:
                     ln = f.compose("confirm_act", t, p)
                 if ln is not None and f.allowed(ln, t, reply=True)[0]:
+                    self.confirm_act_due = NEVER                    # (C364: said once)
                     return ln, False, None
         # the child's turn: she listens (both starting on one tick: the child has it), unless its babble never stops (A13);
         # and she holds her voice for the reply she owes it, after her latency
@@ -2222,6 +2262,20 @@ class Conduct:
             r, self.reply_due = self.reply_due, None
             f.queue = [ln_ for ln_ in f.queue if ln_.intent in LESSON_SETS]   # the turn answered; the set it broke into is not resumed,
                                                            # unless it is a lesson's (C115): a parent answers and goes on with the game
+            # C369 (2026-10-17): WHILE HER CALL WAITS, HER ANSWER TO ITS TURN IS THE CALL. Day 189's first command block under C368
+            # (2,101 ticks): the child spoke on a quarter of its ticks and her answer to each turn ('oh! the bucket.', 'you see the
+            # car?': 67 lines) went before her waiting come-here (step 8); each call sounded 6 to 79 ticks after her plan asked it, and
+            # of 11 repeats asked while it was turned away from her 2 were said. A parent calling her child to come answers its
+            # babble with the call ('yes! come here, pip!'). Her 'no' at a talk-over, her confirmation and her answer to her own
+            # question stand; her smile for its word is judged at its turn's end, apart from the line, and stands
+            if r["kind"] not in ("no", "confirm", "label"):
+                for j_, (i_, kw_) in enumerate(self.requests):
+                    if i_ in ("come_call", "come_again"):
+                        del self.requests[j_]
+                        got_ = self._compose_request(i_, t, p, kw_)          # (refused: dropped and logged, as at step 8)
+                        if got_ is not None:
+                            return got_, False, None
+                        break
             ln = self._reply_line(r, t, p)
             if ln is not None and f.allowed(ln, t, reply=True)[0]:
                 return ln, False, None
@@ -2252,8 +2306,11 @@ class Conduct:
                         if lines_ and f.allowed(lines_[0], t)[0]:
                             f.last_set[o_.id] = t; f.queue = lines_[1:]; self._line_no_acts = True
                             return lines_[0], False, None
-        # 7. joint attention: a follow-in variation set naming its target as she reads it (4.10; her gaze goes there in L1)
-        o = self._target(p)
+        # 7. joint attention: a follow-in variation set naming its target as she reads it (4.10; her gaze goes there in L1).
+        #    C368 (2026-10-17): IN THE COME LESSON HER CALL GOES FIRST. Her come-here (come_call, come_again: requests, step 8) waited
+        #    behind her naming of whatever toy it looked at: day 188's first full command block under C367 (6,841 ticks) had 185 toy
+        #    lines and 42 calls. While a call of hers waits, joint attention takes no target this tick
+        o = None if any(i_ in ("come_call", "come_again") for i_, _k in self.requests) else self._target(p)
         if o is not None and o.id != p.child_target and o.id not in p.child_holds and o.on not in ("hand", PARENT_NAME):
             # C306 (2026-10-07): THE FOLLOW-IN OF A TOY ITS HAND REACHES FOR BUT ITS EYES ARE NOT ON IS A SHOW OF IT. Day 108's copy (p1
             # look probe v6): 'a ball. a ball.', 'look. the rattle.', 'here is the drum.' named what its hand reached for (A40's second
@@ -2301,11 +2358,22 @@ class Conduct:
             self._trial_begin(t, p)
             if self.trial is not None:
                 return None
-        while self.requests:
-            intent, kw = self.requests.pop(0)
-            got = self._compose_request(intent, t, p, kw)
-            if got is not None:
+        held_ = []                                                          # C358 (2026-10-16): A REQUEST THE EXPECTANT PAUSE REFUSES WAITS FOR IT.
+        while self.requests:                                                # Until now it was dropped whole: her goodbye after a question
+            intent, kw = self.requests.pop(0)                               # ("what is it?" ... the away block's "bye bye pip." refused and
+            n_ = len(self.fast.refused)                                     # never said: no goodbye in a day of the life's record), her
+            got = self._compose_request(intent, t, p, kw)                   # come-here (C357), any one-off line her plan asks once. Held
+            if got is not None:                                             # and tried again each tick for the pause's length and
+                self.requests[:0] = held_                                   # REQUEST_HOLD more; its refusal logged once
                 return got, False, ("redirect" if intent == "redirect" else None)
+            r_ = self.fast.refused[-1] if len(self.fast.refused) > n_ else None
+            if r_ is not None and str(r_[2]) == "request: the expectant pause":
+                t0_ = int(kw.get("held_from", t))
+                if "held_from" in kw:
+                    self.fast.refused.pop()                                 # (logged once, at its first refusal)
+                if t < t0_ + K.PAUSE_EXPECT + K.REQUEST_HOLD:
+                    held_.append((intent, dict(kw, held_from=t0_)))
+        self.requests[:0] = held_
         ln, kind = f.steer_line(t, p, redirect_ok=t >= self.no_target_since + K.REDIRECT_AFTER)
         while f.show_due:                                                   # C206: the planner's unseen toys, shown instead
             self.request("show", o=f.show_due.pop(0))
@@ -2704,7 +2772,8 @@ class Conduct:
         m_ = self.motion
         try:
             return float(np.linalg.norm(m_.d.xpos[m_.toys[toy]][:2] - np.asarray(m_.child.head, float)[:2])) <= K.ASK_NEAR_M
-        except Exception:
+        except Exception as e_i5:
+            _I5("conduct.py:_near_head:2773", e_i5)
             return False
 
     def left_where_it_lies(self, toy):
@@ -2741,6 +2810,7 @@ class Conduct:
                     copies=[list(c) for c in self.copies],
                     ledger=self.ledger.state(), transcriber=None if self.transcriber is None else self.transcriber.state(),
                     book={k: dict(v) for k, v in self.book.items()}, book_log=[list(x) for x in self.book_log[-200:]],
+                    come_calls=[[int(a_), bool(b_)] for a_, b_ in getattr(self, "come_calls", [])],   # C365
                     set_level=dict(self.set_level), got_raw=dict(self.got_raw),                       # C261
                     vocal_book=dict(self.vocal_book), distress_due=self.distress_due,
                     social_n=int(self.social_n), social_calls=int(self.social_calls),
@@ -2782,6 +2852,11 @@ class Conduct:
         self.social_n = int(s.get("social_n", 0)); self.social_calls = int(s.get("social_calls", 0))   # C239 (older saves: none)
         self.distress_due = s.get("distress_due")                                            # A102 (a save from before it: none owed)
         self.book_log = [tuple(x) for x in s.get("book_log", ())]
+        if "come_calls" not in s:                                           # C365: a save from before it: coming's approximations, worn to
+            for k_ in K.COME_CHAIN:                                         # zero under the count that never fell, recover once at this load
+                for key_ in list(self.book.get(k_, {})):                    # as over a night (RECOVER_KEEP)
+                    self.book[k_][key_] = int(self.book[k_][key_] * K.RECOVER_KEEP)
+        self.come_calls = [[int(a_), bool(b_)] for a_, b_ in s.get("come_calls", [])]   # C365
         self.confirm_act_due, self.confirm_obj = s.get("confirm_act_due", NEVER), s.get("confirm_obj")
         self.scaffold = s.get("scaffold", True)             # (a save before P3's twelfth round: the scaffold on, as at birth)
         self.level2 = self._registered(s.get("level2", self.level2))   # (a save before A60b 13: its registered nouns as

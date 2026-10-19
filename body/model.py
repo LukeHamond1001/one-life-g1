@@ -504,6 +504,13 @@ class BornCode(nn.Module):
         return (x.to(self.rows.dtype) @ self.rows) / math.sqrt(float(self.size))
 
 
+INV_CLIP = 10.0       # A229x (2026-10-17): act_inv's standardized input saturates at +-INV_CLIP scales (MotorTiming.inverse_logits): one
+                      # Adam step after a still dimension first moves changes the function by at most about the rate x INV_CLIP,
+                      # however many dimensions are still (a floor read off the dimensions' scales collapses where most are still)
+INV_SD_FLOOR = 1e-2   # A229x (2026-10-17): no input dimension of act_inv is scaled below this share of the dimensions' RMS scale
+                      # (MotorTiming.inv_standardize): a dimension still over the statistics' horizon is not amplified a millionfold
+
+
 class MotorTiming(nn.Module):
     """A LATER EFFECTOR'S MOTOR TIMING PART (the core refactor's step R6; docs/SIM_DESIGN.md 5.4 and 5.8: the forward model and the
     inverse model named as one part), born from a generator of its own (the body's seed; never the global random stream):
@@ -535,11 +542,57 @@ class MotorTiming(nn.Module):
             with torch.no_grad():
                 self.inv[0].weight.copy_(torch.randn(h, n_in, generator=gen) / math.sqrt(float(n_in))); self.inv[0].bias.zero_()
                 self.inv[2].weight.copy_(torch.randn(sum(self.factors), h, generator=gen) / math.sqrt(float(h))); self.inv[2].bias.zero_()
+            self.register_buffer("inv_mu", torch.zeros(n_in)); self.register_buffer("inv_sd", torch.ones(n_in))   # A229n: its input's
+                                                                                                                   # running mean and scale, born 0 and 1
+            self.register_buffer("inv_m1", torch.zeros(n_in)); self.register_buffer("inv_m2", torch.zeros(n_in))   # A229x: their
+            self.register_buffer("inv_c", torch.zeros(()))                     # running moments from zero, and the weight they carry
 
     def inverse_logits(self, s0, s1):
-        """act_inv: the sense at t [.., sense_n] and at t+1 -> one piece of logits per joint, [.., K_j] each"""
-        z = self.inv(torch.cat([s0, s1 - s0], dim=-1))
+        """act_inv: the sense at t [.., sense_n] and at t+1 -> one piece of logits per joint, [.., K_j] each; A229n: the input
+        standardized by its running statistics (inv_mu, inv_sd), a reparametrization the re-fold keeps exact (`inv_standardize`)"""
+        x = torch.cat([s0, s1 - s0], dim=-1)
+        z = self.inv(((x - self.inv_mu) / self.inv_sd).clamp(-INV_CLIP, INV_CLIP))   # A229x: the input saturates at +-INV_CLIP scales
         return list(torch.split(z, list(self.factors), dim=-1))
+
+    def inv_standardize(self, x, rate):
+        """A229n (2026-10-17): ACT_INV'S INPUT STANDARDIZED BY ITS RUNNING STATISTICS (divisive normalization: Carandini and Heeger
+        2012). The mean and the scale of its input [s0, s1 - s0], one of each per dimension, move toward this batch's (`x` [n, 2 sense_n],
+        the day's own-act pairs; never the night's) by `rate`, the batch's share of act_inv_std_tau, and the first layer is re-folded so
+        the function is unchanged to the float: with u = (x - mu) / sd and u' = (x - mu') / sd', u = u' sd' / sd + (mu' - mu) / sd, so
+        W' = W diag(sd' / sd) and b' = b + W (mu' - mu) / sd. The statistics change nothing the body does; they condition its gradient:
+        on the walk command the change of the sense (a step of 0.006, the decay 0.03 x a level of 0.1 to 0.3) is a hundredth of the
+        level, and on the raw pair the small steps were not learned (the zero turn read as a small turn at every level above 0.05; the
+        read probe of 2026-10-17). Born at 0 and 1 (an older save: the same function).
+        A229x (2026-10-17, the lead's review of A229n before it landed): (1) THE STATISTICS ARE THE DATA'S FROM THE FIRST BATCH. The
+        running moments start from zero and are read through the weight they carry (inv_c: 1 - (1 - 1/tau)^k after k pairs, as Adam
+        corrects its moments), so the mean and the scale are the pairs' own at once; moved from the born 0 and 1 by 1/tau a pair, the
+        walk command's change (variance 3e-5) would have taken some 40,000 own acts, four days, to be read at its scale. (2) NO
+        DIMENSION SCALED BELOW INV_SD_FLOOR OF THE DIMENSIONS' RMS SCALE: a dimension still over the horizon (the voice's ears: 1,725
+        numbers, bins its own sounds never reach) would have been scaled by 1e-6, and the first Adam step after it moved (Adam steps
+        each weight by about its rate whatever its scale) would have changed that column's raw weight a thousandfold; the RMS, not the
+        median, as the still dimensions may be most of them; (3) THE STANDARDIZED INPUT SATURATES at +-INV_CLIP scales (inverse_logits):
+        a floor read off the dimensions' scales collapses where nearly all are still (the voice's few sounding bins among 3,450), and
+        the clip bounds the first step after a still dimension moves whatever their number (Adam moves a weight by about its rate, the
+        input it multiplies at most INV_CLIP); the re-fold stays exact for every input within INV_CLIP scales, as a healthy
+        dimension's are, and divisive normalization saturates in biology (Carandini and Heeger 2012)"""
+        if not self.inverse:
+            return
+        with torch.no_grad():
+            x = x.detach().float().reshape(-1, int(self.inv_mu.numel()))
+            r = float(rate)
+            if r <= 0.0 or int(x.shape[0]) == 0:
+                return
+            mu, sd = self.inv_mu.clone(), self.inv_sd.clone()
+            m1 = x.mean(0).to(mu.device); m2 = (x * x).mean(0).to(mu.device)
+            c_n = (1.0 - r) * self.inv_c + r                                   # A229x: the moments' weight, and the moments, from zero
+            a1_ = (1.0 - r) * self.inv_m1 + r * m1; a2_ = (1.0 - r) * self.inv_m2 + r * m2
+            mu_n = a1_ / c_n; v_n = a2_ / c_n
+            sd_n = torch.sqrt(torch.clamp(v_n - mu_n * mu_n, min=0.0))
+            sd_n = torch.clamp(torch.maximum(sd_n, float(INV_SD_FLOOR) * torch.sqrt((sd_n * sd_n).mean())), min=1e-8)   # A229x: the floor
+            self.inv_m1.copy_(a1_); self.inv_m2.copy_(a2_); self.inv_c.copy_(c_n)
+            W, b = self.inv[0].weight, self.inv[0].bias
+            b.add_(W @ ((mu_n - mu) / sd)); W.mul_((sd_n / sd).unsqueeze(0))   # (b with the old W and sd, then W)
+            self.inv_mu.copy_(mu_n); self.inv_sd.copy_(sd_n)
 
 
 class Block(nn.Module):
@@ -999,7 +1052,7 @@ class Organs(nn.Module):
             out.register_buffer(n, b.cpu())
         return out
 
-    def striatum_init(self, k, m, seed=0, wm=0, effectors=None, events=0, sense=0):
+    def striatum_init(self, k, m, seed=0, wm=0, effectors=None, events=0, sense=0, actor_width=None, actor_extra=None):
         """born: the expansion of a delay line of k events (a heard symbol, an own symbol, or a felt face each) into m
         thresholded units; the rows of the born map are summed over the line's occupied positions (the input is one-hot).
         THE LATER EFFECTORS' BLOCKS (the core refactor's step R5): each later effector of `effectors` (the anatomy's; effector 0 is the
@@ -1046,7 +1099,8 @@ class Organs(nn.Module):
             self.stri_blocks = blocks                                          # (its first row, its joints' settings) per later effector
             with torch.random.fork_rng(devices=[]):
                 for e in motor:
-                    a_ = nn.Linear(width, sum(int(f_) for f_ in e.factors)).to(dev)
+                    a_ = nn.Linear((int(actor_width) + int((actor_extra or {}).get(e.name, 0))) if actor_width else width,   # (D2: on the band's state where
+                                   sum(int(f_) for f_ in e.factors)).to(dev)                                                   # the body says so; A226: and its limb's)
                     with torch.no_grad():
                         a_.weight.zero_(); a_.bias.zero_()
                     self.actors[e.name] = a_

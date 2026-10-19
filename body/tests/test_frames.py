@@ -548,7 +548,8 @@ def test_error_scales_and_the_partners_pace():
             out = L._wake_lesson()
         finally:
             torch.nn.utils.clip_grad_norm_ = clip
-        assert out and "skipped" not in out and len(got) == 7, out          # the 7 forecast channels after the words (A88: no charge)
+        n_fc_ = sum(1 for c_ in L.anatomy.channels if c_.kind == "vector" and getattr(c_, "forecast", False))
+        assert out and "skipped" not in out and len(got) == n_fc_ == 8, (out, n_fc_)   # the forecast channels after the words (A88: no charge; A224: the walk command's own drive)
         grads[es] = got
     for es in (2.0, 4.0):
         for n, g0 in grads[None].items():
@@ -732,7 +733,7 @@ def test_recall_into_action():
     run = WorldLoop(G1)
     for _ in range(30):
         run.step()
-    assert n_same == 30 * 9 and float(G1._frec_now.norm()) > 0.0, (n_same, float(G1._frec_now.norm()))
+    assert n_same == 30 * len(G1.anatomy.motors) and float(G1._frec_now.norm()) > 0.0, (n_same, float(G1._frec_now.norm()))   # (every later effector a tick: ten since W8's loco)
     # the map's weight grows where a recalled act predicts the next one; not where it predicts nothing
     lr = dict(live_lr=1e-3, write_q=0.0)       # the test's own settings: a faster waking rate, and every frame written (a surprise gate writes a
     grow = {}                                   # block's changes, whose next act is the next block's: the store would hold the transitions alone)
@@ -909,14 +910,18 @@ def test_the_competence_drive():
         e_ = next(e for e in ends if e[0] == t_end)
         assert e_[1] > 0 and abs(share - e_[2] / e_[1]) < 1e-12, (share, e_)
         vals_ = []; sk_e, best_e = e_[3], e_[4]                            # the means and the records as the end found them
-        for c_, (nn, em, pm, emf, pmf, pp, epm) in sk_e.items():
+        for c_, row_e in sk_e.items():
+            nn, em, pm, emf, pmf, pp, epm = row_e[:7]; ee_ = row_e[7] if len(row_e) > 7 else em * em   # (A200c: the error's square, the 8th)
             if nn < 2 or em <= 0.0 or emf is None:
                 continue
             if nn < FERR_FAST_TAU_:
                 vals_.append(0.0); continue
             var_ = pp - pm * pm; b_ = max(0.0, (epm - em * pm) / var_) if var_ > 1e-30 else 0.0
             eh_ = max(0.0, emf + b_ * (pm - pmf)); bc_ = best_e.get(c_)
-            vals_.append(0.0 if bc_ is None or bc_ <= 0.0 else max(0.0, min(1.0, (bc_ - eh_) / bc_)))
+            if bc_ is None:
+                vals_.append(0.0); continue
+            sd_e = math.sqrt(max(0.0, ee_ - em * em))                    # A200c: the fall read against the error's spread, not the record
+            vals_.append(max(0.0, min(1.0, (bc_ - eh_) / sd_e)) if sd_e > 0.0 else 0.0)
         prog_h = sum(vals_) / len(vals_) if vals_ else 0.0
         assert abs(prog - prog_h) < 1e-9 and abs(v - COMPETENCE_GAIN * share * prog) < 1e-12, (prog, prog_h, v)
     assert src.n_paid == len(paid) and abs(src.paid - sum(p[2] for p in paid)) < 1e-9
@@ -945,18 +950,19 @@ def test_the_competence_drive():
     # (n, e long run, p long run, e of late, p of late, p squared long run, e x p long run); the slope b = (exp - e p) / (pp - p p) = 0.5
     keep_b = getattr(L, "_fbest_own", None)
     L._fbest_own = {"a": 1.0}
-    L._fskill_own = {"a": [600, 1.0, 2.0, 0.2, 0.4, 5.0, 2.5]}                             # a world a fifth as lively of late and the error a
+    L._fskill_own = {"a": [600, 1.0, 2.0, 0.2, 0.4, 5.0, 2.5, 2.0]}                        # a world a fifth as lively of late and the error a (A200c: the error's square 2, its spread 1)
     assert abs(L._ferr_own_progress()) < 1e-12, L._ferr_own_progress()                     # fifth with it: 0.2 + 0.5 (2 - 0.4) = 1 = the record: none
-    L._fskill_own = {"a": [600, 1.0, 2.0, 0.5, 2.0, 5.0, 2.5]}                             # the error halved at equal liveliness: half below the
+    L._fskill_own = {"a": [600, 1.0, 2.0, 0.5, 2.0, 5.0, 2.5, 2.0]}                        # the error halved at equal liveliness: half below the
     assert abs(L._ferr_own_progress() - 0.5) < 1e-12 and L._fbest_own["a"] == 1.0          # record; a read without commit moves no record
     assert abs(L._ferr_own_progress(commit=True) - 0.5) < 1e-12 and abs(L._fbest_own["a"] - 0.5) < 1e-12   # the event's end takes the new low
     assert L._ferr_own_progress(commit=True) == 0.0                                        # and the same ground is not paid twice
     L._fskill_own = {"a": [600, 1.0, 2.0, 0.8, 2.0, 5.0, 2.5]}                             # back up, then down to where it had been: nothing
-    assert L._ferr_own_progress(commit=True) == 0.0 and abs(L._fbest_own["a"] - 0.5) < 1e-12
+    from body.core.frames import COMP_RECORD_RELAX as RELAX_
+    assert L._ferr_own_progress(commit=True) == 0.0 and abs(L._fbest_own["a"] - (0.5 + 0.3 * RELAX_)) < 1e-12   # (A200: the record forgets, RELAX of the way up)
     L._fskill_own = {"a": [600, 1.0, 2.0, 0.5, 2.0, 5.0, 2.5]}
-    assert L._ferr_own_progress(commit=True) == 0.0
-    L._fskill_own = {"a": [600, 1.0, 2.0, 0.4, 2.0, 5.0, 2.5], "b": [100, 0.5, 1.0, 0.1, 1.0, 2.0, 1.0]}   # a new low on one of two channels, the
-    assert abs(L._ferr_own_progress() - 0.5 * 0.2) < 1e-12, L._ferr_own_progress()         # other's mean of late not yet formed (0): their mean
+    assert L._ferr_own_progress(commit=True) == 0.0                                        # (no spread known, A200c: nothing paid; the record back to 0.5)
+    L._fskill_own = {"a": [600, 1.0, 2.0, 0.4, 2.0, 5.0, 2.5, 2.0], "b": [100, 0.5, 1.0, 0.1, 1.0, 2.0, 1.0]}   # a new low on one of two channels, the
+    assert abs(L._ferr_own_progress() - 0.5 * 0.1) < 1e-12, L._ferr_own_progress()         # other's mean of late not yet formed (0): their mean (A200c: 0.1 below the record in spreads of 1)
     L._fbest_own = {}
     L._fskill_own = {"a": [600, 1.0, 2.0, 0.4, 2.0, 5.0, 2.5]}                             # no record yet: the first read sets it and pays nothing
     assert L._ferr_own_progress(commit=True) == 0.0 and abs(L._fbest_own["a"] - 0.4) < 1e-12

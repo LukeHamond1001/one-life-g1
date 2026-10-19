@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "one-life-g1"
-version = "0.148.1"
+version = "0.207.0"
 description = "A robot brain that learns in one continuous life: a simulated Unitree G1 that learns every tick from one teacher's approval, sleeps every night, and is never reset."
 readme = "README.md"
 requires-python = ">=3.14"

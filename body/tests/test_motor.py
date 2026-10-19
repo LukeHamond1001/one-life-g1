@@ -244,7 +244,7 @@ def _born_limbs(cfg, world, fwd=False, seed=0):
     return _born(_Limbs(TOK, cfg, fwd=fwd), cfg, world, seed=seed)
 
 
-_LR0 = dict(live_lr=0.0, value_lr=0.0, band_lr=0.0, night_lr=0.0, gate_lr=0.0, gate_adam_lr=0.0, vcrit_lr=0.0, actor_lr=0.0, face_lr=0.0,
+_LR0 = dict(forecast_scaling=0, live_lr=0.0, value_lr=0.0, band_lr=0.0, night_lr=0.0, gate_lr=0.0, gate_adam_lr=0.0, vcrit_lr=0.0, actor_lr=0.0, face_lr=0.0,
             act_inv_lr=0.0)
 
 
@@ -450,19 +450,20 @@ def test_act_inv_batched():
 
     def spy(i, f=fb, L=L):
         st_ = L.motor[i - 1]; pairs = list(st_["inv_batch"])
-        inv0 = _c.deepcopy(L.m.timing["limb"].inv); opt0 = _c.deepcopy(L.opt_inv.state_dict())
-        f(i); steps.append((L.ticks, len(pairs), pairs, inv0, opt0, _c.deepcopy(L.m.timing["limb"].inv)))
+        tm0 = _c.deepcopy(L.m.timing["limb"]); opt0 = _c.deepcopy(L.opt_inv.state_dict())
+        f(i); steps.append((L.ticks, len(pairs), pairs, tm0, opt0, _c.deepcopy(L.m.timing["limb"].inv)))
     L._inverse_batch = spy
     for _ in range(120):
         run.step()
     assert steps and all(t_ % 8 == 0 for t_, *_ in steps) and all(1 <= n_ <= 8 for _, n_, *_ in steps), [(t_, n_) for t_, n_, *_ in steps]
-    t_, n_, pairs, inv0, opt0, inv1 = steps[3]
+    t_, n_, pairs, tm0, opt0, inv1 = steps[3]
     with torch.no_grad():
-        want = _c.deepcopy(inv0)
+        want_tm = _c.deepcopy(tm0); want = want_tm.inv
     o = torch.optim.Adam(want.parameters(), lr=float(L.cfg.get("act_inv_lr", 1e-3))); o.load_state_dict(opt0)
     S0 = torch.stack([p_[0] for p_ in pairs]); S1 = torch.stack([p_[1] for p_ in pairs])
     tab = L.m.acts["limb"]; tr = torch.stack([tab.digits(torch.tensor(p_[2])) for p_ in pairs])
-    z = want(torch.cat([S0, S1 - S0], -1)); lg = torch.split(z, [5, 5], -1)
+    want_tm.inv_standardize(torch.cat([S0, S1 - S0], -1), L._inv_std_rate(n_))   # A229n: the statistics move first (the function unchanged)
+    lg = want_tm.inverse_logits(S0, S1)
     loss = sum(torch.nn.functional.cross_entropy(l_, tr[:, j_]) for j_, l_ in enumerate(lg)); o.zero_grad(); loss.backward(); o.step()
     assert all(torch.equal(a_, b_) for a_, b_ in zip(want.parameters(), inv1.parameters())), "the batch's step is not the mean lesson"
     # a batch of one is R6's lesson to the bit
@@ -488,6 +489,93 @@ def test_act_inv_batched():
     assert L.motor[0]["inv_n"] == n0 + 2 and L.motor[0]["inv_batch"] == []
     print(f"motor 4: act_inv batched every 8 ticks: {len(steps)} steps in 120 ticks, each on ticks divisible by 8 over 2-8 pairs, the step",
           "the mean lesson by hand; a batch of one R6's lesson to the bit; pairs pending at dusk learned at nightfall, kept by a save")
+
+
+def test_act_inv_learns_its_own_acts_moves():
+    """A228: for an effector that declares the born approach, a joint the cord also stepped on an own act's tick is left out of act_inv's
+    lesson and its reliability for that act (its move the act's and the approach's together): the mask is read from the tick's cord
+    step (st["now"]["cord"]), none where the cord stepped no joint or the effector declares no approach; a batch with one pair's joint
+    masked steps as the mean lesson over each joint's kept pairs (by hand), and counts the masked joint's reliability on its kept pairs
+    alone; the gathering keeps the mask; a save keeps a pending pair's mask; without masks the batch is R6h's to the bit"""
+    import copy as _c
+    cfg = dict(wake_ticks=100000, wake_every=8, gate_every=8, write_floor=1e-30, fast_rls=0, gate_floor=0.6, act_inv_every=8)
+    L = _born_limbs(cfg, _limb_world()); run = WorldLoop(L)
+    for _ in range(20):
+        run.step()
+    e = L.anatomy.motors[0]
+    assert L._inv_keep(e, {"cord": [0.01, 0.0]}) is None                         # no approach declared: every joint the act's
+    e.approach = {"go": 0, "turn": 1}
+    try:
+        assert L._inv_keep(e, {"cord": [0.01, 0.0]}) == [False, True] and L._inv_keep(e, {"cord": [0.0, -0.02]}) == [True, False]
+        assert L._inv_keep(e, {"cord": None}) is None and L._inv_keep(e, {"cord": [0.0, 0.0]}) is None and L._inv_keep(e, None) is None
+        st = L.motor[0]
+        s0, s1, s2, s3 = (torch.randn(2) for _ in range(4))
+        st["inv_batch"] = [(s0, s1, 7, None, [True, False]), (s2, s3, 18, None)]
+        tm0 = _c.deepcopy(L.m.timing["limb"]); opt0 = _c.deepcopy(L.opt_inv.state_dict())
+        conf0 = _c.deepcopy(st.get("inv_conf")) or L._inv_conf_new(e)
+        L._inverse_batch(1)
+        want_tm = _c.deepcopy(tm0); want = want_tm.inv
+        o = torch.optim.Adam(want.parameters(), lr=float(L.cfg.get("act_inv_lr", 1e-3))); o.load_state_dict(opt0)
+        tab = L.m.acts["limb"]; tr = torch.stack([tab.digits(torch.tensor(a_)) for a_ in (7, 18)])
+        S0_, S1_ = torch.stack([s0, s2]), torch.stack([s1, s3])
+        want_tm.inv_standardize(torch.cat([S0_, S1_ - S0_], -1), L._inv_std_rate(2))   # A229n: the statistics move first (the function unchanged)
+        lg = want_tm.inverse_logits(S0_, S1_)
+        loss = torch.nn.functional.cross_entropy(lg[0], tr[:, 0]) + torch.nn.functional.cross_entropy(lg[1][1:], tr[1:, 1])
+        o.zero_grad(); loss.backward(); o.step()
+        assert all(torch.allclose(a_, b_, atol=1e-7) for a_, b_ in zip(want.parameters(), L.m.timing["limb"].inv.parameters())), \
+            "the masked batch's step is not the mean lesson over the kept pairs"
+        n0 = [sum(sum(r_) for r_ in c_) for c_ in conf0]; n1 = [sum(sum(r_) for r_ in c_) for c_ in st["inv_conf"]]
+        d = 1.0 - 1.0 / float(L._motor_const("act_inv_tau"))
+        assert abs(n1[0] - ((n0[0] * d + 1.0) * d + 1.0)) < 1e-6 and abs(n1[1] - (n0[1] * d + 1.0)) < 1e-6, (n0, n1)   # joint 1 counted once
+        assert st["inv_last"]["kept"] == [2, 1], st["inv_last"]
+        # the gathering: an own act's tick whose cord stepped joint 0 gathers its pair with the mask
+        st["inv_batch"] = []; st["sense"] = torch.zeros(2); st["now"] = dict(st["now"] or {}, acted=True, act=7, cord=[0.02, 0.0], cont=True)
+        fb_ = L._inverse_batch; L._inverse_batch = lambda i_: None
+        L.ticks = 1                                                               # (not a batch tick)
+        try:
+            L._timing_sense(1)
+        finally:
+            L._inverse_batch = fb_
+        assert len(st["inv_batch"]) == 1 and st["inv_batch"][0][4] == [False, True], st["inv_batch"]
+        # A228b: where the frame shows the cord's push on the sense, the pair is the move less the push, every joint kept (no mask)
+        import types as _t
+        st["inv_batch"] = []; st["sense"] = torch.zeros(2); st["now"] = dict(st["now"], acted=True, act=7, cord=[0.02, 0.0], cont=True)
+        n_ = int(L.anatomy.channel(e.sense).size); full_ = [0.0] * n_
+        idx_ = [int(j_) for j_ in (e.sense_idx if e.sense_idx is not None else range(n_))]
+        full_[idx_[0]] = 0.25
+        s_now_ = torch.tensor([0.75, -0.5]); bs_ = L._body_sense; now0_ = getattr(L.world, "now", None)
+        L._body_sense = lambda e_: s_now_.clone(); L.world.now = _t.SimpleNamespace(obs={e.sense + "_push": full_})
+        fb_ = L._inverse_batch; L._inverse_batch = lambda i_: None
+        try:
+            L._timing_sense(1)
+        finally:
+            L._inverse_batch = fb_; L._body_sense = bs_; L.world.now = now0_
+        assert len(st["inv_batch"]) == 1 and len(st["inv_batch"][0]) == 4 and torch.allclose(st["inv_batch"][0][1], torch.tensor([0.5, -0.5])), st["inv_batch"]
+        st["inv_batch"] = [(torch.zeros(2), torch.zeros(2), 7, None, [False, True])]
+        # a save keeps the pending pair's mask
+        fd, path = tempfile.mkstemp(suffix=".pt"); os.close(fd)
+        try:
+            L.save(path); D = Life.load(path, _Limbs(TOK, L.cfg), save_path=None, world=_limb_world())
+        finally:
+            os.remove(path)
+        assert len(D.motor[0]["inv_batch"]) == 1 and list(D.motor[0]["inv_batch"][0][4]) == [False, True], D.motor[0]["inv_batch"]
+        # the reliability through a save: marked (counted on its own moves) it is kept; a save from before A228 (no mark) restarts it
+        def reload(mark):
+            e.approach = {"go": 0, "turn": 1} if mark else None              # (the mark is written for an approach effector)
+            fd_, path_ = tempfile.mkstemp(suffix=".pt"); os.close(fd_)
+            try:
+                L.save(path_); A_ = _Limbs(TOK, L.cfg); A_.motors[0].approach = {"go": 0, "turn": 1}
+                return Life.load(path_, A_, save_path=None, world=_limb_world())
+            finally:
+                os.remove(path_)
+        st["inv_gain"] = 0.45; st["inv_kappa"] = [0.5, 0.4]
+        kept_, fresh_ = reload(True), reload(False)
+        assert kept_.motor[0]["inv_gain"] == 0.45 and kept_.motor[0]["inv_conf"] is not None, kept_.motor[0]["inv_gain"]
+        assert fresh_.motor[0]["inv_gain"] == 0.0 and fresh_.motor[0]["inv_conf"] is None and fresh_.motor[0]["inv_kappa"] == [0.0, 0.0]
+    finally:
+        e.approach = None
+    print("motor A228: a joint the born approach also stepped is left out of act_inv's lesson and reliability for that act; the batch "
+          "steps as the mean lesson over each joint's kept pairs; the gathering and a save keep the mask")
 
 
 def test_fatigue_per_effector_and_the_forward_error():
@@ -914,7 +1002,7 @@ def test_the_born_codes():
     from body.sim.anatomy import SIM_CFG, SimAnatomy, born_table
     g = SimAnatomy(born_table(), SIM_CFG).check()
     o = Organs(g.vocab, d=32, layers=1, heads=2, window=8, channels=g.channels, effectors=g.effectors)
-    assert {k_: v_.size for k_, v_ in o.encs.items()} == dict(face=2, ears=1725, eye_p=172, eye_f=1536, body=242, touch=130, vestibular=24)   # A88
+    assert {k_: v_.size for k_, v_ in o.encs.items()} == dict(face=2, ears=1725, eye_p=172, eye_f=1536, body=242, touch=130, vestibular=24, loco_cmd=2)   # A88; A224
     a = _Seer(TOK, cfg); a.channels[2].organ = "encs.ears"
     try:
         a.check()
@@ -1115,25 +1203,25 @@ def test_the_g1_anatomy():
     from body.model import Organs
     from body.sim.anatomy import BODY_JOINTS, CEREB_JOINTS, LIMBS, MOSSY_G, MOSSY_SPEED, RANGES, SIM_CFG, SimAnatomy, born_table, TRACT, ZONES
     a = SimAnatomy(born_table(), SIM_CFG).check()
-    assert [c.name for c in a.channels] == ["words", "face", "ears", "eye_p", "eye_f", "body", "touch", "vestibular"]   # A88: no charge
-    assert [c.size for c in a.channels] == [79, 2, 1725, 172, 1536, 242, 130, 24] and sum(c.size for c in a.channels[1:]) == 3831   # A88
+    assert [c.name for c in a.channels] == ["words", "face", "ears", "eye_p", "eye_f", "body", "touch", "vestibular", "loco_cmd"]   # A88: no charge; A224: last
+    assert [c.size for c in a.channels] == [79, 2, 1725, 172, 1536, 242, 130, 24, 2] and sum(c.size for c in a.channels[1:]) == 3833   # A88; A224 (+2)
     assert all(c.forecast for c in a.channels) and all(c.organ == f"encs.{c.name}" for c in a.channels[1:])
     names = [e.name for e in a.effectors]
-    assert names == ["voice", "words", "gaze", "waist", "arm_l", "arm_r", "hand_l", "hand_r", "leg_l", "leg_r"], names
+    assert names == ["voice", "words", "gaze", "waist", "arm_l", "arm_r", "hand_l", "hand_r", "leg_l", "leg_r", "loco"], names   # (W8: the locomotor command last)
     t_, w_ = a.effectors[0], a.effectors[1]
     assert a.voice is w_ and a.voice_at == 1 and len(t_.factors) == len(TRACT) == 10 and t_.sense == "ears" and t_.inverse and t_.intrinsic and t_.cry
     assert w_.factors == [79] and w_.gate == "mouth_gate" and not w_.intrinsic
-    assert [len(e.factors) for e in a.motors] == [10, 3, 3, 7, 7, 7, 7, 6, 6] and sum(len(e.factors) for e in a.motors) == 56
+    assert [len(e.factors) for e in a.motors] == [10, 3, 3, 7, 7, 7, 7, 6, 6, 2] and sum(len(e.factors) for e in a.motors) == 58
     assert [e.name for e in a.motors if e.intrinsic] == ["voice"] and [e.name for e in a.motors if e.spg] == ["arm_l", "arm_r", "leg_l", "leg_r"]
     assert (a.effector("leg_l").spg_phase, a.effector("leg_r").spg_phase) == (0.0, 0.5) and a.effector("gaze").vor == [0, 1]
     assert [(e.name, e.spg_rhythm) for e in a.motors if e.spg] == [("arm_l", None), ("arm_r", None), ("leg_l", "legs"), ("leg_r", "legs")]
-    assert [e.name for e in a.motors if e.orient] == ["gaze", "waist"] and [r.name for r in a.rewards] == ["face", "pain"]
+    assert [e.name for e in a.motors if e.orient] == ["gaze", "waist", "loco"] and [r.name for r in a.rewards] == ["face", "pain", "novelty", "competence"]   # (A216: the walk command orients; A127, A181)
     assert abs(SIM_CFG["gate_tonic_rate"] - 4.656402) < 1e-6 and (SIM_CFG["gate_tonic"], SIM_CFG["gate_tonic_clock"], SIM_CFG["gate_int"],
                                                                   SIM_CFG["gate_int_form"], SIM_CFG["gate_vigor"]) == (0.25, 4, 0.5, "error", 0.0)
     cfg = dict(SIM_CFG, wake_ticks=100000, wake_every=8, gate_every=8, write_floor=1e-30, gate_floor=0.3)
     w = _g1_world(); torch.manual_seed(0)
     L = Life.birth(SimAnatomy(born_table(), cfg), device="cpu", d=32, layers=1, heads=2, window=8, cfg=cfg, seed=0, world=w)
-    assert [L.m.get_submodule(e.gate).in_features - 32 - 5 for e in L.anatomy.motors] == [3, 3, 5, 4, 4, 4, 4, 4, 4]
+    assert [L.m.get_submodule(e.gate).in_features - 32 - 5 for e in L.anatomy.motors] == [3, 3, 5, 4, 4, 4, 4, 4, 4, 2]
     caught = []; fg = L._gate_lesson
 
     def spyg(i=0, f=fg, L=L, caught=caught):
@@ -1178,12 +1266,14 @@ def test_the_g1_anatomy():
     assert SIM_CFG["cereb"] == 1 and isinstance(cb, Cerebellar) and cb.n_mossy == len(nm) == 219, (SIM_CFG.get("cereb"), len(nm))
     assert kinds == {"act": 56, "angle": 43, "velocity": 43, "acc": 6, "gyro": 6, "touch": 16, "contact": 49}, kinds
     eff = [n_.split(" ", 1)[1].split(".", 1)[0] for n_ in nm if n_.startswith("act ")]
-    assert [k_ for k_, _ in itertools.groupby(eff)] == [e_.name for e_ in a.motors] == [n_ for n_ in names if n_ != "words"], eff
+    assert [k_ for k_, _ in itertools.groupby(eff)] == [e_.name for e_ in a.motors if e_.name != "loco"] == [n_ for n_ in names if n_ not in ("words", "loco")], eff   # (W8: the gait command no joint: out of the mossy fibres)
     jn = {"voice": list(TRACT), "gaze": ["yaw", "pitch", "vergence"], "words": []}
     for e_ in a.effectors:
+        if e_.name == "loco":
+            assert not [n_ for n_ in nm if n_.startswith("act loco.")]; continue   # (W8: none)
         want_ = jn[e_.name] if e_.name in jn else [BODY_JOINTS[j_] for j_ in e_.joints]
         assert [n_.split(".", 1)[1] for n_ in nm if n_.startswith(f"act {e_.name}.")] == want_, e_.name
-    order = ([f"act {e_.name}.{j_}" for e_ in a.motors for j_ in (jn[e_.name] if e_.name in jn else [BODY_JOINTS[k_] for k_ in e_.joints])]
+    order = ([f"act {e_.name}.{j_}" for e_ in a.motors if e_.name != "loco" for j_ in (jn[e_.name] if e_.name in jn else [BODY_JOINTS[k_] for k_ in e_.joints])]
              + [f"angle {j_}" for j_ in BODY_JOINTS] + [f"velocity {j_}" for j_ in BODY_JOINTS]
              + [f"{k_} {u_}.{x_}" for u_ in ("torso", "pelvis") for k_ in ("acc", "gyro") for x_ in "xyz"]
              + [f"touch {z_}" for z_ in ZONES] + [f"contact {j_}" for j_ in BODY_JOINTS]
@@ -1616,6 +1706,335 @@ def test_the_striatum_scales_down():
           f"one factor ({c_:.4f}) over every weight; a whisper of rms {rq0:.3f} brought up to {rq1:.2f} in 600 ticks (x{c2:.0f}, one factor); an actor at zero left at zero")
 
 
+def test_act_inv_standardizes_its_input():
+    """motor (A229n, 2026-10-17): ACT_INV'S INPUT STANDARDIZED BY ITS RUNNING STATISTICS. (1) The re-fold is exact: a move of the
+    statistics leaves the logits of random pairs unchanged to float precision, twice over. (2) The day's batched lesson moves them by
+    the batch's share of act_inv_std_tau, 1 - (1 - 1/tau)^n; a save without the buffers loads them born (0 and 1), the same function.
+    (3) On integrator-shaped pairs (levels 0.1 to 0.3, steps of 0.006 and 0.018, the decay 0.03 x the level: the walk command's shape)
+    the settings are learned in 800 Adam steps with the statistics and not without, the zero step read right in the first and read as
+    a small step in the second (the live read probe of 2026-10-17: every zero turn read as small-left above a level of 0.05). Fails
+    without A229n"""
+    import copy as _c
+    cfg = dict(wake_ticks=100000, wake_every=8, gate_every=8, write_floor=1e-30, fast_rls=0, gate_floor=0.6, act_inv_every=8,
+               act_inv_std_tau=4096)                         # (A229y: the statistics held by the body's constants; moved here)
+    L = _born_limbs(cfg, _limb_world()); tm = L.m.timing["limb"]; tm_born = _c.deepcopy(tm); run = WorldLoop(L)
+    for _ in range(20):
+        run.step()
+    g = torch.Generator().manual_seed(3)
+    s0 = torch.rand(64, 2, generator=g) * 0.3; s1 = 0.97 * s0 + (torch.rand(64, 2, generator=g) - 0.5) * 0.04
+    z0 = [l_.detach().clone() for l_ in tm.inverse_logits(s0, s1)]
+    tm.inv_standardize(torch.cat([s0, s1 - s0], -1), 0.5)
+    assert not torch.allclose(tm.inv_mu, torch.zeros(4)) and not torch.allclose(tm.inv_sd, torch.ones(4)), "the statistics did not move"
+    assert all(torch.allclose(a_, b_, atol=1e-5, rtol=1e-5) for a_, b_ in zip(z0, tm.inverse_logits(s0, s1))), "the re-fold is not exact"
+    tm.inv_standardize(torch.cat([s0, s1 - s0], -1), 1.0)
+    assert all(torch.allclose(a_, b_, atol=1e-5, rtol=1e-5) for a_, b_ in zip(z0, tm.inverse_logits(s0, s1))), "the second re-fold is not exact"
+    # (2) the day's lesson moves them by the batch's share; an older save loads them born
+    st = L.motor[0]; st["inv_batch"] = [(s0[k], s1[k], int(7 + k % 3), None) for k in range(5)]
+    mu0 = tm.inv_mu.clone(); r = L._inv_std_rate(5)
+    assert abs(r - (1.0 - (1.0 - 1.0 / 4096.0) ** 5)) < 1e-12, r
+    want_mu = mu0 + r * (torch.cat([s0[:5], s1[:5] - s0[:5]], -1).mean(0) - mu0)
+    L._inverse_batch(1)
+    assert torch.allclose(tm.inv_mu, want_mu, atol=1e-6), (tm.inv_mu, want_mu)
+    sd_old = {k_: v_ for k_, v_ in tm_born.state_dict().items() if k_ not in ("inv_mu", "inv_sd")}   # a save from before A229n
+    tm_new = _c.deepcopy(tm); tm_new.load_state_dict(sd_old, strict=False)                             # (strict=False: persistence's)
+    tm_new.inv_mu.zero_(); tm_new.inv_sd.fill_(1.0)                                                    # born, as a fresh organ's are
+    assert all(torch.allclose(a_, b_) for a_, b_ in zip(tm_new.inverse_logits(s0, s1), tm_born.inverse_logits(s0, s1))), "an older save's function changed"
+    # (3) the settings learned on the walk command's shape with the statistics, not without
+    steps = torch.tensor([-0.018, -0.006, 0.0, 0.006, 0.018])
+
+    def data(n, gen):
+        a0 = 0.1 + 0.2 * torch.rand(n, 2, generator=gen); k = torch.randint(0, 5, (n, 2), generator=gen)
+        return a0, 0.97 * a0 + steps[k], k
+
+    def learn(std):
+        t_ = _c.deepcopy(tm_born); o = torch.optim.Adam(t_.inv.parameters(), lr=1e-3); gg = torch.Generator().manual_seed(5)
+        if std:
+            w0, w1, _ = data(2048, gg); t_.inv_standardize(torch.cat([w0, w1 - w0], -1), 1.0)
+        for _ in range(800):
+            a0, a1, k = data(64, gg); lg = t_.inverse_logits(a0, a1)
+            loss = sum(torch.nn.functional.cross_entropy(l_, k[:, j]) for j, l_ in enumerate(lg))
+            o.zero_grad(); loss.backward(); o.step()
+        with torch.no_grad():
+            a0, a1, k = data(1024, torch.Generator().manual_seed(99)); lg = t_.inverse_logits(a0, a1)
+            acc = sum(float((l_.argmax(-1) == k[:, j]).float().mean()) for j, l_ in enumerate(lg)) / 2
+            zero = float(torch.stack([(l_.argmax(-1) == 2)[k[:, j] == 2].float().mean() for j, l_ in enumerate(lg)]).mean())
+        return acc, zero
+    acc_s, zero_s = learn(True); acc_r, zero_r = learn(False)
+    assert acc_s >= 0.95 and zero_s >= 0.9, (acc_s, zero_s)
+    assert acc_r <= 0.75 and zero_r <= 0.7, (acc_r, zero_r)
+    print(f"A229n: the re-fold exact; the batch moved the statistics by {r:.5f}; the walk command's settings learned {acc_s:.2f} (the zero step",
+          f"{zero_s:.2f}) with the statistics against {acc_r:.2f} ({zero_r:.2f}) without, in 800 steps")
+
+
+def test_act_inv_statistics_from_the_first_batch_and_floored():
+    """motor (A229x, 2026-10-17, the lead's review of A229n): (1) THE STATISTICS ARE THE DATA'S FROM THE FIRST BATCH: after one batch
+    of eight pairs of the walk command's shape at the lesson's rate (eight of act_inv_std_tau), the scale act_inv reads for the change
+    is within a factor of 2 of the batch's own (the born scale 1 moved by 1/tau a pair would still read about 1, a hundred times it),
+    the function unchanged. (2) A DIMENSION STILL OVER THE HORIZON IS FLOORED: its scale no lower than INV_SD_FLOOR of the dimensions'
+    RMS scale, so one Adam step after it first moves changes the first layer's input by little (under 1); with the floor removed and
+    the clip kept, still under 1 (the clip bounds it whatever the scales: INV_CLIP); with neither, by thousands. Fails without A229x"""
+    import copy as _c
+    from body import model as M
+    cfg = dict(wake_ticks=100000, wake_every=8, gate_every=8, write_floor=1e-30, fast_rls=0, gate_floor=0.6, act_inv_every=8,
+               act_inv_std_tau=4096)                         # (A229y: the statistics held by the body's constants; moved here)
+    L = _born_limbs(cfg, _limb_world()); born = _c.deepcopy(L.m.timing["limb"])
+    steps = torch.tensor([-0.018, -0.006, 0.0, 0.006, 0.018])
+    g = torch.Generator().manual_seed(7)
+    a0 = 0.1 + 0.2 * torch.rand(8, 2, generator=g); a1 = 0.97 * a0 + steps[torch.randint(0, 5, (8, 2), generator=g)]
+    x = torch.cat([a0, a1 - a0], -1)
+    t_ = _c.deepcopy(born); z0 = [l_.detach().clone() for l_ in t_.inverse_logits(a0, a1)]
+    t_.inv_standardize(x, L._inv_std_rate(8))
+    own = x.std(0, unbiased=False)
+    ratio = (t_.inv_sd / own)[2:]
+    assert bool(((ratio > 0.5) & (ratio < 2.0)).all()), (t_.inv_sd, own)
+    assert all(torch.allclose(a_, b_, atol=1e-5, rtol=1e-5) for a_, b_ in zip(z0, t_.inverse_logits(a0, a1))), "the re-fold is not exact"
+    # (2) the change of the second joint still (0) over the horizon, then moving: one Adam step, with the floor and without
+    xs = x.clone(); xs[:, 3] = 0.0
+    probe0 = a0[:4].clone(); probe1 = probe0.clone(); probe1[:, 1] = probe0[:, 1] + 0.02             # the still joint moves by 0.02
+
+    def one_step(floor, clip):
+        keep = (M.INV_SD_FLOOR, M.INV_CLIP); M.INV_SD_FLOOR = floor; M.INV_CLIP = clip
+        try:
+            t2 = _c.deepcopy(born); t2.inv_standardize(xs, 1.0)
+            u0 = t2.inv[0](((torch.cat([probe0, probe1 - probe0], -1) - t2.inv_mu) / t2.inv_sd).clamp(-clip, clip)).detach().clone()
+            o = torch.optim.Adam(t2.inv.parameters(), lr=1e-3)
+            lg = t2.inverse_logits(probe0, probe1)
+            loss = sum(torch.nn.functional.cross_entropy(l_, torch.full((4,), 4, dtype=torch.long)) for l_ in lg)
+            o.zero_grad(); loss.backward(); o.step()
+            u1 = t2.inv[0](((torch.cat([probe0, probe1 - probe0], -1) - t2.inv_mu) / t2.inv_sd).clamp(-clip, clip)).detach()
+            return float((u1 - u0).abs().max()), float(t2.inv_sd[3])
+        finally:
+            M.INV_SD_FLOOR, M.INV_CLIP = keep
+    d_f, sd_f = one_step(M.INV_SD_FLOOR, M.INV_CLIP); d_c, _ = one_step(0.0, M.INV_CLIP); d_0, sd_0 = one_step(0.0, float("inf"))
+    assert d_f < 1.0 and d_c < 1.0 and d_0 > 100.0 * max(d_f, d_c), (d_f, d_c, d_0, sd_f, sd_0)
+    print(f"A229x: after one batch of 8 the change's scale read at {[round(float(v), 4) for v in t_.inv_sd[2:]]} (the batch's own",
+          f"{[round(float(v), 4) for v in own[2:]]}); a still dimension floored at {sd_f:.2e} (without the floor {sd_0:.0e}): one Adam step",
+          f"after it moves changes the first layer's input by {d_f:.3f} (the clip alone {d_c:.3f}; neither {d_0:.0f})")
+
+
+def test_act_inv_statistics_held_and_a_pinned_inverse_born_again():
+    """motor (A229y, 2026-10-17): (1) THE STATISTICS HELD: under the body's constants (act_inv_std_tau 0) the day's batched lessons
+    leave act_inv's input statistics where they stand (born 0 and 1 here; no re-fold), the lessons running. (2) A PINNED INVERSE BORN
+    AGAIN AT A LOAD: an inverse not pinned comes back as it was saved, to the bit, and the load says nothing of it; one whose hidden
+    units sit beyond 20 on inputs of one scale (the voice's at dawn 194, biases of 2.2 million, every unit pinned) is born again at
+    the load: weights fresh, statistics born, its optimizer's moments let go, its reliability zero, and the load says so. Fails
+    without A229y"""
+    import contextlib, io
+    cfg = dict(wake_ticks=100000, wake_every=8, gate_every=8, write_floor=1e-30, fast_rls=0, gate_floor=0.6, act_inv_every=8)
+    L = _born_limbs(cfg, _limb_world()); tm = L.m.timing["limb"]; run = WorldLoop(L)
+    for _ in range(80):
+        run.step()
+    assert int(L.motor[0]["inv_n"]) > 0, "no inverse lesson ran"
+    assert torch.equal(tm.inv_mu, torch.zeros_like(tm.inv_mu)) and torch.equal(tm.inv_sd, torch.ones_like(tm.inv_sd)) and float(tm.inv_c) == 0.0, \
+        (tm.inv_mu, tm.inv_sd, float(tm.inv_c))
+
+    def reload(L_):
+        fd_, path_ = tempfile.mkstemp(suffix=".pt"); os.close(fd_)
+        try:
+            L_.save(path_); out_ = io.StringIO()
+            with contextlib.redirect_stdout(out_):
+                D_ = Life.load(path_, _Limbs(TOK, L_.cfg), save_path=None, world=_limb_world())
+            return D_, out_.getvalue()
+        finally:
+            os.remove(path_)
+    D, said = reload(L)
+    assert "born again" not in said and all(torch.equal(a_, b_) for a_, b_ in zip(D.m.timing["limb"].inv.parameters(), tm.inv.parameters()))
+    assert any(p_ in D.opt_inv.state for p_ in D.m.timing["limb"].inv.parameters()), "the inverse's moments were not given back"
+    with torch.no_grad():
+        tm.inv[0].bias.fill_(1e6); tm.inv_sd.fill_(0.5)
+    L.motor[0]["inv_gain"] = 0.4
+    D, said = reload(L)
+    tD = D.m.timing["limb"]
+    assert "born again" in said, said[-600:]
+    with torch.no_grad():
+        u = torch.randn(256, int(tD.inv[0].weight.shape[1]), generator=torch.Generator().manual_seed(1))
+        frac = float(((u @ tD.inv[0].weight.T + tD.inv[0].bias).abs() > 20).float().mean())
+    assert frac < 0.5 and float(tD.inv[0].bias.abs().max()) == 0.0 and torch.equal(tD.inv_sd, torch.ones_like(tD.inv_sd)) and float(tD.inv_c) == 0.0, frac
+    assert D.motor[0]["inv_gain"] == 0.0 and D.motor[0]["inv_conf"] is None and all(p_ not in D.opt_inv.state for p_ in tD.inv.parameters())
+    print(f"A229y: the statistics held through {int(L.motor[0]['inv_n'])} pairs taught; an unpinned inverse reloaded to the bit; a pinned one",
+          f"(bias 1e6) born again at the load (its units beyond 20 on {100 * frac:.0f}% of inputs of one scale), statistics born, moments",
+          "let go, reliability zero")
+
+
+def test_an_act_the_world_drove_teaches_act_inv_nothing():
+    """motor (A230, 2026-10-17): AN ACT THE WORLD DID NOT CARRY OUT TEACHES act_inv NOTHING. On the limbs body, an own act's tick whose
+    next frame shows the world drove the limb itself ('limb_driven' 1: the gait sets the G1's legs' and waist's joints in a walk)
+    gathers no pair for act_inv's lesson; a frame showing 0, or none at all (a world that never drives it), gathers it as before.
+    Fails without A230"""
+    import types as _t
+    cfg = dict(wake_ticks=100000, wake_every=8, gate_every=8, write_floor=1e-30, fast_rls=0, gate_floor=0.6, act_inv_every=8)
+    L = _born_limbs(cfg, _limb_world()); run = WorldLoop(L)
+    for _ in range(20):
+        run.step()
+    st = L.motor[0]; e = L.anatomy.motors[0]
+    got = {}
+    for name, obs in (("driven", {"limb_driven": [1.0]}), ("not driven", {"limb_driven": [0.0]}), ("not shown", {})):
+        st["inv_batch"] = []; st["sense"] = torch.zeros(2); st["now"] = dict(st["now"] or {}, acted=True, act=7, cord=None, cont=True)
+        bs_ = L._body_sense; now0_ = getattr(L.world, "now", None); fb_ = L._inverse_batch
+        L._body_sense = lambda e_: torch.tensor([0.75, -0.5]); L.world.now = _t.SimpleNamespace(obs=dict(obs)); L._inverse_batch = lambda i_: None
+        L.ticks = 1                                                               # (not a batch tick)
+        try:
+            L._timing_sense(1)
+        finally:
+            L._inverse_batch = fb_; L._body_sense = bs_; L.world.now = now0_
+        got[name] = len(st["inv_batch"])
+    assert got == {"driven": 0, "not driven": 1, "not shown": 1}, got
+    print(f"A230: an own act's pair gathered for act_inv where the frame shows the world drove the limb: {got['driven']}; not driven:",
+          f"{got['not driven']}; not shown: {got['not shown']}")
+
+
+def test_an_effector_disengaged_does_not_act():
+    """motor (A231, 2026-10-18): AN EFFECTOR WHOSE ACTUATOR IS NOT ENGAGED DOES NOT ACT. On the limbs body whose world shows the limb
+    disengaged ('limb_engaged' 0) on every other block of 20 ticks: on its disengaged ticks the limb never draws and never acts (its own
+    act its rest, the tick marked disengaged), its gate's buffer rows for those ticks carry the reflex's mark (no eligibility); on its
+    engaged ticks, and in a world that shows nothing, it draws and acts as before. Fails without A231"""
+    base = _limb_world()
+
+    class EngWorld(type(base)):
+        def frame(self):
+            f_ = super().frame()
+            f_.obs["limb_engaged"] = [0.0 if (int(f_.tick) // 20) % 2 == 0 else 1.0]
+            return f_
+    W_ = EngWorld.__new__(EngWorld); W_.__dict__.update(base.__dict__)
+    cfg = dict(wake_ticks=100000, wake_every=10 ** 6, gate_every=10 ** 6, write_floor=1e-30, fast_rls=0, gate_floor=0.6)
+    L = _born_limbs(cfg, W_); run = WorldLoop(L)
+    dis = []; eng = []
+    for _ in range(200):
+        t_ = int(W_.t)
+        run.step()
+        now = L.motor[0]["now"]
+        (dis if (t_ // 20) % 2 == 0 else eng).append((bool(now["acted"]), bool(now["drew"]), bool(now.get("disengaged"))))
+    assert dis and all(not a_ and not d_ and m_ for a_, d_, m_ in dis), dis[:5]
+    assert sum(1 for a_, _, _ in eng if a_) >= 20 and not any(m_ for _, _, m_ in eng), (sum(1 for a_, _, _ in eng if a_), len(eng))
+    rows = list(L.motor[0]["buf"])
+    assert rows and all(len(b_) > 9 for b_ in rows)
+    marked = sum(1 for b_ in rows if b_[9]); want_m = sum(1 for t_ in range(200 - len(rows), 200) if (t_ // 20) % 2 == 0)
+    assert marked == want_m, (marked, want_m, len(rows))                     # the rows of the buffer's last ticks: each disengaged one marked
+    L2 = _born_limbs(cfg, _limb_world()); run2 = WorldLoop(L2); n_act = 0
+    for _ in range(100):
+        run2.step(); n_act += int(bool(L2.motor[0]["now"]["acted"]))
+    assert n_act >= 20 and not any(bool(L2.motor[0]["now"].get("disengaged")) for _ in [0]), n_act
+    print(f"A231: disengaged ticks {len(dis)}: none drawn, none acted, each marked; engaged ticks {len(eng)}: {sum(1 for a_, _, _ in eng if a_)} acts;",
+          f"the gate's rows marked {marked} of {len(rows)}; a world showing nothing: {n_act} acts in 100 ticks")
+
+
+def test_a_blocked_setting_is_never_drawn():
+    """motor (A232, 2026-10-18): THE SETTINGS ITS ACTUATOR CANNOT CARRY OUT NOW ARE NOT DRAWN. On the limbs body whose world shows its
+    first joint's two lowest settings blocked ('limb_blocked': ten flags, the first joint's 0 and 1), over 300 ticks of a gate held open
+    no act of the limb takes either on its first joint (its draws, its units held, its best guesses), the second joint's every setting
+    still drawn; the joint's rest setting can never be blocked; a world that shows nothing draws them as before. Fails without A232"""
+    base = _limb_world()
+
+    class BlkWorld(type(base)):
+        def frame(self):
+            f_ = super().frame()
+            f_.obs["limb_blocked"] = [1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   # (the rest digit 2's flag would be ignored)
+            return f_
+    W_ = BlkWorld.__new__(BlkWorld); W_.__dict__.update(base.__dict__)
+    cfg = dict(wake_ticks=100000, wake_every=10 ** 6, gate_every=10 ** 6, write_floor=1e-30, fast_rls=0, gate_floor=0.6)
+
+    def run_(world):
+        L = _born_limbs(cfg, world); run = WorldLoop(L)
+        with torch.no_grad():
+            L.m.gates["limb"].bias.fill_(60.0)                                   # the gate wide open: the limb acts on nearly every tick
+        d0, d1 = collections.Counter(), collections.Counter()
+        for _ in range(300):
+            run.step()
+            now = L.motor[0]["now"]
+            if now["acted"]:
+                d0[int(now["digits"][0])] += 1; d1[int(now["digits"][1])] += 1
+        return d0, d1
+    d0, d1 = run_(W_)
+    assert sum(d0.values()) >= 100 and d0[0] == 0 and d0[1] == 0 and len(d1) == 5, (d0, d1)
+    e0, e1 = run_(_limb_world())
+    assert e0[0] > 0 and e0[1] > 0, e0                                        # a world that shows nothing: drawn as before
+    print(f"A232: with the first joint's settings 0 and 1 blocked, its settings over {sum(d0.values())} acts {dict(sorted(d0.items()))} (the second",
+          f"joint's {dict(sorted(d1.items()))}); a world showing nothing: {dict(sorted(e0.items()))}")
+
+
+def test_the_blocked_settings_join_the_window():
+    """motor (A233, 2026-10-18): THE SETTINGS ITS ACTUATOR COULD NOT CARRY OUT JOIN THE WINDOW. On the limbs body whose world shows
+    the first joint's two lowest settings blocked on two ticks of every three ('limb_blocked'), the window holds at each position the
+    flags of the frame its act was chosen on (the joint's rest digit never blocked), as '@blk:limb' [T, 10] in the lesson's
+    observations, where the timing lesson reads a blocked setting as the rest (anatomy 38); a world that shows none gives none. Fails
+    without A233"""
+    base = _limb_world(); shown = []
+
+    class BlkWorld(type(base)):
+        def frame(self):
+            f_ = super().frame()
+            on_ = int(f_.tick) % 3 != 0
+            f_.obs["limb_blocked"] = [1.0 if on_ else 0.0] * 3 + [0.0] * 7      # (the rest digit 2's flag dropped)
+            shown.append([on_, on_] + [False] * 8)
+            return f_
+    W_ = BlkWorld.__new__(BlkWorld); W_.__dict__.update(base.__dict__)
+    cfg = dict(wake_ticks=100000, wake_every=10 ** 6, gate_every=10 ** 6, write_floor=1e-30, fast_rls=0, gate_floor=0.6)
+    L = _born_limbs(cfg, W_); run = WorldLoop(L)
+    for _ in range(80):
+        run.step()
+    obs = L._window_tensors()[0]
+    assert "@blk:limb" in obs, sorted(obs)
+    T = int(obs["@blk:limb"].shape[0])
+    assert tuple(obs["@blk:limb"].shape) == (T, 10) and T >= 12, obs["@blk:limb"].shape
+    assert obs["@blk:limb"].tolist() == shown[-T:], (obs["@blk:limb"].tolist()[-4:], shown[-4:])
+    L2 = _born_limbs(cfg, _limb_world()); run2 = WorldLoop(L2)
+    for _ in range(20):
+        run2.step()
+    assert "@blk:limb" not in L2._window_tensors()[0]
+    print(f"A233: the window holds the frame's blocked settings at each of its {T} positions ({sum(r_[0] for r_ in shown[-T:])} blocked);",
+          "a world that shows none gives none")
+
+
+def test_a_proposal_earns_its_decisiveness_by_agreeing():
+    """motor (A235, 2026-10-18): A PROPOSAL'S DECISIVENESS IS EARNED BY AGREEING WITH WHAT IT IS SHOWN. On the limbs body (each joint's
+    decisiveness its own, A140): a joint's agreement counts nothing until 64 pairs (its readout as before A235); past them its earned
+    exponent is scaled by its agreement in direction beyond a coin's, so a joint whose guesses agree with its demonstrations' direction
+    half the time reads at sharpness 1 and one that always agrees reads as before. A rest act_inv reads as an act is a demonstration,
+    counted on each joint where the guess and the reading both name a direction, only where the world shows the push; a rest whose
+    push is not shown is none, nor a rest read as the rest, nor a setting the world showed blocked, nor a joint the push left untouched
+    (read as their rest, A233). Fails without A235"""
+    cfg = dict(wake_ticks=100000, wake_every=10 ** 6, gate_every=10 ** 6, write_floor=1e-30, fast_rls=0, sharp_per_joint=1)
+    L = _born_limbs(cfg, _limb_world()); run = WorldLoop(L)
+    for _ in range(5):
+        run.step()
+    e = L.anatomy.motors[0]; st = L.motor[0]; tm = L.m.timing[e.name]; tab = L.m.get_submodule(e.organ)
+    st["inv_kappa"] = [1.0, 1.0]; st["inv_conf"] = [[[10.0 if r == c else 0.0 for c in range(5)] for r in range(5)] for _ in range(2)]
+    s0 = L._motor_read(e, st)[0]
+    assert s0[0] > 1.5 and s0[1] > 1.5, s0                                   # earned by kappa and variety alone
+    st["prop_agree"] = [[60.0, 0.0], [60.0, 0.0]]
+    assert L._motor_read(e, st)[0] == s0, "counted before 64 pairs"
+    st["prop_agree"] = [[100.0, 100.0], [100.0, 50.0]]                         # joint 0 always agrees, joint 1 a coin's
+    s1 = L._motor_read(e, st)[0]
+    assert abs(s1[0] - s0[0]) < 1e-9 and abs(s1[1] - 1.0) < 1e-9, (s0, s1)
+    rd = [int(x_) for x_ in tab.digits(torch.tensor(int(e.rest_id))).tolist()]
+    read = [4, 0]
+
+    def forced(a, b):
+        return [torch.tensor([10.0 if k == read[j] else -10.0 for k in range(5)]) for j in range(2)]
+    sv = torch.zeros(2); pu = torch.tensor([0.01, -0.01])
+    rest_tick = lambda guess, blk=None: {"guess": guess, "acted": False, "reflex": False, "blk": blk}
+    tm.inverse_logits = forced
+    try:
+        st.pop("prop_agree", None)
+        L._prop_agree(e, st, sv, sv, rest_tick([3, 3]), None)               # no push shown: no teacher's demonstration
+        assert st.get("prop_agree") is None, st.get("prop_agree")
+        L._prop_agree(e, st, sv, sv, rest_tick([3, 3]), pu)                 # joint 0 agrees (+, +), joint 1 does not (+, -)
+        assert st["prop_agree"] == [[1.0, 1.0], [1.0, 0.0]], st["prop_agree"]
+        L._prop_agree(e, st, sv, sv, rest_tick([rd[0], 3]), pu)             # joint 0's guess names no direction: not counted there
+        assert st["prop_agree"][0][0] < 1.0 + 1e-9 and st["prop_agree"][1][0] > 1.0, st["prop_agree"]
+        n_ = [a_[0] for a_ in st["prop_agree"]]
+        read[:] = rd
+        L._prop_agree(e, st, sv, sv, rest_tick([3, 3]), pu)                 # a rest read as the rest: none
+        read[:] = [4, 0]
+        L._prop_agree(e, st, sv, sv, rest_tick([3, 3], blk=[False] * 4 + [True] + [True] + [False] * 4), pu)   # both readings blocked
+        L._prop_agree(e, st, sv, sv, rest_tick([3, 3]), torch.tensor([0.0, 0.0]))   # nothing pushed
+        assert [a_[0] for a_ in st["prop_agree"]] == n_, (st["prop_agree"], n_)
+    finally:
+        del tm.inverse_logits
+    print(f"A235: a joint agreeing a coin's share reads at sharpness {s1[1]:.2f} (was {s0[1]:.2f}), one always agreeing at {s1[0]:.2f}; the",
+          "rests' demonstrations counted in direction as the lesson reads them")
+
+
 def test_the_striatum_reads_the_body():
     """motor (A149, 2026-10-01): THE SENSORIMOTOR STRIATUM. On the limbs body with the striatum on, the striatum carries a born block of
     rows for the later effectors' own numbers in the anatomy's proprioceptive channels (the limb's two body numbers: 2 rows of m; the grip's
@@ -1778,3 +2197,20 @@ if __name__ == "__main__":
             failed += 1; print("ERROR", t.__name__, ":", type(e).__name__, str(e)[:300])
     print(f"{len(MOTOR_TESTS) - failed}/{len(MOTOR_TESTS)} passed in {time.time() - t0:.0f}s")
     sys.exit(1 if failed else 0)
+
+
+def test_a_sense_whose_width_changed_drops_its_old_pairs():
+    """A224b: pairs gathered under a sense of another width (a save from before the walk command's sense grew from one number to two)
+    and the save's last sense are dropped at the next tick's read, not fed to the inverse (the live pair's first tick under A224 faulted:
+    'mat1 and mat2 shapes cannot be multiplied (7x2 and 4x64)'); pairs at the sense's own width are kept"""
+    cfg = dict(wake_ticks=100000, wake_every=8, gate_every=8, write_floor=1e-30, fast_rls=0, gate_floor=0.6, act_inv_every=8)
+    L = _born_limbs(cfg, _limb_world()); run = WorldLoop(L)
+    for _ in range(9):
+        run.step()
+    st_ = L.motor[0]; n_ = int(L._body_sense(L.anatomy.motors[0]).numel())
+    good = (torch.randn(n_), torch.randn(n_), 7, None)
+    st_["inv_batch"] = [(torch.randn(n_ - 1), torch.randn(n_ - 1), 18, None), good]; st_["sense"] = torch.randn(n_ - 1)
+    L._timing_sense(1)
+    assert all(int(p_[0].numel()) == n_ for p_ in st_["inv_batch"]), "a pair at the old width was kept"
+    for _ in range(16):
+        run.step()                                                      # the batches run on (a fault here was the landing's)

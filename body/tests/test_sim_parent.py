@@ -94,6 +94,26 @@ def _done(w, i):
     return lambda w_: w_.parent.status(i) in PM.DONE_STATES and not w_.parent.phases
 
 
+def test_she_is_never_put_off_her_floor_plan():
+    """C366: her direct approach (T2) sets her beside the child only on the floor she can plan on: with the child carried out to the
+    practice ground (a walk block's), her walk to it and her show of a toy end refused, and she stays where she was (day 187 at
+    8,979,827: a show begun as the walk block began set her kneeling 16 m out, where her way up found no floor, through a command block)"""
+    from body.sim import ghost as GH
+    w = W.G1World(seed=1)
+    pm = w.parent
+    w.frame()
+    at0 = np.asarray(pm.base["at"], float).copy()
+    assert pm._in_plan(at0)
+    w.carry_to_mat(to=GH.Ghost.ground_mid())
+    assert not pm._in_plan(np.asarray(w.d.qpos[:2], float))                 # the child off her floor plan
+    for act in (Act("walk", "child"), Act("show", "duck")):
+        i = pm.request(act)
+        _live(w, 40, until=_done(w, i))
+        here = np.asarray(pm.base["at"], float)
+        assert pm.status(i) in PM.DONE_STATES and pm._in_plan(here) and float(np.linalg.norm(here - at0)) < 3.0, (act, pm.status(i), pm.base["at"])
+    print("C366: the child on the practice ground; her walk to it and her show refused, she stays on her floor at", [round(float(x), 2) for x in pm.base["at"]])
+
+
 def test_the_scene():
     """parent 1: no weld on the G1, no exclusion with her, her shapes soft at priority 2; the face table's cache bit for bit; her caps"""
     w = W.G1World(seed=1)

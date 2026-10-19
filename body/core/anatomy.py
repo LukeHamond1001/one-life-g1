@@ -348,11 +348,15 @@ class Cerebellar:
       in that joint's servo corrective torque as its teacher (the humanoid's 29; the hands' joints have none).
     - `vor`: the VOR's axes (the fovea window's yaw and pitch), each with the flocculus's gain correction and offset; none for a body
       without a VOR.
+    - `loco` (A227): the walk command's axes the cerebellum calibrates (the G1's turn), each with a gain correction and an offset on
+      the command the legs are given, taught by the turn the body made against the turn it was asked for; none for a body that does
+      not walk on command.
     It names no module and holds no tensor (the organ is the body's, built by the organs when the switch is on)."""
     mossy_offset: list
     mossy_scale: list
     joints: list = dc_field(default_factory=list)
     vor: list = dc_field(default_factory=list)
+    loco: list = dc_field(default_factory=list)
 
     @property
     def n_mossy(self):

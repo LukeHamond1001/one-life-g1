@@ -54,6 +54,7 @@ from .core.physiology import PHYSIOLOGY, SWITCHES, MOTOR, CEREB, REFLEX, FRAMES,
 from .core.anatomy import anatomy_for
 from .core.world import World, DiaryWorld, Acts
 from .core.cerebellum import CerebellumMixin
+from .core.ledger import LedgerMixin                 # I1: the ledger of contributions (an instrument)
 from .core.senses import SensesMixin
 from .core.memory import MemoryMixin
 from .core.cortex import CortexMixin
@@ -75,16 +76,25 @@ from .core.situation import SituationMixin
 __all__ = ["collections", "math", "os", "time", "torch", "F", "Organs", "Store", "FastStore", "PHYSIOLOGY", "Life"]
 
 
-OPTIONAL = {"stress_slow"}   # read with a default where used (body/core/mouth.py): known, absent unless given
+# I2 (2026-10-17): THE KEYS READ WITH THEIR OWN DEFAULTS where they are used (`cfg.get(k, default)`), declared in none of the constant
+# tables (declaring them there would add them to every body's constants, the language body's pinned digest among them), and the keys a
+# change retired (a save's constants keep them). The unknown-key warning (review 2026-09-06) named the first at every load of the life
+# (actor_cues, actor_sense, actor_norm_tau, shape_bands, stress_slow, read and in force) beside the retired vte_adapt (A192): a warning
+# that names keys in force teaches its reader to ignore it. body/tests/test_cfg_keys.py holds this list to the code's reads
+INLINE_KEYS = frozenset(("actor_cues", "actor_norm_tau", "actor_sense", "forecast_scaling", "shape_bands", "shape_tau", "store_off", "stress_slow"))
+RETIRED_KEYS = {"vte_adapt": "A192"}
 
 
-class Life(SensesMixin, MemoryMixin, CortexMixin, MouthMixin, CriticsMixin, ActorMixin, NightMixin, PersistenceMixin, InstrumentsMixin, TimingMixin,
+class Life(LedgerMixin, SensesMixin, MemoryMixin, CortexMixin, MouthMixin, CriticsMixin, ActorMixin, NightMixin, PersistenceMixin, InstrumentsMixin, TimingMixin,
            CerebellumMixin, CordMixin, FramesMixin, AmygdalaMixin, SleepMixin, GroundingMixin, SituationMixin):
     def __init__(self, organs, tok, cfg=None, device="cpu", seed=0, save_path=None, world=None):
         unknown = sorted(k_ for k_ in (cfg or {}) if k_ not in PHYSIOLOGY and k_ not in SWITCHES and k_ not in MOTOR and k_ not in CEREB and k_ not in REFLEX
-                         and k_ not in FRAMES and k_ not in AMYG and k_ not in SLEEP and k_ not in OPTIONAL)   # the switches, the motor's, the cerebellum's, (R6h) the born patterns', (R7) the frames', (R7d) the amygdala's and (R8) the night's constants are known, absent unless given
+                         and k_ not in FRAMES and k_ not in AMYG and k_ not in SLEEP and k_ not in INLINE_KEYS and k_ not in RETIRED_KEYS)   # the switches, the motor's, the cerebellum's, (R6h) the born patterns', (R7) the frames', (R7d) the amygdala's and (R8) the night's constants are known, absent unless given; I2: and the keys read where used
         if unknown:
             print("physiology: unknown keys (ignored):", unknown, flush=True)     # review 2026-09-06: a typo was a silent no-op for 21 days
+        retired_ = sorted(k_ for k_ in (cfg or {}) if k_ in RETIRED_KEYS)
+        if retired_:
+            print("physiology: retired keys in the save's constants (read by nothing):", [f"{k_} ({RETIRED_KEYS[k_]})" for k_ in retired_], flush=True)
         self.m = organs.to(device); self.m.eval()
         self.dev = device
         self.cfg = dict(PHYSIOLOGY); self.cfg.update(cfg or {})
@@ -195,7 +205,9 @@ class Life(SensesMixin, MemoryMixin, CortexMixin, MouthMixin, CriticsMixin, Acto
                     rows_ = k_ * (2 * organs.vocab + 3) + sum(k_ * sum(int(f_) for f_ in e_.factors) for e_ in self.anatomy.motors) + k_ * ne_   # the language block, then the later effectors' per joint (steps R5, R5b), then the event lines' (R7a)
                     if (organs.stri_W.numel() == 0 or organs.stri_line.numel() != k_ or organs.stri_W.shape[1] != m_ or organs.stri_W.shape[0] != rows_
                             or organs.vfast.weight.shape[1] != m_ * (1 + wm_) or int(getattr(organs, "stri_Ws", torch.zeros(0, 0)).shape[0]) != ns_):
-                        organs.striatum_init(k_, m_, seed=seed, wm=wm_, effectors=self.anatomy.effectors, events=ne_, sense=ns_)   # born (or re-born at a new size)
+                        organs.striatum_init(k_, m_, seed=seed, wm=wm_, effectors=self.anatomy.effectors, events=ne_, sense=ns_,
+                                             actor_width=(int(organs.value[fb].weight.shape[1]) + (2 * len(self.anatomy.orienting or ()) if int(self.cfg.get("actor_cues", 0)) else 0) if str(self.cfg.get("actor_input", "striatum")) == "band" else None),
+                                             actor_extra={e_.name: self._actor_sense_n(e_) for e_ in self.anatomy.motors})   # born (or re-born at a new size; D2: the actors on the band's width)
                     organs.stri_sense_src = [(ch_, torch.tensor(ix_, dtype=torch.long)) for ch_, ix_ in src_]   # A149 (not saved: the anatomy's)
                     kf = m_ * (1 + wm_) + 1
                 else:
@@ -297,6 +309,9 @@ class Life(SensesMixin, MemoryMixin, CortexMixin, MouthMixin, CriticsMixin, Acto
         self._frel = [0.0] * 6; self._frel_gain = 0.0; self._frel_corr = 0.0   # THE FACE ORGAN'S RELIABILITY (face_form "foresee", §5c): the slope of the felt reward on its foresight
         self._C1_prev = None; self._fpred_now = 0.0
         self._arel = [0.0] * 6; self._arel_gain = 0.0; self._arel_corr = 0.0; self._act_pending = collections.deque()   # the actor's reliability
+        self._shape_m = {}; self._shape_q = {}; self._shape_rho_last = {}; self._dop_shape_m = {}   # D3c/D3d: each shaping band's anticipation (its gain earned) and its term's running mean
+        self._actor_in_m = None; self._actor_in_v = None; self._actor_in_t = -1                # D4: the actors' input's running mean and spread (born at the first state)
+        self._vte_m = {}; self._vte_pending = collections.deque()      # A219: the lean's earned gain per effector (its moments, its queue)
         self._store_after_night = None                    # the store's size when the last night ended: the day's new memories are counted from it
         self._a_bias_now = None; self._act_agree = collections.deque(maxlen=int(self.cfg["wake_ticks"]) + 16)
         # THE FACE ORGAN'S INPUT (face_input, the review of 2026-09-10): "cortex" reads the stream, which carries the coming reward at 0.11;
@@ -429,6 +444,7 @@ class Life(SensesMixin, MemoryMixin, CortexMixin, MouthMixin, CriticsMixin, Acto
         if getattr(self.anatomy, "situation", None) is not None:
             self._situ_learn(u)                                   # A214: and to the situation (body/core/situation.py)
         self._feel_and_learn(delta, delta_slow, delta_long, feat, acted, int_t, p_act, drew)
+        self.ledger_tick(r, u); self.ledger_forecast()                 # I1: the ledger of contributions (an instrument, nothing enters the body)
         if self._frames_on():                               # step R7b: the frame's surprise, the event's end, the gated write, the record
             self._frame_tick(u, delta, r, nxt)
         acts = {self.anatomy.voice.name: int(nxt)}

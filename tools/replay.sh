@@ -3,7 +3,10 @@
 #   sh tools/replay.sh                 the day-147 pair (downloaded once into data/replay/), 1,500 ticks: five to ten minutes on a laptop;
 #                                      she calls it from behind three times in that window; a mid-day pair replays as a sibling of the
 #                                      life (a little of her state is not in the save), so what comes of the calls varies a little
-#   TAG=dawn-148 sh tools/replay.sh    the dawn of day 148 instead: a dawn pair replays the life's record EXACTLY at THREADS=4
+#   TAG=dawn-206 TICKS=4500 sh tools/replay.sh   the dawn of day 206 on this release's code: an EXACT replay at THREADS=4, through
+#                                      the moment in the film (her call at tick 9,892,365, its turn to her, 'you see the cup' said with
+#                                      the cup before its eyes at 9,892,400, its walk to her: 'came' at 9,892,449); about 20 minutes
+#   TAG=dawn-148 sh tools/replay.sh    the dawn of day 148: exact on the code it was released with (git checkout dawn-148); on later code a sibling
 #   TICKS=24000 for a whole day (about two hours)
 # Her voice comes from the pair's own cache (--voice cached): no speech engine is needed; a line the cache lacks is a tone and is counted.
 set -e

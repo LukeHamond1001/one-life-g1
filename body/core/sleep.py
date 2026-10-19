@@ -110,6 +110,7 @@ from .amygdala import episode_entries, night_draw  # noqa: F401  (night_draw: R8
 from .physiology import FRAMES, SLEEP
 
 IMAG_SEED = 3                                # A138: the tape's rows the waking imagination starts from (REM's k: the window's first 3)
+VTE_GAIN_N = 64                              # A219: the prior's weight on the lean's gain, in leans (born at 1; ours)
 VTE_SCALE = 1.0                              # A182: the lean's size in an effector's proposal at w 1 (two futures a full smile apart): the
                                              # better future's first act as one efference copy of it (ours; the day copy reads it)
 IMAG_PAUSE = 10                              # A138: a pause of this many ticks (1.5 s) with every motor effector at rest is the other moment
@@ -213,6 +214,58 @@ class SleepMixin:
                 "end": torch.zeros(TAPE_BLOCK, dtype=torch.bool),
                 "bands": torch.zeros(TAPE_BLOCK, len(self.m.clocks), int(self.m.d), dtype=torch.float16)}
 
+    def _tape_pushers(self):
+        """A228c (2026-10-17): the effectors whose cord push the tape keeps, [(motor index, effector, its sense's width)]: each with an
+        inverse model and a born approach on its body sense (the G1's walk command), whose own act's move by day is the move less the
+        push the world shows (A228b: timing `_sense_push`)"""
+        return [(j, e, (len(e.sense_idx) if e.sense_idx is not None else int(self.anatomy.channel(e.sense).size)))
+                for j, e in enumerate(self.anatomy.motors) if e.inverse and getattr(e, "approach", None) and e.sense is not None]
+
+    def _tape_push(self, blk, r):
+        """A228c: THE CORD'S PUSH TAPED BESIDE THE MOVE. This row's push for every effector `_tape_pushers` names, from the frame the tick
+        is lived on (the one its body sense took: the push the world applied in the tick before, which the move to this row carries),
+        into the block's push columns ("p" [rows, widths], float32) with the row marked known ("pk"); a row whose frame shows no push
+        stays unknown, and so do a block's rows taped before its first known push (the columns are added then: a world that never shows
+        one tapes none, as before A228c)"""
+        pu_ = self._tape_pushers()
+        if not pu_:
+            return
+        xs_ = [self._sense_push(e) for _, e, _ in pu_]
+        if any(x_ is None for x_ in xs_):
+            return
+        if "p" not in blk:
+            blk["p"] = torch.zeros(int(blk["v"].shape[0]), sum(w_ for _, _, w_ in pu_), dtype=torch.float32)
+            blk["pk"] = torch.zeros(int(blk["v"].shape[0]), dtype=torch.bool)
+        blk["p"][r] = torch.cat([x_.reshape(-1).float().cpu() for x_ in xs_]); blk["pk"][r] = True
+
+    def _tape_driven(self, blk, r):
+        """A230 (2026-10-17): WHETHER THE WORLD DROVE EACH EFFECTOR, TAPED BESIDE THE MOVE. For every motor effector, whether the frame the
+        tick is lived on shows the world drove its joints in the tick before (timing `_sense_driven`): the block's column "dv" (int8,
+        one per motor effector: 1 driven, 0 not, -1 not shown), added at a block's first row that shows one (a world that never drives
+        an effector tapes none, as before A230; a block's rows before it, unknown)"""
+        vs_ = [self._sense_driven(e) for e in self.anatomy.motors]
+        if all(v_ is None for v_ in vs_):
+            return
+        if "dv" not in blk:
+            blk["dv"] = torch.full((int(blk["v"].shape[0]), len(vs_)), -1, dtype=torch.int8)
+        blk["dv"][r] = torch.tensor([-1 if v_ is None else int(bool(v_)) for v_ in vs_], dtype=torch.int8)
+
+    def _tape_blocked(self, blk, r, w):
+        """A233 (2026-10-18): THE SETTINGS ITS ACTUATOR COULD NOT CARRY OUT, TAPED BESIDE THE ACT. For every motor effector whose window
+        position holds them (the frame's '<name>_blocked', A232, kept by the cortex at its own half: cortex.py), the block's column
+        "bk:<name>" (int8, one per setting of each joint in order: 1 blocked, 0 not, -1 not shown), added at a block's first row that
+        shows them (a world that shows none tapes none; a block's rows before it, unknown), so the night reads a blocked setting as the
+        rest as the day does (timing `_timing_loss`)"""
+        for e in self.anatomy.motors:
+            f_ = w.get("blk:" + e.name)
+            if f_ is None:
+                continue
+            k_ = "bk:" + e.name
+            if k_ not in blk:
+                blk[k_] = torch.full((int(blk["v"].shape[0]), len(f_)), -1, dtype=torch.int8)
+            if int(blk[k_].shape[1]) == len(f_):
+                blk[k_][r] = torch.tensor([int(bool(x_)) for x_ in f_], dtype=torch.int8)
+
     def _tape_tick(self):
         """THE TICK TAPED (the module's doc), at the tick's end: this tick's window position (the last), its row the day's next, kept in
         the position ("tape") for the offset's end mark"""
@@ -235,6 +288,9 @@ class SleepMixin:
             for j, e in enumerate(mot):
                 blk["a"][r, j] = int(w[e.field])
             blk["bands"][r] = w["bundle"].to("cpu", torch.float16)   # the ladder's bands the cortex received at this tick (the lead's item 1)
+            self._tape_push(blk, r)                                  # A228c: the cord's push beside the move it is part of
+            self._tape_driven(blk, r)                                # A230: whether the world drove each effector, beside the move
+            self._tape_blocked(blk, r, w)                            # A233: the settings its actuator could not carry out, beside the act
         blk["end"][r] = bool(w.get("end", False))
         w["tape"] = n
         self._tape_n = n + 1
@@ -286,7 +342,7 @@ class SleepMixin:
             if 0 <= a_ < b_ <= n:
                 spans.append((a_, b_))
         spans.append((0, n))                                                             # then the whole day
-        bands_ = [b for b in range(len(gam)) if not (int(self.cfg.get("fast_rls", 0)) and b == int(self.cfg["dopamine_band"]))]
+        bands_ = [b for b in range(len(gam)) if not (int(self.cfg.get("fast_rls", 0)) and str(self.cfg.get("dopamine_source", "striatum")) != "band" and b == int(self.cfg["dopamine_band"]))]   # (D1)
         steps = 0; ticks = 0
         for a_, b_ in spans:
             hi = b_ - 1                                                                  # transitions (t, t + 1) with t + 1 <= b_ - 1
@@ -313,7 +369,20 @@ class SleepMixin:
         """the day's first n rows of tape as one reel's tensors (a copy; the bands apart: each episode keeps its window's first)"""
         tape = self._tape or []
         cat = lambda k: torch.cat([blk[k] for blk in tape])[:n].clone()   # noqa: E731
-        return {"s": cat("s"), "v": cat("v"), "xo": cat("xo"), "a": cat("a"), "end": cat("end")}
+        out = {"s": cat("s"), "v": cat("v"), "xo": cat("xo"), "a": cat("a"), "end": cat("end")}
+        w_ = next((int(blk["p"].shape[1]) for blk in tape if "p" in blk), None)
+        if w_ is not None:                                               # A228c: the cord's push and where it is known (a block taped before
+            out["p"] = torch.cat([blk["p"] if "p" in blk else torch.zeros(int(blk["v"].shape[0]), w_) for blk in tape])[:n].clone()   # its
+            out["pk"] = torch.cat([blk["pk"] if "pk" in blk else torch.zeros(int(blk["v"].shape[0]), dtype=torch.bool)   # first known push:
+                                   for blk in tape])[:n].clone()                                                       # unknown)
+        if any("dv" in blk for blk in tape):                              # A230: the world's drive per effector (a block taped before its first: unknown)
+            m_ = len(self.anatomy.motors)
+            out["dv"] = torch.cat([blk["dv"] if "dv" in blk else torch.full((int(blk["v"].shape[0]), m_), -1, dtype=torch.int8) for blk in tape])[:n].clone()
+        for k_ in sorted({k_ for blk in tape for k_ in blk if k_.startswith("bk:")}):   # A233: the blocked settings (a block taped before its first: unknown)
+            F_ = next(int(blk[k_].shape[1]) for blk in tape if k_ in blk)
+            out[k_] = torch.cat([blk[k_] if k_ in blk and int(blk[k_].shape[1]) == F_ else torch.full((int(blk["v"].shape[0]), F_), -1, dtype=torch.int8)
+                                 for blk in tape])[:n].clone()
+        return out
 
     # ---------------- step R8a: the episodes ----------------
     def _episodes_nightfall(self, rep):
@@ -410,7 +479,9 @@ class SleepMixin:
     def _episode_rows(self, ep):
         """an episode's dream window: its reel's rows w0..w1 (views)"""
         r_ = self._reels[ep["reel"]]; s = slice(ep["w0"], ep["w1"] + 1)
-        return {k_: r_[k_][s] for k_ in ("s", "v", "xo", "a", "end", "G")}
+        out = {k_: r_[k_][s] for k_ in ("s", "v", "xo", "a", "end", "G", "p", "pk", "dv") if k_ in r_}   # (A228c: the push where the reel keeps it; A230: the drive)
+        out.update({k_: r_[k_][s] for k_ in r_ if k_.startswith("bk:")})   # (A233: the blocked settings)
+        return out
 
     def _tape_nightfall_reset(self):
         """the day's tape let go with the rest of the day's working state (the episodes keep what the nights read)"""
@@ -577,6 +648,28 @@ class SleepMixin:
                 if t + 1 < T:
                     C = m.stream_step(m.inputs(self.anatomy, {k_: v_[:, t] for k_, v_ in obs.items()}, xos[:, t], bundles[:, t]), cache)
                     bands = m.band_update_b(bands, C)
+        w_ = sum(w_ for _, _, w_ in self._tape_pushers())
+        if w_ and any("p" in r_ and int(r_["p"].shape[1]) == w_ for r_ in rows):   # A228c: the cord's push at each position and where it
+            P_ = torch.zeros(B, T, w_); K_ = torch.zeros(B, T, dtype=torch.bool)    # is known (a window from a reel taped before A228c, or
+            for b, r_ in enumerate(rows):                                          # by another anatomy: unknown)
+                if "p" in r_ and int(r_["p"].shape[1]) == w_:
+                    P_[b, :lens[b]] = r_["p"].float(); K_[b, :lens[b]] = r_["pk"]
+            obs["@push"] = P_.to(dev); obs["@pushk"] = K_.to(dev)
+        m_ = len(mot)
+        if any("dv" in r_ and int(r_["dv"].shape[1]) == m_ for r_ in rows):     # A230: the world's drive per effector at each position (-1: unknown)
+            DV_ = torch.full((B, T, m_), -1, dtype=torch.int8)
+            for b, r_ in enumerate(rows):
+                if "dv" in r_ and int(r_["dv"].shape[1]) == m_:
+                    DV_[b, :lens[b]] = r_["dv"]
+            obs["@driven"] = DV_.to(dev)
+        for e_ in mot:                                                    # A233: the settings each actuator could not carry out at each position
+            k_ = "bk:" + e_.name; F_ = sum(int(f_) for f_ in e_.factors)  # (unknown, or a window from a reel taped before A233: none)
+            if any(k_ in r_ and int(r_[k_].shape[1]) == F_ for r_ in rows):
+                BK_ = torch.zeros(B, T, F_, dtype=torch.bool)
+                for b, r_ in enumerate(rows):
+                    if k_ in r_ and int(r_[k_].shape[1]) == F_:
+                        BK_[b, :lens[b]] = r_[k_] == 1
+                obs["@blk:" + e_.name] = BK_.to(dev)
         return obs, xos, bundles, ends, G, mask.to(dev), lens
 
     def _word_targets(self, xs, ends, lens):
@@ -655,8 +748,17 @@ class SleepMixin:
         """ACT_INV REPLAYED (8's R8 row: "act_inv and the forward half replayed over the day's transitions"): for each motor effector with an
         inverse model, the batch's own acts' transitions (the sense at t and t + 1, the act at t where it acted, both inside the window),
         one step of its own optimizer on the mean of the joints' summed cross-entropy (the day's batched lesson), its reliability left as
-        it is (a replayed pair was learned by day: a fit, not a prediction). Returns the pairs taught"""
+        it is (a replayed pair was learned by day: a fit, not a prediction). Returns the pairs taught.
+        A228c (2026-10-17): THE NIGHT REPLAYS THE LESSON THE DAY LEARNED. An effector whose cord push the tape keeps (`_tape_pushers`: the
+        G1's walk command) is replayed on the move less the push its next position's frame showed, as by day (A228b), and only where the
+        tape knows that push; a pair whose push is not known (a reel taped before A228c, a world that shows none) is not replayed. Until
+        now the night taught the whole move, the push in it, as the act's: day 191's afternoon brought the forward step's reliability
+        back to 0.86 under A228, and each night's 768 batches taught act_inv again that a step of 0.01 the guide added (its forward share
+        at 1.0) was the brain's own"""
         obs, lens = parts["obs"], parts["lens"]; n_ = 0
+        pu_ = {j_: w_ for j_, _, w_ in self._tape_pushers()}; offs_ = {}; o_ = 0
+        for j_ in sorted(pu_):
+            offs_[j_] = o_; o_ += pu_[j_]
         for i_, e in enumerate(self.anatomy.motors, 1):
             if not e.inverse:
                 continue
@@ -666,9 +768,19 @@ class SleepMixin:
                     continue
                 s = self._window_sense(e, {e.sense: obs[e.sense][b, :L_]})
                 a = obs[e.name][b, :L_]
-                idx = torch.nonzero(a[:-1] != int(e.rest_id)).flatten()
+                own_ = a[:-1] != int(e.rest_id)
+                s1_ = s[1:]
+                if (i_ - 1) in pu_:                                          # A228c: the move less the push, where the tape knows it
+                    if "@push" not in obs:
+                        continue
+                    k_ = obs["@pushk"][b, 1:L_].to(own_.device)
+                    own_ = own_ & k_
+                    s1_ = s1_ - obs["@push"][b, 1:L_, offs_[i_ - 1]:offs_[i_ - 1] + pu_[i_ - 1]].to(s1_.device, s1_.dtype)
+                if "@driven" in obs:                                          # A230: a move the world made itself is no lesson of its act
+                    own_ = own_ & (obs["@driven"][b, 1:L_, i_ - 1].to(own_.device) != 1)
+                idx = torch.nonzero(own_).flatten()
                 if idx.numel():
-                    S0.append(s[idx]); S1.append(s[idx + 1]); A.append(a[idx])
+                    S0.append(s[idx]); S1.append(s1_[idx]); A.append(a[idx])
             if not S0:
                 continue
             S0 = torch.cat(S0); S1 = torch.cat(S1); A = torch.cat(A)
@@ -770,12 +882,14 @@ class SleepMixin:
                                 self._rem_limb_n = int(getattr(self, "_rem_limb_n", 0)) + 1
                 bundles.append(bands.clone())
                 n = step + 1
-                ob = {c_.name: torch.tensor(syms[c_.name][:n], dtype=torch.long, device=dev) for c_ in sym}
-                for e in mot:
-                    ob[e.name] = (torch.tensor(macts[e.name][:n], dtype=torch.long, device=dev) if limbs
-                                  else torch.full((n,), int(e.rest_id), dtype=torch.long, device=dev))
-                u = m.inputs(self.anatomy, ob, torch.full((n,), int(self.sil), dtype=torch.long, device=dev), torch.stack(bundles),
-                             codes={c_.name: torch.stack(codes[c_.name][:n]) for c_ in vec})
+                s0 = max(0, n - int(m.window))                              # R10 (2026-10-16): the cortex reads at most its window, as by day
+                k_ = n - s0                                                 # (the rollout fed T0 + L positions whatever the window: a window
+                ob = {c_.name: torch.tensor(syms[c_.name][s0:n], dtype=torch.long, device=dev) for c_ in sym}   # of 8 under T0 + L = 9 faulted
+                for e in mot:                                               # the night, amyg 12; a larger rem_steps would at any size)
+                    ob[e.name] = (torch.tensor(macts[e.name][s0:n], dtype=torch.long, device=dev) if limbs
+                                  else torch.full((k_,), int(e.rest_id), dtype=torch.long, device=dev))
+                u = m.inputs(self.anatomy, ob, torch.full((k_,), int(self.sil), dtype=torch.long, device=dev), torch.stack(bundles[s0:n]),
+                             codes={c_.name: torch.stack(codes[c_.name][s0:n]) for c_ in vec})
                 C = m.stream(u)[-1]; Cs.append(C)
                 bands = m.band_update(bands, C)
                 bnext.append(bands.clone())
@@ -958,15 +1072,60 @@ class SleepMixin:
 
     def _vte_term(self, e):
         """A182: the lean in motor effector e's proposal: VTE_SCALE x w x the embedding of the better imagined future's first act (its
-        rows' sum, as its efference copy is), 0 with no lean, and 0 while a future is being imagined (`_vte_busy`)"""
+        rows' sum, as its efference copy is), 0 with no lean, and 0 while a future is being imagined (`_vte_busy`). A219: times the
+        lean's earned gain for this effector (`_vte_gain`)"""
         v = getattr(self, "_vte", None)
         if not v or getattr(self, "_vte_busy", False):
             return 0.0
         x = v.get(e.name)
         if x is None:
             return 0.0
+        g_ = self._vte_gain(e.name)
+        if g_ <= 0.0:
+            return 0.0
         with torch.no_grad():
-            return VTE_SCALE * float(x[1]) * self.m.acts[e.name](torch.tensor(int(x[0]), device=self.dev))
+            return VTE_SCALE * float(x[1]) * g_ * self.m.acts[e.name](torch.tensor(int(x[0]), device=self.dev))
+
+    def _vte_gain(self, name):
+        """A219 (2026-10-15): THE LEAN'S GAIN IS EARNED PER EFFECTOR. The lean (A182, A190) entered every effector's proposal at its
+        valence's weight alone. Read live on days 163 and 164 (I1): the waist's acts that followed its lean were followed by reward
+        -0.49 against -0.08 for those that did not (404 leans), while the legs', the walking command's and the left arm's leans paid
+        (the right leg +0.06 against -0.13): an imagined future is a forecast, and a forecast is trusted as it has proved right (A97's
+        sharpness, C148's certainty, the actor's earned voice). The body keeps, per effector, the running moments of (the share of
+        its joints that took the leaned setting, the reward of the ACTOR_HORIZON ticks after) at the actors' horizon; the gain is the
+        slope of that reward on the share, in units of the reward's own spread (one spread of reward per unit of following: 1),
+        held in 0..1, shrunk toward 1 by a prior worth VTE_GAIN_N leans (born at 1, the lean as A182 built it; 64 leans of zero slope leave it at 0.5, 640 at 0.09). Nothing names an effector"""
+        m_ = getattr(self, "_vte_m", {}).get(name)
+        if m_ is None or m_[0] < 8:
+            return 1.0
+        n = m_[0]; ms, mg = m_[1] / n, m_[2] / n
+        var_s, var_g = m_[3] / n - ms * ms, m_[4] / n - mg * mg; cov = m_[5] / n - ms * mg
+        if var_s <= 1e-9 or var_g <= 1e-12:
+            return 1.0
+        g_ = max(0.0, min(1.0, (cov / var_s) / math.sqrt(var_g)))
+        return float((n * g_ + VTE_GAIN_N) / (n + VTE_GAIN_N))          # shrunk toward 1 by a prior worth VTE_GAIN_N leans: no cliff at the
+                                                                        # 64th lean (the copy: three effectors' gains fell to 0 on 64 to 90
+                                                                        # noisy samples), and a lean switched low can earn its way back
+
+    def _vte_credit(self, e, now):
+        """A219: an effector that acted under a lean: the share of its joints that took the leaned setting enters the queue; the reward
+        of the ticks after is gathered by the senses (`_vte_pending`, as the actor's `_act_pending`)"""
+        v = getattr(self, "_vte", None)
+        if not v or e.name not in v or now.get("digits") is None:
+            return
+        try:
+            tab = self.m.get_submodule(e.organ)
+            ld = [int(x_) for x_ in tab.digits(torch.tensor(int(v[e.name][0]))).tolist()]
+            share = sum(int(a_) == int(b_) for a_, b_ in zip(now["digits"], ld)) / max(1, len(ld))
+            self._vte_pending.append([self.ticks, e.name, float(share), 0.0])
+        except Exception:
+            pass
+
+    def _vte_moments(self, name, share, g):
+        """A219: the moments of (share, the reward after), at the actors' horizon (actor_tau)"""
+        d = 1.0 - 1.0 / float(self.cfg.get("actor_tau", 36000))
+        m_ = self._vte_m.setdefault(name, [0.0] * 6)
+        m_[0] = d * m_[0] + 1.0; m_[1] = d * m_[1] + share; m_[2] = d * m_[2] + g; m_[3] = d * m_[3] + share * share; m_[4] = d * m_[4] + g * g; m_[5] = d * m_[5] + share * g
 
     def _imagine_pause(self):
         """A138: the pause trigger. Under a live parent the frames' events rarely end (the surprise's fast average stays above half its

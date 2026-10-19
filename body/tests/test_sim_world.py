@@ -217,6 +217,7 @@ def _replica_tick(w, acts):
     for s in range(75):
         for i in rest:
             d.ctrl[w.aid[i]] += alpha * (d.qpos[w.qadr[i]] - d.ctrl[w.aid[i]])
+        d.qfrc_applied[w.dof] = w.passive_torque(d.qpos[w.qadr])         # A143: the passive tissues' push at the range's ends, every step
         par.before_step(s)
         mujoco.mj_step(m, d)
         par.after_step(s)
@@ -420,7 +421,7 @@ def test_no_charge():
     assert not [n for n in names if n.startswith("bottle") or n.startswith("pad")], [n for n in names if "bottle" in n or "pad" in n]
     a = AN.SimAnatomy(AN.born_table(LX.BIRTH_WORDS), AN.SIM_CFG, limits=[float(x) for x in w.tau_max])
     names_ = [r.name for r in a.rewards]                                  # A127 (dawn 24): the novelty drive is a third source when SIM_CFG has it on
-    assert names_ == ["face", "pain"] + (["novelty"] if int(AN.SIM_CFG.get("novelty", 0)) else []), names_
+    assert names_ == ["face", "pain"] + (["novelty"] if int(AN.SIM_CFG.get("novelty", 0)) else []) + (["competence"] if int(AN.SIM_CFG.get("competence", 0)) else []), names_   # (A181: the competence drive)
     assert a.rewards[0].dopamine and a.rewards[1].dopamine and a.rewards[1].amyg   # A91:
     assert hasattr(AN.RewardSource, "dopamine") and AN.RewardSource.dopamine is True          # pain pays; the cortisol switch stays in the core
     assert "charge" not in [c.name for c in a.channels] and a.effectors[0].cry.get("charge") is None
@@ -934,7 +935,8 @@ def test_the_night():
     w.dusk()
     assert w.night and np.allclose(w.m.light_diffuse, day_light * W.NIGHT_LIGHT) and w.parent.asleep
     f = w.frame()
-    assert set(f.obs) == {"body", "touch", "pain", "strain", "vestibular", "imu_torso"}, set(f.obs)   # the body's own senses alone (the strain since A88)
+    assert set(f.obs) == {"body", "touch", "pain", "strain", "vestibular", "imu_torso", "loco_cmd", "loco_cmd_push", "leg_l_driven", "leg_r_driven",
+                          "waist_driven", "loco_engaged", "leg_l_engaged", "leg_r_engaged", "waist_engaged", "loco_blocked"}, set(f.obs)   # (A231: the engaged; A232)   # the body's own senses alone (the strain since A88; the walk command's own drive since A224, the cord's push on it since A228b; whether the gait drove the legs and the waist since A230)
     blob = w.save_state()
     w.apply({})
     night_acts = [b1.acts() for _ in range(4)]
@@ -956,6 +958,22 @@ def test_the_night():
           "senses in the frame, the world stepped tick by tick; the morning's light back over", W.DAWN_TICKS, "ticks,",
           "the eyes and ears on")
 
+
+
+def _same_state(a, b):
+    """two saved world states equal in content (NaN equal to NaN), whatever their pickles' sharing of equal objects"""
+    import pickle as _pk
+    def eq(x, y):
+        if isinstance(x, dict):
+            return isinstance(y, dict) and x.keys() == y.keys() and all(eq(x[k], y[k]) for k in x)
+        if isinstance(x, (list, tuple)):
+            return isinstance(y, (list, tuple)) and len(x) == len(y) and all(eq(u, v) for u, v in zip(x, y))
+        if isinstance(x, np.ndarray):
+            return isinstance(y, np.ndarray) and x.shape == y.shape and np.array_equal(x, y, equal_nan=x.dtype.kind in "fc")
+        if isinstance(x, float) and isinstance(y, float) and np.isnan(x) and np.isnan(y):
+            return True
+        return x == y
+    return a == b or eq(_pk.loads(a), _pk.loads(b))
 
 def test_faults():
     """world 13: A18: MuJoCo's auto-reset is off; a tick MuJoCo cannot live raises WorldFault and leaves the world where the tick
@@ -979,7 +997,7 @@ def test_faults():
                     w.apply({})
                 except WorldFault as e:
                     reasons.append(e.reason)
-                    assert e.tick == 3 == w.tick and w.save_state() == start
+                    assert e.tick == 3 == w.tick and _same_state(w.save_state(), start)   # (R11: by content; a NaN's pickle may share differently)
                 else:
                     raise AssertionError("a bad state was lived")
                 w.d.qvel[10] = 0.0
@@ -1002,7 +1020,7 @@ def test_faults():
                 raise AssertionError("a bad velocity left by the tick's last step reached the frame")
             finally:
                 mujoco.mj_step = real_step
-            assert w.tick == 4 and w.save_state() == start and _same_frame(w.frame(), f0) and abs(w.frame().obs["body"]).max() < 1e3
+            assert w.tick == 4 and _same_state(w.save_state(), start) and _same_frame(w.frame(), f0) and abs(w.frame().obs["body"]).max() < 1e3
             # a stop in the tick's closing forward pass
             k = [0]
 
@@ -1020,7 +1038,7 @@ def test_faults():
                 raise AssertionError("a stop in the closing forward pass was lived")
             finally:
                 mujoco.mj_forward = real_fwd
-            assert w.tick == 4 and w.save_state() == start
+            assert w.tick == 4 and _same_state(w.save_state(), start)
             w.apply({})
             assert w.tick == 5 and not os.path.exists(os.path.join(tmp, "MUJOCO_LOG.TXT"))
         finally:
@@ -1165,6 +1183,68 @@ def test_the_rooms_sounds():
     print(f"world 19: the room's sounds from its physics: the ball dropped 0.4 m sounded at its landing (tick {hit[0]}, {hit[1]:.2f} m/s,",
           f"the fall's {v:.2f}), the ears' energy {loud[hit[0]]:.0f} against the still room's {quiet[0]:.0f}; the G1 at rest silent; the",
           f"sounds saved with the world (the same ears after a restore)")
+
+
+def test_a_resting_toy_makes_no_sound():
+    """world (A236, 2026-10-18): AN IMPACT IS A CONTACT AFTER A SEPARATION. The room's sound model fed, step by step, the toy bucket's
+    contact with the floor flickering (in contact one step, not the next, closing at 0.2 m/s each time it returns: the live bucket's
+    edge, 0.13 to 0.35 m/s) for three ticks knocks once, at the first touch; the same contact back after a whole tick apart knocks
+    again (a landing); and the ball dropped 0.4 m still sounds at its landing. Fails without A236 (a knock at every return)"""
+    import body.sim.extras as X
+    import body.sim.sounds as SD
+    w = G1World(seed=1, extra=X.add_bucket(xy=(0.6, 0.6)))
+    m = w.m
+    snd = SD.Sounds(w)
+    gb = [g for g in range(m.ngeom) if int(m.geom_bodyid[g]) == m.body("toy_bucket").id][0]
+    gf = [g for g in range(m.ngeom) if m.geom(g).name == "floor"][0]       # the room's floor (the live bucket's partner)
+
+    class _C:
+        pos = np.array([0.6, 0.6, 0.0]); frame = np.array([0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0])
+
+    class _Con:
+        def __init__(self, on):
+            self.geom = np.array([[gf, gb]]) if on else np.zeros((0, 2), dtype=int)
+        def __getitem__(self, i):
+            return _C()
+
+    class _D:
+        def __init__(self, on):
+            self.ncon = 1 if on else 0; self.contact = _Con(on)
+
+    class _W:
+        pass
+    fw = _W(); fw.m = m
+    vel_ = SD._vel_at
+    SD._vel_at = lambda m_, d_, b_, p_: np.array([0.0, 0.0, -0.2]) if b_ == m.body("toy_bucket").id else np.zeros(3)
+    try:
+        knocks = 0
+        for tick in range(3):
+            for k in range(8):
+                fw.d = _D(k % 2 == 0)
+                n0 = len(snd.events); snd.step(fw, k); knocks += sum(1 for e in snd.events[n0:] if e[1] == "toy_bucket")
+            snd.events = []
+            if hasattr(snd, "tick_pairs"):                                    # the tick's end (tick_end's turn of the pairs, A236)
+                snd.last_tick_pairs, snd.tick_pairs = snd.tick_pairs, set()
+        assert knocks == 1, knocks                                            # the flicker: one knock, at the first touch
+        for k in range(8):                                                     # a whole tick apart
+            fw.d = _D(False); snd.step(fw, k)
+        if hasattr(snd, "tick_pairs"):
+            snd.last_tick_pairs, snd.tick_pairs = snd.tick_pairs, set()
+        fw.d = _D(True); n0 = len(snd.events); snd.step(fw, 0)
+        assert sum(1 for e in snd.events[n0:] if e[1] == "toy_bucket") == 1, "a landing after a tick apart made no sound"
+    finally:
+        SD._vel_at = vel_
+    d = w.d
+    b = m.jnt_qposadr[m.body("toy_ball").jntadr[0]]
+    d.qpos[b + 2] += 0.4; d.qvel[m.jnt_dofadr[m.body("toy_ball").jntadr[0]]:][:6] = 0.0
+    mujoco.mj_forward(m, d)
+    hit = False
+    for _ in range(6):
+        w.apply({})
+        hit = hit or any(e[1] == "toy_ball" for e in w.frame().truth["sound_events"])
+    assert hit, "the dropped ball made no sound"
+    print("world (A236): a contact flickering step by step for three ticks knocked once; back after a tick apart, once more; the dropped",
+          "ball still sounds at its landing")
 
 
 def _face_down(w):
@@ -1653,6 +1733,14 @@ def test_waking_imagination():
             assert N is None or isinstance(N, float), N
             if im is not None:
                 assert out[on]["moved"] < 0.999, out[on]                # the imagined future in the key moves it
+            import tempfile, shutil, os as os_
+            tmp_ = tempfile.mkdtemp(prefix="imag_"); p_ = os_.path.join(tmp_, "l.pt")
+            try:                                                           # I3: the count kept across a restart (it began again at 0)
+                L.save(p_)
+                L2 = Life.load(p_, SimAnatomy(born_table(), cfg, limits=[float(x) for x in w.tau_max]), device="cpu", seed=0, world=G1World(seed=1))
+                assert int(getattr(L2, "_imag_n", -1)) == n, (getattr(L2, "_imag_n", None), n)
+            finally:
+                shutil.rmtree(tmp_, ignore_errors=True)
         else:
             assert n == 0 and im is None and N is None and out[on]["moved"] > 0.9999, out[on]
         L._frames_night()
@@ -1682,7 +1770,7 @@ def test_vicarious_trial_and_error():
     out = {}
     for on in (1, 0):
         w = G1World(seed=1)
-        cfg = dict(SIM_CFG, **LR0, wake_ticks=10 ** 9, imagine_key=1, imagine_pav=1, imagine_vte=on)
+        cfg = dict(SIM_CFG, **LR0, wake_ticks=10 ** 9, imagine_key=1, imagine_pav=1, imagine_vte=on, vte_act=0)   # (A190's third future off: A182's two)
         torch.manual_seed(0)
         anat = SimAnatomy(born_table(), cfg, limits=[float(x) for x in w.tau_max])
         L = Life.birth(anat, device="cpu", d=32, layers=1, heads=2, window=16, cfg=cfg, seed=0, world=w)
@@ -2011,7 +2099,7 @@ def test_a_reward_source_joins_a_living_body():
     LR0 = dict(live_lr=0.0, value_lr=0.0, band_lr=0.0, night_lr=0.0, gate_lr=0.0, gate_adam_lr=0.0, vcrit_lr=0.0, actor_lr=0.0, face_lr=0.0,
                act_inv_lr=0.0)
     w = G1World(seed=1)
-    cfg0 = dict(SIM_CFG, **LR0, wake_ticks=10 ** 9, novelty=0)
+    cfg0 = dict(SIM_CFG, **LR0, wake_ticks=10 ** 9, novelty=0, competence=0)   # (A181's competence source off: the test's two sources of birth)
     torch.manual_seed(0)
     anat0 = SimAnatomy(born_table(), cfg0, limits=[float(x) for x in w.tau_max])
     L = Life.birth(anat0, device="cpu", d=32, layers=1, heads=2, window=16, cfg=cfg0, seed=0, world=w)
@@ -2026,7 +2114,7 @@ def test_a_reward_source_joins_a_living_body():
         path = os.path.join(td, "life.pt"); L.save(path)
         got = {}
         for nov in (1, 0):
-            cfg1 = dict(SIM_CFG, **LR0, wake_ticks=10 ** 9, novelty=nov)
+            cfg1 = dict(SIM_CFG, **LR0, wake_ticks=10 ** 9, novelty=nov, competence=0)
             w1 = G1World(seed=1)
             anat1 = SimAnatomy(born_table(), cfg1, limits=[float(x) for x in w1.tau_max])
             L1 = Life.load(path, anat1, cfg=cfg1, world=w1)
@@ -2044,7 +2132,8 @@ def test_a_reward_source_joins_a_living_body():
                 if r is not None and float(r[3]) > 0:
                     pos += 1
             got[nov] = dict(heads=[h[0] for h in am.heads], pos=pos, writes=int(getattr(L1, "_fwrites", 0)))
-    assert got[1]["heads"][-1] == "novelty" and got[1]["pos"] > 0, got
+    assert got[1]["heads"][-1] == "novelty", got                          # (its pay not asked here: since A155 the novelty is paid by the
+                                                                           # forecast's learning progress, and this life's rates are all 0)
     print(f"world 29: a life saved with heads {got[0]['heads']} loads under the novelty drive with {got[1]['heads']} (the fourth born at zero,",
           f"the three kept exactly) and lives on: {got[1]['pos']} positive ticks of 30 with the drive, {got[0]['pos']} without")
 
@@ -2188,6 +2277,19 @@ def test_the_habit_is_dopamines():
 
 
 
+
+def _smiling(w, every=10, at=5):
+    """the rig's world with her smile in its frame every `every` ticks (2026-10-16: since A88 (no charge) and A155 (the novelty paid by
+    learning progress) a born life on the rig's ball earns no reward at all, so its dopamine is 0 and no actor lesson can be read)"""
+    _fr, n = w.frame, [0]
+    def fr():
+        f = _fr(); n[0] += 1
+        if n[0] % every == at:
+            f.obs["face"] = np.array([1.0, 1.0])
+        return f
+    w.frame = fr
+    return w
+
 def test_the_actors_tag():
     """world (A142/C153, 2026-09-30): the actor's synaptic tag. On a born G1 life the tag begins at the first act's eligibility, decays by
     1 - 1/tag_reach a tick, adds each act's eligibility; with actor_slow_lr on, 60 ticks of the world loop leave the arms' tags set and the
@@ -2196,7 +2298,7 @@ def test_the_actors_tag():
     from body.core.world import WorldLoop
     from body.life import Life
     from body.sim.anatomy import SimAnatomy, SIM_CFG, born_table
-    w = _ball_in_palm(settle=False)                 # (A171: the born hands no longer grasp the mat's and the rattle's push on their edges, so
+    w = _smiling(_ball_in_palm(settle=False))       # (A171: the born hands no longer grasp the mat's and the rattle's push on their edges, so
     out = {}                                        # 60 born ticks hold no act of the cord's for the arm to be surprised by; the rig's ball on
     for slr in (1e-4, 0.0):                         # the palm fires the grasp as the born edge push did before)
         cfg = dict(SIM_CFG, wake_ticks=10 ** 9, actor_slow_lr=slr)
@@ -2235,7 +2337,7 @@ def test_dopamines_adaptive_coding():
     assert int(PH.PHYSIOLOGY.get("dopamine_adapt", 0)) == 0                       # the diary's default: off
     out = {}
     for on in (0, 1):
-        w = _ball_in_palm(settle=False)
+        w = _smiling(_ball_in_palm(settle=False))
         cfg = dict(SIM_CFG, wake_ticks=10 ** 9, actor_slow_lr=1e-3, dopamine_adapt=on, dopamine_adapt_tau=8)
         torch.manual_seed(0)
         anat = SimAnatomy(born_table(), cfg, limits=[float(x) for x in w.tau_max])
@@ -2739,18 +2841,125 @@ def test_the_ghost_stands_it_leads_it_and_lets_it_down():
         up_ += int(d.xpos[g.pelvis][2] >= 0.70)
         refl_ += int(w._spinal.get("leg_l") in ("stand", "step"))        # the standing reflex on its loaded soles (A193)
     assert up_ >= 120 and refl_ >= 60 and g.metres >= 1.0, (np.linalg.norm(d.xpos[g.pelvis][:2] - p0), up_, refl_, g.metres)   # (W7b: it turns at the walls, so no net way is asked)
+    g.own_sides = [3, 5, 7, 9]; g.err_bins = list(range(len(GH.ERR_BINS) + 1)); g.off_feet = 7; g.stuck = 2   # C361, C362: in the save
     raw = w._capture(fast=True); st = pickle.loads(raw)
     assert st["s5"]["ghost"]["on"] and st["s5"]["ghost"]["s"] == g.s and 0.8 <= g.s <= 1.0 and st["s5"]["ghost"]["metres"] == g.metres
-    s_ = g.s
+    s_ = g.s; g.own_sides = [0, 0, 0, 0]; g.err_bins = [0] * (len(GH.ERR_BINS) + 1)
     g.off_(w)
     assert g.on and g.lower == GH.LOWER_TICKS
     for _ in range(GH.LOWER_TICKS + 5):
         w.frame(); w.apply({})
     assert not g.on and g.rec is None and not d.xfrc_applied[g.b].any() and not d.xfrc_applied[g.pelvis].any()   # (W7b: left standing, it may stand on)
     w._restore(w._from_fast(raw))
-    assert g.on and g.s == s_ and not g.last.any() and not g.last_p.any()                            # (the wrench applied afresh: xfrc is not in the state)
+    assert g.on and g.s == s_ and np.array_equal(g.last, st["s5"]["ghost"]["last_w"]) and np.array_equal(g.last_p, st["s5"]["ghost"]["last_wp"])   # (W9: the
+    assert g.own_sides == [3, 5, 7, 9] and g.err_bins == list(range(len(GH.ERR_BINS) + 1)) and g.off_feet == 7 and g.stuck == 2   # C361, C362
+    st_ = g.state(); st_["reflex_share"] = 0.2; st_["guide_v"] = 1
+    g.load_state(st_); assert g.reflex_share == 0.2                                 # C363: a save from before C361 as saved (C361's reset withdrawn)
+    st_["guide_v"] = 2; st_["reflex_share"] = 1.0; st_["guide_log"] = [[100, 60, 0.4], [50, 30, 0.3], [80, 40, 1.0]]
+    g.load_state(st_); assert abs(g.reflex_share - 0.3) < 1e-12                     # C363: a save under C361's reset: the share before it
+    st_["guide_log"] = [[100, 60, 0.4], [50, 30, 0.3]]; g.load_state(st_); assert abs(g.reflex_share - 0.3) < 1e-12   # (no block since the reset)
+    st_["guide_v"] = 3; st_["reflex_share"] = 0.7; g.load_state(st_); assert g.reflex_share == 0.7   # its own saves: as saved
+    # wrenches it left in xfrc_applied come back with them: mjSTATE_INTEGRATION carries xfrc_applied, so the ghost takes them back next step)
     w2 = G1World(seed=1); w2.frame()
     assert w2.ghost.load_state(None) is None and not w2.ghost.on
+
+
+def test_the_command_walks_record():
+    """C361: a command block on its own legs records the brain's command, the layer's error, the guide's share, the pelvis's own yaw
+    (the heading field is the room's target while it turns the body) and whether the room turns it; a command to turn left moves that
+    yaw while the room does not turn it"""
+    import math as _m
+    from body.sim import ghost as GH
+    w = G1World(seed=1)
+    g = w.ghost
+    f0 = w.frame()
+    assert all(float(f0.obs[n_ + "_driven"][0]) == 0.0 for n_ in W.GAIT_DRIVEN), {n_: f0.obs[n_ + "_driven"] for n_ in W.GAIT_DRIVEN}   # A230: no walk, none driven
+    g.on_(w, command=True, walk=True)
+    yaws = []; driven = []
+    for k in range(GH.LIFT_TICKS + 60):
+        if k > GH.LIFT_TICKS:
+            g.command_step(0.0, 0.05)                                   # a steady left turn asked
+        fr = w.frame(); w.apply({})
+        if k > GH.LIFT_TICKS + 1:                                       # A230: the frame after a walking tick shows the gait drove the legs and the waist
+            driven.append(tuple(float(fr.obs[n_ + "_driven"][0]) for n_ in W.GAIT_DRIVEN))
+        assert g.rec is not None and len(g.rec) == 14 and g.rec[7] == "own" and g.rec[13] == round(g.go_share, 4), g.rec   # C370: the forward share last
+        assert _m.isfinite(g.rec[11]) and abs(g.rec[11]) <= _m.pi + 1e-3 and g.rec[12] in (0, 1), g.rec
+        if not g.rec[12]:
+            yaws.append(g.rec[11])
+    assert len(yaws) >= 30 and len(set(yaws)) > 5, yaws[-10:]                 # the yaw is the body's own, read each tick
+    assert len(driven) >= 50 and all(d_ == (1.0, 1.0, 1.0) for d_ in driven), driven[:5]
+    fe = w.frame()                                                          # A231: in the command walk the walk command is engaged, the legs and
+    assert float(fe.obs["loco_engaged"][0]) == 1.0 and all(float(fe.obs[n_ + "_engaged"][0]) == 0.0 for n_ in W.GAIT_DRIVEN), fe.obs   # the waist not
+    assert float(f0.obs["loco_engaged"][0]) == 0.0 and all(float(f0.obs[n_ + "_engaged"][0]) == 1.0 for n_ in W.GAIT_DRIVEN), f0.obs   # before it: the reverse
+    g.cmd_v, g.cmd_w = 0.0, 0.1                                             # A232: at the speed's floor its steps back are blocked, nothing else
+    assert list(w._loco_blocked()) == [1.0, 1.0, 0.0, 0.0, 0.0] + [0.0] * 5 and list(w.frame().obs["loco_blocked"]) == [1.0, 1.0, 0.0, 0.0, 0.0] + [0.0] * 5
+    g.cmd_v, g.cmd_w = GH.COMMAND_V_MAX, -GH.COMMAND_W_MAX                 # at the speed's ceiling its steps forward, at the turn's its turns past it
+    assert list(w._loco_blocked()) == [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0], w._loco_blocked()
+    g.cmd_v, g.cmd_w = 0.2, 0.0
+    assert list(w._loco_blocked()) == [0.0] * 10
+    g.cmd_v = 0.3 * GH.COMMAND_DECAY ** 1000                                # A233: the decay's hair above 0 is standing: its steps back blocked
+    assert 0.0 < g.cmd_v < GH.COMMAND_V_STAND and list(w._loco_blocked()) == [1.0, 1.0, 0.0, 0.0, 0.0] + [0.0] * 5, (g.cmd_v, w._loco_blocked())
+    g.cmd_v = 2.0 * GH.COMMAND_V_STAND                                      # above it, carried out
+    assert list(w._loco_blocked()) == [0.0] * 10
+
+
+def test_the_forward_step_by_its_own_share():
+    """C370: the world sums the born approach's forward step with the brain's command by the forward step's own share (ghost.go_share)
+    and its turn by the guide's (ghost.reflex_share)"""
+    from body.core.world import Acts
+    w = G1World(seed=1, parent=False)
+    w.ghost.command = True; w.ghost.go_share = 0.5; w.ghost.reflex_share = 0.2
+    a = Acts(); a.cord = {W.LOCO_NAME: (0.01, -0.02)}
+    w.apply(a)
+    assert abs(w.ghost.cmd_v - 0.005) < 1e-9 and abs(w.ghost.cmd_w + 0.004) < 1e-9, (w.ghost.cmd_v, w.ghost.cmd_w)
+    fr = w.frame()                                                           # A228b: the next frame shows the cord's push, and the command
+    push = np.asarray(fr.obs["loco_cmd_push"], float); cmd = np.asarray(fr.obs["loco_cmd"], float)   # less it is the brain's own (none here)
+    assert np.allclose(push, [0.005, -0.004], atol=1e-12) and np.allclose(cmd - push, [0.0, 0.0], atol=1e-12), (push, cmd)
+    print("C370: the forward step 0.01 at its share 0.5 ->", round(w.ghost.cmd_v, 4), "| the turn -0.02 at the guide's 0.2 ->", round(w.ghost.cmd_w, 4),
+          "| A228b: the next frame shows the push", push.tolist())
+
+
+def test_the_legs_take_the_calibrated_turn():
+    """A227: the legs are given the brain's turn as the cerebellum calibrates it ((1 + gain) x command + offset, inside the command's
+    range); a command walk teaches the readout only once settled (its lift and hand-down over), and with the error of the turn made
+    against the command; the calibration and the owed lesson go through a save"""
+    import pickle
+    import torch
+    from body.sim import ghost as GH
+    w = G1World(seed=1)
+    g = w.ghost
+    assert w.loco_turn(0.1) == 0.1 and w._loco_err is None
+    w.loco_corr = np.array([1.0, -0.05])
+    assert abs(w.loco_turn(0.1) - 0.15) < 1e-12 and w.loco_turn(0.5) == GH.COMMAND_W_MAX and w.loco_turn(-0.5) == -GH.COMMAND_W_MAX
+    seen = []
+
+    class _Spy:                                                              # the turn the gait's policy reads, recorded
+        def __init__(self, m):
+            self.m = m
+
+        def __call__(self, x):
+            seen.append(float(x[0, 8]) / GH.EXPERT_CMD_SCALE[2])
+            return self.m(x)
+
+        def __getattr__(self, k):
+            return getattr(self.m, k)
+    w.frame()
+    g.on_(w, command=True, walk=True)
+    g.expert = _Spy(g.expert)
+    taught = []
+    for k in range(GH.LIFT_TICKS + GH.WALK_START + 30):
+        g.cmd_w = 0.1
+        w.frame(); w.apply({})
+        taught.append(w._loco_err is not None)
+    u_ = 0.1 * GH.COMMAND_DECAY                                                       # (the command's decay in the tick's own step)
+    assert seen and all(abs(x - w.loco_turn(u_)) < 1e-6 for x in seen[-20:]), (seen[-5:], w.loco_turn(u_))   # the calibrated turn reaches the legs
+    assert g.stuck == 0 and g.off_feet == 0                                     # C362: a body walking on its feet is never caught as stuck
+    assert not any(taught[:GH.LIFT_TICKS + GH.WALK_START]) and sum(taught[-20:]) >= 10, taught
+    assert abs(w._loco_cmd[0] - u_) < 1e-12 and abs(w._loco_err[0]) < 3.0
+    st = pickle.loads(w._capture(fast=True))
+    assert st["s5"]["loco"][0] == [1.0, -0.05] and abs(st["s5"]["loco"][2][0] - u_) < 1e-12
+    w2 = G1World(seed=1); w2._restore(w2._from_fast(w._capture(fast=True)))
+    assert np.array_equal(w2.loco_corr, w.loco_corr) and w2._loco_err == w._loco_err and w2._loco_cmd == w._loco_cmd
 
 
 def test_the_born_approach():
@@ -2783,8 +2992,11 @@ def test_the_born_approach():
                    named_periph=[0.0, 0.0, 0.0], gaze_periph=[0.0, 0.0, 0.0], salient_periph=[0.0, 0.0, 0.0], hand_periph=[0.0, 0.0, 0.0])
         obs.update(extra or {})
         return b._approach_step(e, types.SimpleNamespace(obs=obs))
+    wd = float(REFLEX["approach_wide"])
     s = step([1.0, 0.30, 0.0], eye_yaw=0.10)
-    assert s is not None and abs(s[1] + mx) < 1e-12 and s[0] == 0.0, s           # bearing 0.40 right: a right turn at the slew, no forward step
+    assert s is not None and abs(s[1] + mx) < 1e-12 and abs(s[0] - go * (wd - 0.40) / (wd - zone)) < 1e-12, s   # bearing 0.40 right: a right turn at
+                                                                                   # the slew, and a tapered forward step (A223: whole within the zone, none at approach_wide)
+    s = step([1.0, 0.75, 0.0]); assert s[0] == 0.0 and abs(s[1] + mx) < 1e-12, s  # 0.75 right: beyond approach_wide, no step
     s = step([1.0, 0.03, 0.0], eye_yaw=0.01)
     assert abs(s[1] + k * 0.04) < 1e-12 and abs(s[0] - go) < 1e-12, s             # 0.04 right: the turn proportional, and forward (inside the zone)
     s = step([1.0, 0.20, 0.0], eye_yaw=-0.20)
@@ -2794,14 +3006,24 @@ def test_the_born_approach():
     s = step([1.0, 1.0, 0.0]); assert abs(s[1] + mx) < 1e-12, s                   # a radian right: the cap
     s = step([1.0, -0.01, 0.0], eye_yaw=-0.01, rate=0.01)
     assert abs(s[1] - (k * 0.02 - cd * 0.01)) < 1e-12, s                           # turning left already: the turn damped
+    s = step([0.0, 0.0, 0.0], extra=dict(sound_side=[0.0, 0.5]))                  # A221: her voice 0.5 rad left, sounding (no onset this tick): it drives
+    assert s is not None and abs(s[1] - mx) < 1e-12 and s[0] == 0.0, s            # a left turn by the face's law (0.5 x 0.5 at the slew's cap), no forward step
+    s = step([0.0, 0.0, 0.0], extra=dict(sound_side=[1.0, 0.04]), rate=0.3)       # at its onset, 0.04 left, while the body yaws left: no damping on
+    assert abs(s[1] - k * 0.04) < 1e-12, s                                        # the voice's drive (A221 (4)): 0.5 x 0.04
+    bh = Body(); vh = int(REFLEX["voice_hold"])
+    s = step([0.0, 0.0, 0.0], extra=dict(sound_side=[1.0, 0.5]), body=bh); assert abs(s[1] - mx) < 1e-12   # A222: her voice heard 0.5 rad left...
+    for _ in range(vh):
+        s = step([0.0, 0.0, 0.0], extra=dict(sound_side=[0.0, 0.0]), body=bh)  # ...then silence: the side held, the drive goes on
+        assert s is not None and abs(s[1] - mx) < 1e-12, s
+    assert step([0.0, 0.0, 0.0], extra=dict(sound_side=[0.0, 0.0]), body=bh) is None   # past voice_hold: nothing
+    assert step([0.0, 0.0, 0.0], extra=dict(sound_side=[0.0, 0.0])) is None       # silence with nothing heard before: nothing
     s = step([1.0, -0.01, 0.0], eye_yaw=-0.01, body=Body(0.5)); assert abs(s[1] - 0.5 * k * 0.02) < 1e-12 and abs(s[0] - 0.5 * go) < 1e-12, s
     s = step([1.0, -0.01, 0.0], eye_yaw=-0.01, body=Body(-0.5)); assert abs(s[1] + 0.5 * k * 0.02) < 1e-12 and abs(s[0] + 0.5 * go) < 1e-12, s
     assert step([0.0, 0.0, 0.0]) is None
-    ks, mxs = float(REFLEX["approach_sound_gain"]), float(REFLEX["approach_sound_max"])
     s = step([0.0, 0.0, 0.0], extra=dict(sound_side=[1.0, 0.5]))                   # her voice 0.5 rad to the left (the ears' read, + left):
-    assert abs(s[1] - ks * 0.5) < 1e-12 and s[0] == 0.0, s                         # a left pulse of the sound's gain, no step toward a sound
+    assert abs(s[1] - mx) < 1e-12 and s[0] == 0.0, s                               # a left turn by the face's law (A221: 0.5 x 0.5 at the slew's cap), no step toward a sound
     s = step([0.0, 0.0, 0.0], extra=dict(sound_side=[1.0, -3.0]))
-    assert abs(s[1] + mxs) < 1e-12 and s[0] == 0.0, s                              # far to the right: the pulse capped, no step
+    assert abs(s[1] + mx) < 1e-12 and s[0] == 0.0, s                               # far to the right: capped, no step
     assert step([0.0, 0.0, 0.0], extra=dict(onset_periph=[1.0, 0.1, 0.0])) is None   # a sudden change in view is no one to go to
     s = step([1.0, 0.0, 0.0], extra=dict(sound_side=[1.0, 0.5]))                   # her face straight ahead and her voice: the face leads
     assert abs(s[1]) < 1e-12 and abs(s[0] - go) < 1e-12, s
@@ -2851,3 +3073,76 @@ def test_the_wedge_carry_goes_where_it_is_clearer():
     assert clear(mat) >= clear(edge) + DP.WEDGE_GAIN_M, (clear(mat), clear(edge))          # carried to the centre
     assert not (clear(mat) >= clear(mat) + DP.WEDGE_GAIN_M)                                 # at the centre: left where it lies
     print("the wedge carry goes where it is clearer: edge", round(clear(edge), 2), "centre", round(clear(mat), 2))
+
+
+def test_the_actors_read_the_born_cues():
+    """A225 (SIM_CFG actor_cues 1): the born orienting cues reach the actors' read beside the band. [fired, direction] per cue in the
+    anatomy's order, + right (the voice's born lateral read is + left: its sense -1 turns it); the voice's side held voice_hold ticks after
+    its sound and then gone; silent cues zero. The actors' read is the band's departure (D4) and then the cues; the eligibility takes each
+    pathway at its own unit power, so a cue's share of a step does not shrink with the band's width"""
+    import types
+    from body.core.cord import CordMixin
+    from body.core.mouth import MouthMixin
+    from body.core.physiology import REFLEX
+    from body.sim.anatomy import SimAnatomy, SIM_CFG, born_table
+    assert int(SIM_CFG["actor_cues"]) == 1 and SIM_CFG["actor_input"] == "band"
+    anat = SimAnatomy(born_table(), dict(SIM_CFG)); names = [c.name for c in anat.orienting]; n = 2 * len(names)
+
+    class Body(CordMixin, MouthMixin):
+        def __init__(self):
+            self.anatomy = anat; self.cfg = dict(SIM_CFG, dopamine_band=2); self.ticks = 0
+            self.bands = [torch.randn(16) + 9.0 for _ in range(8)]
+    b = Body()
+    def obs(sound=0.0, face=None):
+        o = {c.obs: [0.0, 0.0, 0.0] for c in anat.orienting}; o["sound_side"] = [1.0 if sound else 0.0, float(sound)]
+        if face is not None: o["face_periph"] = [1.0, float(face), 0.0]
+        return types.SimpleNamespace(obs=o)
+    b.ticks = 1; c = b._actor_cues(obs(sound=0.4))                    # her voice from its left (the lateral read + left)
+    i_s, i_f = names.index("sound"), names.index("face")
+    assert c.numel() == n and c[2 * i_s] == 1.0 and abs(float(c[2 * i_s + 1]) + 0.4) < 1e-6, c   # + right: her left reads -0.4
+    b._voice_hold = (1, 0.4)
+    b.ticks = 2 + int(REFLEX["voice_hold"]) - 2; c = b._actor_cues(obs())
+    assert c[2 * i_s] == 1.0 and abs(float(c[2 * i_s + 1]) + 0.4) < 1e-6, "the side held between her sounds"
+    b.ticks = 2 + int(REFLEX["voice_hold"]); c = b._actor_cues(obs(face=0.3))
+    assert c[2 * i_s] == 0.0 and c[2 * i_s + 1] == 0.0 and c[2 * i_f] == 1.0 and abs(float(c[2 * i_f + 1]) - 0.3) < 1e-6, c
+    assert abs(float(c.abs().sum()) - 1.3) < 1e-6, "the silent cues read nothing"
+    x = b._actor_x()
+    assert x.numel() == 16 + n and torch.equal(x[-n:], c.to(x.dtype)), "the cues after the band"
+    z = b._actor_input(x); zb, zc = x[:-n], x[-n:]
+    assert torch.allclose(z[:-n], zb / max(float(zb @ zb), 1.0)) and torch.allclose(z[-n:], zc / max(float(zc @ zc), 1.0)), "each pathway at its own power"
+
+
+def test_the_actors_read_their_own_limb():
+    """A226 (SIM_CFG actor_sense 1): each later effector's actor reads the band (D4), the born cues (A225) and its own body sense
+    (its joints' angles and motion, normalized per unit): its width is the band's + the cues' + its sense's (an arm 35, a leg 30, the
+    walk command 2, the voice none); the vote, the eligibility and the squashing all read that width; the eligibility takes each
+    pathway at its own unit power"""
+    from body.core.world import WorldLoop
+    from body.life import Life
+    from body.sim.anatomy import SimAnatomy, SIM_CFG, born_table
+    assert int(SIM_CFG["actor_sense"]) == 1
+    w = _smiling(_ball_in_palm(settle=False))
+    cfg = dict(SIM_CFG, wake_ticks=10 ** 9)
+    torch.manual_seed(0)
+    anat = SimAnatomy(born_table(), cfg, limits=[float(x) for x in w.tau_max])
+    L = Life.birth(anat, device="cpu", d=32, layers=1, heads=2, window=16, cfg=cfg, seed=0, world=w)
+    nc_ = 2 * len(anat.orienting)
+    run = WorldLoop(L)
+    for _ in range(40):
+        run.step()
+    for e in L.anatomy.motors:
+        A_ = L.m.get_submodule(e.actor)
+        k_ = L._actor_sense_n(e)
+        if e.name == "voice":
+            assert k_ == 0; continue
+        assert k_ == (len(e.sense_idx) if e.sense_idx is not None else 0) and k_ > 0, (e.name, k_)
+        x_ = L._actor_x(e)
+        assert x_ is not None and int(x_.numel()) == A_.in_features == 32 + nc_ + k_, (e.name, int(x_.numel()), A_.in_features)
+        z_ = L._actor_input(e=e)
+        sb_ = z_[-k_:]; xs_ = x_[-k_:]
+        assert torch.allclose(sb_, xs_ / max(float(xs_ @ xs_), 1.0)), e.name     # its own pathway at its own unit power
+        st_ = L.motor[L.anatomy.motors.index(e)]
+        if st_.get("e_actor") is not None:
+            assert tuple(st_["e_actor"].shape) == tuple(A_.weight.shape), (e.name, tuple(st_["e_actor"].shape), tuple(A_.weight.shape))
+    arm = next(e for e in L.anatomy.motors if e.name == "arm_l")
+    assert float(L.m.get_submodule(arm.actor).weight[:, -L._actor_sense_n(arm):].abs().sum()) > 0.0, "the arm's own-sense columns learned nothing"

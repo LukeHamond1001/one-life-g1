@@ -355,6 +355,39 @@ def test_variation_sets_and_repeats():
             out.append((t, s.line.text, s.line.register))
     calls = [x for x in out if x[2] == "calling"]
     assert [c[0] for c in calls] == [0, 250], calls
+    # C357: her come-here from a new spot is not held by the expectant pause her own repeated call set (as C355's repeat is not)
+    con3 = C.Conduct(seed=1); con3.fast.last_expect = 0; out3 = []            # her repeat ended at tick 0
+    for t in range(1, 40):
+        if t == 1:
+            con3.request("come_call")
+        s = con3.tick(t, P(t, child_target=None))
+        if s.line is not None:
+            out3.append((t, s.line.intent))
+    assert out3 and out3[0][1] == "come_call" and out3[0][0] < K.PAUSE_EXPECT, out3
+    # C358: a one-off request the expectant pause refuses waits for it (her goodbye after a question was dropped whole), logged once
+    con4 = C.Conduct(seed=1); con4.fast.last_expect = 0; out4 = []
+    for t in range(1, 60):
+        if t == 1:
+            con4.request("leave")
+        s = con4.tick(t, P(t, child_target=None))
+        if s.line is not None:
+            out4.append((t, s.line.intent))
+    assert out4 and out4[0][1] == "leave" and K.PAUSE_EXPECT <= out4[0][0] <= K.PAUSE_EXPECT + K.REQUEST_HOLD, out4
+    assert sum(1 for r in con4.fast.refused if r[1] == "leave") == 1, con4.fast.refused
+    con5 = C.Conduct(seed=1); con5.fast.last_expect = 0
+    con5.request("leave")
+    for t in range(1, K.PAUSE_EXPECT + 1):
+        con5.fast.last_expect = t                                         # a pause renewed past the hold: given up, not kept for ever
+        con5.tick(t, P(t, child_target=None))
+    for t in range(K.PAUSE_EXPECT + 1, K.PAUSE_EXPECT + K.REQUEST_HOLD + 3):
+        con5.fast.last_expect = t; con5.tick(t, P(t, child_target=None))
+    assert not any(i == "leave" for i, _k in con5.requests), con5.requests
+    # C359: her come-here is queued at most once (her repeats piled up while she was busy and drained into the next block)
+    con6 = C.Conduct(seed=1)
+    for _ in range(5):
+        con6.request("come_again")
+    con6.request("come_call"); con6.request("come_call"); con6.request("label", o="duck"); con6.request("label", o="duck")
+    assert [i for i, _k in con6.requests] == ["come_again", "come_call", "label", "label"], con6.requests
     print(f"4 a follow-in set of {len(s0)} lines on the duck the tick her held reading settled on it, frames distinct in their "
           f"words, each 6 ticks after the last ended; sets on one object {K.SET_PER_OBJECT}+ ticks apart ({len(set_starts)} in "
           f"400 ticks); no line (its words) again within 60 ticks; the call refused at tick 100 (under 240 after the last) and "
@@ -1844,6 +1877,104 @@ def test_ear_deliberate_writes():
 
 
 # ------------------------------------------------------------- the P3 verifier's third findings (7447f73), each tested both ways
+def test_her_call_before_her_naming():
+    """C368: in the come lesson her call goes first: with her come-here waiting and the child looking at a toy, she calls it before
+    she names the toy (joint attention takes no target while a call waits); with no call waiting she names it as before"""
+    def first_line(call):
+        con_ = C.Conduct(seed=1)
+        for t in range(1, 60):
+            if call and t == 1:
+                con_.request("come_call")
+            s = con_.tick(t, P(t, child_target="duck"))
+            if s.line is not None:
+                return (t, s.line.intent, s.line.text)
+        return None
+    first, named = first_line(True), first_line(False)
+    assert first is not None and first[1] == "come_call", first
+    assert named is not None and named[1] != "come_call", named
+    print("C368: with her call waiting her first line", first, "| with none", named)
+
+
+def test_her_call_answers_its_turn():
+    """C369: while her come-here waits, her answer to the child's turn is the call (its babble answered 'here. pip.', not 'oh! the
+    duck.'), the call no longer waiting; with no call waiting she answers as before; her 'no' at a talk-over stands, the call waiting"""
+    def answer(kind, call):
+        con_ = C.Conduct(seed=1)
+        t = 5
+        if call:
+            con_.request("come_again")
+        con_.reply_due = dict(tick=t, kind=kind, word=None, obj="duck")
+        s = con_.tick(t, P(t, child_target="duck"))
+        return (None if s.line is None else (s.line.intent, s.line.text)), [i_ for i_, _k in con_.requests]
+    called, left = answer("reply", True)
+    assert called is not None and called[0] == "come_again" and left == [], (called, left)
+    plain, _ = answer("reply", False)
+    assert plain is not None and plain[0] not in ("come_again", "come_call"), plain
+    no_, left_ = answer("no", True)
+    assert no_ is not None and no_[0] not in ("come_again", "come_call") and left_ == ["come_again"], (no_, left_)
+    print("C369: her answer to its turn with her call waiting", called, "| with none", plain, "| her 'no'", no_, "the call waiting")
+
+
+def test_her_words_for_an_act_with_no_thing():
+    """C372: her words for its own act are the act's own (C270, C284) whether or not the act has a thing in her view: its stand 'you
+    stand!' (or a sister frame), its coming 'you did it!', not the bare 'yes! good.'; her words hold to her vocabulary (the grown words
+    of the life given here); an act with a thing in her view keeps its thing's words ('you hold the duck!')"""
+    def first(ev, grown=("stand", "walk", "did", "hold")):
+        con = _perfect(seed=4, transcriber=Transcriber(None)); _no_sets(con)
+        con.fast.vocab = tuple(con.fast.vocab) + tuple(w for w in grown if w not in con.fast.vocab)
+        t = 0
+        s = con.tick(t, P(t, seen=TOYS, events=(ev,)))
+        while s.line is None and t < 20:                                        # (her voice free at once here; a guard)
+            t += 1; s = con.tick(t, P(t, seen=TOYS))
+        return None if s.line is None else (s.line.intent, s.line.text)
+    stood, came = first(("stood", None)), first(("came", "mama"))
+    assert stood is not None and stood[0] == "confirm_stood", stood
+    assert came is not None and came[0] == "confirm_came", came
+    print("C372: her words for its stand", stood, "| for its coming", came)
+
+
+def test_come_chain_mastered_by_reliability():
+    """C365: coming's approximations (turned_to, turned_nearer, came_nearer) earn her smile while coming answers fewer than
+    COME_MASTERED of her last COME_REL_N calls, whatever coming's own smiles (three of them, a word's rule, no longer close them);
+    past mastery once coming is reliable; her calls from across the room are recorded and the coming marks the latest answered;
+    their counts recover at dawn as coming's do; a save keeps her calls, and a save from before C365 recovers their worn counts once"""
+    con = _perfect(seed=4, transcriber=Transcriber(None))
+    _no_sets(con)
+    t = 0
+    for _ in range(5):                                                       # coming smiled at five times: past MASTERED_N
+        con.tick(t, P(t, seen=TOYS, events=(("came", "mama"),))); t += 1
+    assert con.book["came"]["mama"] >= K.MASTERED_N
+    con.come_calls = [[i, False] for i in range(K.COME_REL_N)]               # her last calls unanswered
+    s = con.tick(t, P(t, seen=TOYS, events=(("turned_to", "mama"),))); t += 1
+    assert [j[1] for j in s.judgments] == ["turned_to"], (s.judgments, con.book_log[-2:])   # the turn to her still smiled at
+    con.come_calls = [[i, i % 2 == 0] for i in range(K.COME_REL_N)]         # coming answers half her calls: reliable
+    s = con.tick(t, P(t, seen=TOYS, events=(("came_nearer", "mama"),))); t += 1
+    assert s.judgments == [] and "past mastery" in str(con.book_log[-1][3]), con.book_log[-1]
+    con.come_calls = []                                                      # her call recorded as she says it, answered by the coming
+    con.request("come_call")
+    said = None
+    for _ in range(40):
+        s = con.tick(t, P(t, seen=TOYS))
+        if s.line is not None and s.line.intent == "come_call":
+            said = t
+        t += 1
+        if said is not None:
+            break
+    assert said is not None and con.come_calls == [[said, False]], (said, con.come_calls)
+    con.tick(t, P(t, seen=TOYS, events=(("came", "mama"),))); t += 1
+    assert con.come_calls[-1][1] is True
+    con.book["turned_to"] = {"mama": 30}; con.book["turned_nearer"] = {"mama": 12}
+    con.dawn(t)                                                              # their counts recover over the night as coming's
+    assert con.book["turned_to"]["mama"] == int(30 * K.RECOVER_KEEP) and con.book["turned_nearer"]["mama"] == int(12 * K.RECOVER_KEEP)
+    st = con.state(); con2 = _perfect(seed=4, transcriber=Transcriber(None)); con2.load_state(st)
+    assert con2.come_calls == con.come_calls                                 # her calls through a save
+    st2 = dict(st); st2.pop("come_calls"); st2["book"] = dict(st2["book"], came_nearer={"mama": 30})
+    con3 = _perfect(seed=4, transcriber=Transcriber(None)); con3.load_state(st2)
+    assert con3.book["came_nearer"]["mama"] == int(30 * K.RECOVER_KEEP) and con3.come_calls == []   # a save from before C365: recovered once
+    print("C365: the turn to her smiled at with coming at", con.book["came"]["mama"], "smiles and her calls unanswered; past mastery at half her calls answered;",
+          "a call recorded and answered; the chain's counts recover at dawn (30 ->", int(30 * K.RECOVER_KEEP), ")")
+
+
 def test_motor_judgments():
     """A89 (the teacher's build 2b): her smiles for its acts. "got ball" earns 2 and her "yes!" at once; the n-th smile for the same
     act and object falls as 2 e^(-n/10) and stops under 0.05 (no floor: nothing is farmed); another toy starts afresh; a reach
@@ -1939,7 +2070,7 @@ def test_her_lessons_and_hands():
         con.tick(t, P(t, seen=TOYS))
     s4 = con.tick(t_end, P(t_end, seen=TOYS, events=(("rolled", None),)))
     assert s4.judgments == [(2, "rolled", None)], s4.judgments                      # its own repeat after the guide: the worth
-    assert PM.NOT_AT_BIRTH == ("pull_to_sit", "prop") and "guide" in C.HANDS_ON and "turn" in C.HANDS_ON
+    assert PM.NOT_AT_BIRTH == () and "guide" in C.HANDS_ON and "turn" in C.HANDS_ON   # (A161, 2026-10-01: the sit and the prop opened at a boundary)
     con5 = _perfect(seed=4, transcriber=Transcriber(None))
     _no_sets(con5)
     s5 = con5.tick(0, P(0, seen=TOYS, events=(("distress", None),)))                # face down in distress: she turns it over first
@@ -2181,7 +2312,7 @@ def test_new_word_on_its_peak():
     for text, w in (("a rattle.", "rattle"), ("the rattle!", "rattle"), ("you see the rattle?", "rattle"), ("see? red.", "red"),
                     ("red!", "red")):
         assert TP.check(text, VOCAB, w, held=())[0], (text, TP.check(text, VOCAB, w, held=()))
-    assert not TP.check("look. the rattle!", VOCAB, "rattle", held=())[0], "an unmeasured new-word line passed"
+    assert not TP.check("oh. the rattle!", VOCAB, "rattle", held=())[0], "an unmeasured new-word line passed"   # (look. the rattle! measured since 2026-10-16)
     assert TP.check("look. eyes.", VOCAB + ("eyes",), None, held=())[0], "the peak rule held a word no longer new"
     lines = TP.new_word_lines()
     assert set(TP.PEAK) == {t for t, _w in lines}, "the table and the lines she can say with a new word differ"
@@ -2321,7 +2452,10 @@ def test_reads_trunk_and_hands():
     # its follow-in naming: a reach is a target (4.10); what an instrument puts in extra (its fovea's window) is never read
     con = C.Conduct(seed=1, imperfect=False)
     said, _ = run(con, [P(t, child_target=None, child_reaches=("cup",) if t >= 5 else ()) for t in range(40)])
-    assert said and said[0][1].focus == "cup", said[:1]
+    assert not said and any(r[1] == "label" and "reached for, not looked at: a show of 'cup' instead" in r[2] for r in con.fast.refused) \
+        and any(r[1] == "show" and "the show of 'cup' opened" in r[2] for r in con.fast.refused), (said[:1], con.fast.refused[-3:])
+    # (C306/C309, 2026-10-07: a toy reached for and not looked at is shown, not named; the show's line waits for the toy before its
+    # eyes, C308, which this stub's hands never bring)
     con = C.Conduct(seed=1, imperfect=False)
     said, _ = run(con, [P(t, child_target=None, extra={"fovea_target": "cup"}) for t in range(40)])
     assert not said, said
@@ -2601,7 +2735,7 @@ def test_imperfect_parent_and_talk_over():
                 gaps.append(t - last)
             last = t
     rate = len(gaps) / (20000 * 0.15 / 60)
-    assert 4.0 < rate < 7.0, rate
+    assert 0.7 * 60.0 / K.COPY_GAP_S < rate < 60.0 / K.COPY_GAP_S, rate   # (C269: her copies every 4 s on average; Pawlby's 10 s before)
     print(f"37 stage 2's talk-over: stopped, the frown marked (the face's frown retired at C231), answered as a grunt is (C233; no 'no.'), the turn not judged; none in stage 1 "
           f"or for babble that never stops; her latency {lat.mean():.2f} ticks after the turn's end on average (median "
           f"{np.median(lat):.0f}, {lat.min()} to {lat.max()}; a realized pause of {real.mean():.0f} ms, sd {real.std():.0f}, "
@@ -3859,7 +3993,7 @@ def _timed_tl(key, word, scaffold):
 
 
 def test_trial_property():
-    """the property over 49 random lives (7 of each kind of child: a follower of her gaze, of her hands, a side's and a toy's
+    """the property over 56 random lives (8 of each kind of child: a follower of her gaze, of her hands, a side's and a toy's
     favourite, a voice-turner, a wanderer, a knower), each 5,000 ticks with a W2-like motion (queued acts, L1's glances, breaches
     of its contract while she holds still, a third of them by a motion that knew the target), ticks the world skips, her day
     plan's probes (place and name) and everyday asks between them, her sentences as her voice says them (the timed voice; the
@@ -3875,7 +4009,7 @@ def test_trial_property():
     assert _has_trials() and perm_test is not None, "no formal trial scored by the proportion of looking (A60b)"
     assert hasattr(Ledger, "maps"), "one level of 'understood' only (A60b's two levels)"
     lives, flips = [], []
-    for seed in range(49):                           # (7 of each since P3's fourteenth round: 6 left a voice-turner 14 scored pair
+    for seed in range(56):                           # (8 of each since 2026-10-17: C358's held asks voided one more of a voice-turner's (9 of 10); 7 of each since P3's fourteenth round: 6 left a voice-turner 14 scored pair
         if PROP_KIDS[seed % len(PROP_KIDS)] == "knower":          # trials once her sentences took their tag)
             # (its looks depend on the word: nothing to turn over)
             lf, kind, n = _prop_life(seed)
@@ -6864,20 +6998,25 @@ def test_ear_templates_exact():
     tmp = tempfile.mkdtemp()
     try:
         words = ("ball", "duck", "mama", "hi", "see", "up")
-        digs = []
+        digs = []; ears = []; clips = []
         for run_ in range(2):
             cache = V.VoiceCache(os.path.join(tmp, f"v{run_}"), server=V.SynthServer(nice=0))
-            tm = {w: [] for w in words}
+            tm = {w: [] for w in words}; cl_ = []
             for lab, voice, pitch, rate in K.EAR_VOICES:
                 for w in words:
                     c = cache.clip(w, "ear", voice=voice, prosody=(pitch, rate))
-                    tm[w].append((lab, PE.template_of(c.pa())))
+                    pa_ = c.pa()
+                    tm[w].append((lab, PE.template_of(pa_))); cl_.append((w, lab, pa_))
             cache.close()
             ear = PE.ParentEar(tm, [PE.template_of(say("hi", 0.3))], K.EAR_M)
-            digs.append(ear.digest)
+            digs.append(ear.digest); ears.append(ear); clips.append(cl_)
             led = [json.loads(x) for x in open(os.path.join(tmp, f"v{run_}", "ledger.jsonl"))]
             assert len(led) == len(words) * len(K.EAR_VOICES) and {r["register"] for r in led} == {"ear"}
-        assert digs[0] == digs[1], "the ear's templates differ between two builds"
+        # T1 (2026-10-17): the macOS speech engine (the one the live life's voice shares) gives one of two takes of a clip now and then, the
+        # same two ear digests every time (the dawn-189 flake: alone, one run failed and one passed), so two builds are not held to the
+        # same bits but to what her ear does with them: every clip of each build heard as its own word by the other build's ear
+        miss = [(k_, w, lab) for k_ in (0, 1) for w, lab, pa_ in clips[k_] if ears[1 - k_].hear(pa_, words, words).nearest != w]
+        assert not miss, f"a build's clip heard as another word by the other build's ear: {miss}"
         own = {w: [] for w in words}
         for w in words:                                                  # her own voice's templates, the rest held out
             own[w] = [x for x in tm[w] if x[0].startswith("parent")]
@@ -6891,8 +7030,9 @@ def test_ear_templates_exact():
         cache.close()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"15 her templates ({len(words)} words x {len(K.EAR_VOICES)} voices) built twice through two voice caches: the same "
-          f"digest, every clip in its ledger; her own voice's templates find the old child pitch's words {hits} of {len(words)}")
+    print(f"15 her templates ({len(words)} words x {len(K.EAR_VOICES)} voices) built twice through two voice caches: "
+          f"{'the same digest' if digs[0] == digs[1] else 'two takes (the digests differ)'}, each build's every clip heard as its own word "
+          f"by the other's ear, every clip in its ledger; her own voice's templates find the old child pitch's words {hits} of {len(words)}")
 
 
 
@@ -6912,11 +7052,15 @@ def test_vocal_habituation():
     worths = [j[1] for j in judg if j[2] in ("right_name", "echo")]
     want = [K.WORTH_RIGHT_NAME * _m.exp(-n / K.HABIT_TAU) for n in range(N)]
     want = [w for w in want if w >= K.HABIT_FLOOR]
+    rn_ = [(j[0], j[1]) for j in judg if j[2] == "right_name" and j[0] >= 40 + 20 * len(want)]   # C282 (2026-10-05): a right name's smile
+    worths = worths[:len(worths) - len(rn_)]                                                      # wears no lower than RIGHT_NAME_FLOOR
+    assert all(abs(w_ - K.RIGHT_NAME_FLOOR) < 1e-9 for _, w_ in rn_), rn_                         # (her echo of it habituates as before)
     assert len(worths) == len(want) and all(abs(a - b) < 1e-9 for a, b in zip(worths, want)), (len(worths), len(want), worths[:5], worths[-3:])
-    assert len(want) < N and con.vocal_book["duck"] == len(want), (len(want), con.vocal_book)
+    assert len(want) < N and con.vocal_book["duck"] == len(want) + len(rn_), (len(want), con.vocal_book)   # (the floored right names counted)
     late = [x for x in said if x[0] >= 40 + 20 * (N - 1)]
-    assert late and late[0][1].intent != "confirm" and late[0][1].register != "approval", late[:2]   # answered (an echo, a reply, a
-    assert not [j for j in judg if j[0] >= 40 + 20 * len(want)], judg[-2:]                       # label), never a "yes!": no smile
+    assert late, late[:2]                                                                           # answered (C282: a right name at its floor
+                                                                                                    # still with a "yes"; an echo, a reply, a
+    assert not [j for j in judg if j[0] >= 40 + 20 * len(want) and j[2] != "right_name"], judg[-2:]   # label), never a "yes!": no smile
     st = con.state(); con2 = C.Conduct(seed=3, transcriber=Transcriber(None), stage=1, imperfect=False); con2.load_state(st)
     assert con2.vocal_book == con.vocal_book
     con3 = C.Conduct(seed=3, transcriber=Transcriber(None), stage=1, imperfect=False)

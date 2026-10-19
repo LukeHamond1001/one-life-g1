@@ -26,6 +26,10 @@ every tensor a buffer saved with the body; it stays on the host, as the robot ru
   saturates), a torque (N m) the world adds to the joint's servo, the sum clipped again to the same limit. Born at zero.
 - THE FLOCCULUS, per declared VOR axis: a gain correction G_a = sum g_i f_ia and an offset O_a = sum g_i f_i(A+a), read once a tick
   at sub-step 0 and held through the tick by the world (the window counter-shifts by -(born gain + G) turn - O). Born at zero.
+- THE WALK'S TURN READOUT (A227), per declared locomotor axis (the anatomy's `loco`: the G1's turn): a gain correction G_l = sum g_i
+  h_il / ref and an offset O_l = sum g_i h_i(L+l) (rad/s), read once a tick at sub-step 0, held through the tick by the world (the legs
+  are given (1 + G) x the command + O). Born at zero; registered only for a body that declares the axes (a body without them builds
+  none of it).
 - ITS TEACHERS, the climbing fibres:
   * at the limbs, every sub-step, THE SERVO LAW'S OWN CORRECTIVE TORQUE e_j (feedback-error learning: Kawato and Gomi 1992): the
     readout is read first, then the rows of the sub-step's active units are restored by the leak and taught on its granule activity,
@@ -39,6 +43,12 @@ every tensor a buffer saved with the body; it stays on the host, as the robot ru
     drives fades with a time constant of 1 / leak sub-steps (3.0 s). Without the leak and the bound the law was a pure integrator there
     (the R6c verifier: a limb pressed on a table wound it to -531 N m in 60 s and jammed at rest; a newborn's rested limb was held
     where it was left within 1.5 s: body/tests/test_cerebellum.py cereb 11-13);
+  * at the walk's turn readout, once a tick, THE TURN'S ERROR e_l (A227): the turn the body made over the last tick (its gyro) minus
+    the turn it was asked for, u_l, on the code the readout read that tick (its eligibility): h_il -= cereb_loco_rate e_l (u_l / ref)
+    g_i / (|g|^2 ((u_l / ref)^2 + 1)) and h_i(L+l) -= cereb_loco_rate e_l g_i / (|g|^2 ((u_l / ref)^2 + 1)); THE BOUND: a lesson that
+    would carry this code's gain correction outside [-1/2, cereb_loco_gain_max] or its offset outside +-cereb_loco_off_max is stepped
+    back onto it along g (as the limbs' readouts are), so no weight winds up behind a turn the legs cannot make. No error (None: the
+    body not walking on command, the room turning it, a fall, the command at its cap) writes nothing;
   * at the flocculus, once a tick, RETINAL SLIP s_a (Ito 1982) with the gyro's turn t_a over the tick it was seen in: the granule
     activity the flocculus read that tick is its eligibility (kept in the organ, so a save between ticks loses nothing), and at the
     next tick's sub-step 0 it is taught, least mean squares on its two regressors (the turn for the gain, 1 for the offset) normalized
@@ -120,6 +130,16 @@ class Cerebellum(nn.Module):
         self.register_buffer("n_sub", torch.zeros((), dtype=torch.long))
         self.register_buffer("n_limb", torch.zeros((), dtype=torch.long))
         self.register_buffer("n_vor", torch.zeros((), dtype=torch.long))
+        # A227: the walk's turn readout [G, 2L] (gain over ref, offset), its eligibility and its lessons, for a body that declares it
+        self.loco = tuple(str(a) for a in (getattr(decl, "loco", None) or ()))
+        if self.loco:
+            L = len(self.loco)
+            self.register_buffer("lc_w", torch.zeros(G, 2 * L, dtype=torch.float64))
+            self.register_buffer("lc_top", torch.zeros(k, dtype=torch.long))
+            self.register_buffer("lc_g", torch.zeros(k, dtype=torch.float64))
+            self.register_buffer("lc_n", torch.zeros((), dtype=torch.long))
+            self.register_buffer("n_loco", torch.zeros((), dtype=torch.long))
+        self._code = None                                              # (the sub-step's granule code, for the walk readout's read at sub-step 0)
 
     def _apply(self, fn, recurse=True):
         """the cerebellum stays on the host whatever the organs are sent to (the night's device, Organs.to): its numbers are float64,
@@ -129,6 +149,7 @@ class Cerebellum(nn.Module):
     def declares(self, decl):
         """whether the organ was born for this declaration (the same fibres with the same middles and half-ranges, joints and axes)"""
         return (int(decl.n_mossy) == self.n_mossy and tuple(str(j) for j in decl.joints) == self.joints and tuple(str(a) for a in decl.vor) == self.vor
+                and tuple(str(a) for a in (getattr(decl, "loco", None) or ())) == self.loco
                 and np.array_equal(self.mossy_off.numpy(), np.array([float(x) for x in decl.mossy_offset], dtype=np.float64))
                 and np.array_equal(self.mossy_scale.numpy(), np.array([float(x) for x in decl.mossy_scale], dtype=np.float64)))
 
@@ -152,6 +173,7 @@ class Cerebellum(nn.Module):
         float64."""
         J, A = len(self.joints), len(self.vor)
         top, g = self.granule_code(sf.mossy)
+        self._code = (top, g)
         n2 = float(np.einsum("i,i->", g, g))
         tau = None
         if J:
@@ -201,6 +223,41 @@ class Cerebellum(nn.Module):
         self.n_sub.add_(1)
         return tau, gain, off
 
+    @torch.no_grad()
+    def loco_step(self, sf, rate, ref, gain_max, off_max):
+        """A227: THE WALK'S TURN READOUT at sub-step 0, after sub_step on the same SubFrame (whose granule code it reads): taught by the
+        last tick's error (`sf.loco_err`, the turn achieved minus the turn commanded, rad/s) on the command (`sf.loco_cmd`, rad/s) with
+        the code it read then (its eligibility), least mean squares on the two regressors (the command over `ref`, 1) normalized by their
+        power and the eligibility's activity, the taught code's output held inside the bounds (stepped back along its activity); then
+        read on this sub-step's code, inside the same bounds. Returns (gain correction [L], offset [L] rad/s), numpy float64"""
+        L = len(self.loco)
+        top, g = self._code
+        R = float(ref)
+        lo_ = np.concatenate([np.full(L, -0.5 * R), np.full(L, -float(off_max))])
+        hi_ = np.concatenate([np.full(L, float(gain_max) * R), np.full(L, float(off_max))])
+        lw = self.lc_w.numpy()
+        nh = int(self.lc_n)
+        if sf.loco_err is not None and sf.loco_cmd is not None and nh:
+            e = np.asarray(sf.loco_err, dtype=np.float64).reshape(L)
+            u = np.asarray(sf.loco_cmd, dtype=np.float64).reshape(L) / R
+            ft, fg = self.lc_top.numpy()[:nh], self.lc_g.numpy()[:nh]
+            m2 = float(np.einsum("i,i->", fg, fg))
+            if m2 > 0.0 and np.all(np.isfinite(e)) and np.all(np.isfinite(u)) and np.any(e != 0.0):
+                den = m2 * (u * u + 1.0)
+                c = np.concatenate([-float(rate) * e * u / den, -float(rate) * e / den])
+                P = lw[ft] + fg[:, None] * c[None, :]
+                out = np.einsum("i,ij->j", fg, P)
+                over = out - np.clip(out, lo_, hi_)                    # the bound: the step back onto it is least mean squares' own
+                if np.any(over != 0.0):
+                    P -= fg[:, None] * (over / m2)[None, :]
+                lw[ft] = P
+                self.n_loco.add_(1)
+        out = np.clip(np.einsum("i,ij->j", g, lw[top]), lo_, hi_)
+        lt, lg = self.lc_top.numpy(), self.lc_g.numpy()                 # the eligibility: this read's active units and activity
+        lt[:] = 0; lg[:] = 0.0; lt[:top.size] = top; lg[:top.size] = g
+        self.lc_n.fill_(int(top.size))
+        return out[:L] / R, out[L:].copy()
+
 
 class Below:
     """THE HOOK A WORLD CALLS BELOW THE TICK (step R6c; body/core/world.py `World.below`): a life's cerebellum, held weakly (a world
@@ -213,6 +270,7 @@ class Below:
         decl = life.anatomy.cerebellar
         self.period_s = float(life._cereb_const("cereb_period_s"))
         self.joints, self.vor, self.n_mossy = tuple(decl.joints), tuple(decl.vor), int(decl.n_mossy)
+        self.loco = tuple(getattr(decl, "loco", None) or ())           # A227
         self.calls = 0; self.seconds = 0.0
 
     def __call__(self, sf):
@@ -254,6 +312,11 @@ class CerebellumMixin:
 
     def _cereb_sub(self, sf):
         """one sub-step below the tick (the world's call through Below): the organ's law at this life's rates, as SubActs"""
-        tau, gain, off = self.m.cereb.sub_step(sf, float(self._cereb_const("cereb_rate")), float(self._cereb_const("cereb_vor_rate")),
-                                               float(self._cereb_const("cereb_leak")))
-        return SubActs(tau, gain, off)
+        org = self.m.cereb
+        tau, gain, off = org.sub_step(sf, float(self._cereb_const("cereb_rate")), float(self._cereb_const("cereb_vor_rate")),
+                                      float(self._cereb_const("cereb_leak")))
+        lg = lo = None
+        if org.loco and int(sf.sub) == 0:                              # A227: the walk's turn readout, once a tick
+            lg, lo = org.loco_step(sf, float(self._cereb_const("cereb_loco_rate")), float(self._cereb_const("cereb_loco_ref")),
+                                   float(self._cereb_const("cereb_loco_gain_max")), float(self._cereb_const("cereb_loco_off_max")))
+        return SubActs(tau, gain, off, lg, lo)

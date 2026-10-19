@@ -1051,10 +1051,124 @@ def test_born_with_its_switch():
     print("cereb 14: born with its switch: a load switching the cerebellum off, or on for a body born without it, is refused; each loads as born")
 
 
+class Walker:
+    """THE TEST WALKER FOR THE WALK'S TURN READOUT (A227; an instrument): legs that make k x the turn they are given, LAG ticks late, plus
+    a bias (rad/s) and white noise from a seeded stream; the brain's command a slow random walk inside +-0.4 rad/s. Each tick: sub-step 0
+    hands the cerebellum the gait's state (its phase and pace: the command itself is not among the mossy fibres) with the last tick's
+    turn error and command; the legs are given (1 + gain) x command + offset; the error is the turn made minus the command. Sub-steps 1
+    to 14 hand it the same state with no teacher."""
+
+    def __init__(self, hook=None, k=0.5, bias=0.03, lag=2, noise=0.05, seed=0):
+        self.hook, self.k, self.bias, self.lag, self.noise = hook, float(k), float(bias), int(lag), float(noise)
+        self.rng = np.random.Generator(np.random.PCG64(seed))
+        self.t = 0; self.u = 0.0; self.given = [0.0] * (self.lag + 1); self.err = None; self.cmd = None
+        self.err_log = []; self.gain_log = []; self.off_log = []
+
+    @staticmethod
+    def cerebellar():
+        """the walker's interface: the gait's phase (sine and cosine, and of its double) and pace, no joints, no VOR, the walk's turn"""
+        return Cerebellar([0.0, 0.0, 0.0, 0.0, 0.3], [1.0, 1.0, 1.0, 1.0, 0.3], joints=[], vor=[], loco=["turn"])
+
+    def tick(self):
+        t = self.t
+        self.u = float(np.clip(self.u + 0.02 * self.rng.standard_normal(), -0.4, 0.4))
+        ph = 2 * math.pi * t / 5.3
+        mossy = [math.sin(ph), math.cos(ph), math.sin(2 * ph), math.cos(2 * ph), 0.3 + 0.1 * math.sin(2 * math.pi * t / 400.0)]
+        gain = off = 0.0
+        if self.hook is not None:
+            for s in range(15):
+                ans = self.hook(SubFrame(t, s, mossy, None, None, None, None, self.err if s == 0 else None, self.cmd if s == 0 else None))
+                if s == 0:
+                    gain, off = float(ans.loco_gain[0]), float(ans.loco_offset[0])
+        self.given.append((1.0 + gain) * self.u + off); self.given = self.given[-(self.lag + 1):]
+        made = self.k * self.given[0] + self.bias + self.noise * self.rng.standard_normal()
+        self.err = [made - self.u]; self.cmd = [self.u]
+        self.err_log.append(made - self.u); self.gain_log.append(gain); self.off_log.append(off)
+        self.t += 1
+
+
+class WalkHook(OrganHook):
+    """the organ's law with its walk readout, as the life's hook calls it (Life._cereb_sub), at CEREB's walk constants"""
+
+    def __call__(self, sf):
+        tau, gain, off = self.organ.sub_step(sf, self.rate, self.vor_rate, self.leak)
+        lg = lo = None
+        if self.organ.loco and int(sf.sub) == 0:
+            lg, lo = self.organ.loco_step(sf, CEREB["cereb_loco_rate"], CEREB["cereb_loco_ref"], CEREB["cereb_loco_gain_max"], CEREB["cereb_loco_off_max"])
+        return SubActs(tau, gain, off, lg, lo)
+
+
+def test_the_walks_turn_is_calibrated():
+    """cereb 15 (A227: the vermis and the fastigial nucleus on the descending turn command): a walker whose legs make half the turn they
+    are given, two ticks late, with a bias of 0.03 rad/s to its left. Off, the turn's error stays where the legs put it; on, the readout
+    learns a gain correction toward 1 (the legs given twice the command) and an offset toward -0.06 rad/s (the bias over the legs'
+    gain) and the error falls below the uncorrected one in every window, toward the legs' own noise. Legs that can hardly turn (k 0.05) wind the gain no further than its
+    bound and the offset no further than its own; born at zero, a readout with no teacher stays at zero; an organ that declares no walk
+    readout builds none"""
+    out = {}
+    for on in (False, True):
+        o = organ(Walker.cerebellar(), seed=3); w = Walker(WalkHook(o) if on else None)
+        for _ in range(6000):
+            w.tick()
+        E = np.abs(np.array(w.err_log))
+        out[on] = ([float(E[i:i + 500].mean()) for i in range(0, 6000, 500)], float(np.mean(w.gain_log[-500:])), float(np.mean(w.off_log[-500:])), int(o.n_loco) if on else 0)
+    eo, en = out[False][0], out[True][0]                                     # (the same commands and noise on and off: one seeded stream)
+    assert np.mean(en[2:]) < 0.7 * np.mean(eo[2:]) and all(b < a for a, b in zip(eo, en)), (eo, en)   # (the floor: the legs' own noise, |N(0, 0.05)| 0.04)
+    assert 0.6 < out[True][1] < 1.4 and -0.08 < out[True][2] < -0.04 and out[True][3] > 5000, out[True][1:]
+    o = organ(Walker.cerebellar(), seed=3); w = Walker(WalkHook(o), k=0.05)
+    for _ in range(4000):
+        w.tick()
+    assert max(w.gain_log) <= CEREB["cereb_loco_gain_max"] + 1e-9 and max(abs(x) for x in w.off_log) <= CEREB["cereb_loco_off_max"] + 1e-9, (max(w.gain_log), max(map(abs, w.off_log)))
+    assert max(w.gain_log[-200:]) > 0.9 * CEREB["cereb_loco_gain_max"], max(w.gain_log[-200:])
+    o = organ(Walker.cerebellar(), seed=3); h = WalkHook(o)
+    for t in range(50):
+        for s_ in range(15):
+            a_ = h(SubFrame(t, s_, [0.1, 0.2, 0.3, 0.4, 0.3]))
+            if s_ == 0:
+                assert float(a_.loco_gain[0]) == 0.0 and float(a_.loco_offset[0]) == 0.0
+    assert int(o.n_loco) == 0 and not o.lc_w.abs().sum()
+    assert not organ(Head.cerebellar(), seed=3).loco and "lc_w" not in dict(organ(Head.cerebellar(), seed=3).named_buffers())
+    print(f"cereb 15: the walk's turn: the mean |error| per 500 ticks off {' '.join(f'{b:.3f}' for b in eo)}, on {' '.join(f'{b:.3f}' for b in en)};",
+          f"the gain correction {out[True][1]:.2f} (toward 1), the offset {out[True][2]:.3f} rad/s (toward -0.06), {out[True][3]} lessons;",
+          f"legs that hardly turn: the gain at its bound {max(w.gain_log[-200:]):.2f}")
+
+
+def test_a_walk_readout_joins_a_saved_cerebellum():
+    """cereb 16 (A227, A20 amended: the walk command joined the body after its birth, W8): a body saved with a cerebellum that declares
+    no walk readout loads under an anatomy that declares one, every saved entry kept and the readout born at zero beside them; a save
+    whose cerebellum holds the readout is refused under an anatomy without it (a cerebellum is never dropped at a load)"""
+    tmp = tempfile.mkdtemp(prefix="cereb_")
+    try:
+        w = ArmWorld(); torch.manual_seed(0); L = born(dict(_LR0, gate_floor=0.5, cereb=1), w); run = WorldLoop(L)
+        for _ in range(5):
+            run.step()
+        p = os.path.join(tmp, "b.pt"); L.save(p)
+        saved = {k_: v_.clone() for k_, v_ in L.m.cereb.state_dict().items()}
+
+        class _Walks(ArmAnatomy):
+            def __init__(self, tok, cfg=None):
+                super().__init__(tok, cfg)
+                d_ = self.cerebellar
+                self.cerebellar = Cerebellar(d_.mossy_offset, d_.mossy_scale, joints=list(d_.joints), vor=list(d_.vor), loco=["turn"])
+        L2 = Life.load(p, _Walks(TOK, {}), device="cpu", seed=0, world=ArmWorld())
+        st2 = L2.m.cereb.state_dict()
+        assert all(torch.equal(st2[k_], v_) for k_, v_ in saved.items()) and L2.m.cereb.loco == ("turn",) and not st2["lc_w"].abs().sum()
+        p2 = os.path.join(tmp, "b2.pt"); L2.save(p2)
+        try:                                                                    # the readout is never dropped at a load either
+            Life.load(p2, ArmAnatomy(TOK, {}), device="cpu", seed=0, world=ArmWorld()); refused = False
+        except ValueError:
+            refused = True
+        assert refused
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("cereb 16: a walk readout joins a saved cerebellum born at zero, its saved entries kept; dropping it at a load is refused")
+
+
 CEREB_TESTS = [test_absent_for_language, test_built_last_from_its_own_generator, test_the_law_against_numpy, test_silent_without_a_teacher,
                test_it_learns_a_limbs_load, test_the_vor_learns_from_slip, test_through_a_life, test_save_round_trip_and_replay, test_its_cost,
                test_the_estimated_torque_in_the_mossy_input, test_a_leaky_bounded_integrator, test_a_blocked_limb_never_jams,
-               test_a_rested_posture_is_never_locked, test_born_with_its_switch]
+               test_a_rested_posture_is_never_locked, test_born_with_its_switch,
+               test_the_walks_turn_is_calibrated, test_a_walk_readout_joins_a_saved_cerebellum]
 
 
 if __name__ == "__main__":

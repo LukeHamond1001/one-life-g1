@@ -151,6 +151,14 @@ class CortexMixin:
                     self.win.append({**obs_, "xo": int(x), **entry})
                 if acts_:
                     self.win[-1].update(acts_)                 # the later effectors' acts join it too
+                    for e_, st_ in zip(self.anatomy.motors, self.motor):   # A233: the settings its actuator could not carry out this tick,
+                        bk_ = (st_.get("now") or {}).get("blk")                 # and the push the world shows into it (A228b: an effector
+                        if bk_ is not None:                                     # with the born approach)
+                            self.win[-1]["blk:" + e_.name] = bk_
+                        if e_.inverse and getattr(e_, "approach", None):
+                            pu_ = self._sense_push(e_)
+                            if pu_ is not None:
+                                self.win[-1]["push:" + e_.name] = pu_.detach().float().cpu()
                     if self._recall_on():
                         self.win[-1]["frec"] = self._frec_now  # step R7f: the recall the tick's proposals read (body/core/frames.py)
                 self._pos_open = False
@@ -211,7 +219,7 @@ class CortexMixin:
             return (1.0 + G).clamp(0.0, 1.0).to(torch.float32).to(self.dev)
         return G.clamp(-1.0, 1.0).to(torch.float32).to(self.dev)   # A152: the own acts' weight is dopamine's credit alone, clip(G, -1, 1): no cloning for free
 
-    def _window_tensors(self, win=None):
+    def _window_tensors(self, win=None, lesson=True):
         """THE WINDOW AS TENSORS, PER CHANNEL (step R4): obs, each of the anatomy's channels by name, its field at every position ([T]
         symbols of a symbol channel, [T, size] of a vector channel: the diary's ear [T] and face [T, 2]), and each later effector's acts
         by its name ([T], step R5); whos [T] its own symbol at each position; bundles [T, nb, d]; reads [T, d]"""
@@ -220,6 +228,21 @@ class CortexMixin:
                for c_ in self.anatomy.channels}
         for e_ in self.anatomy.motors:                          # each later effector's acts, by its name (step R5)
             obs[e_.name] = torch.tensor([w[e_.field] for w in win], device=self.dev)
+        for e_ in (self.anatomy.motors if lesson else ()):      # A233: the settings its actuator could not carry out at each position (not shown: none)
+            k_ = "blk:" + e_.name; F_ = sum(int(f_) for f_ in e_.factors)
+            if any(k_ in w for w in win):
+                obs["@blk:" + e_.name] = torch.tensor([[bool(x_) for x_ in w[k_]] if len(w.get(k_) or ()) == F_ else [False] * F_ for w in win],
+                                                      dtype=torch.bool, device=self.dev)
+        pus_ = [(e_, int(w_)) for _, e_, w_ in self._tape_pushers()] if (lesson and hasattr(self, "_tape_pushers")) else []
+        if pus_ and any(("push:" + e_.name) in w for w in win for e_, _ in pus_):
+            # A233: the push the world showed into each position, the pushers' in order ('@push' [T, widths], '@pushk' [T] where known), as
+            # the night's batches hold it (sleep `_frames_batch`, A228c)
+            P_ = torch.zeros(len(win), sum(w_ for _, w_ in pus_)); K_ = torch.zeros(len(win), dtype=torch.bool)
+            for t_, w in enumerate(win):
+                xs_ = [w.get("push:" + e_.name) for e_, _ in pus_]
+                if all(x_ is not None and int(x_.numel()) == w_ for x_, (_, w_) in zip(xs_, pus_)):
+                    P_[t_] = torch.cat([x_.reshape(-1).float() for x_ in xs_]); K_[t_] = True
+            obs["@push"] = P_.to(self.dev); obs["@pushk"] = K_.to(self.dev)
         if self.anatomy.motors and self._recall_on():           # step R7f: each position's recall into action (none: an imagined position's, zeros)
             z_ = torch.zeros(self.m.d, device=self.dev)
             obs["@frec"] = torch.stack([w.get("frec", z_) for w in win])
@@ -229,7 +252,7 @@ class CortexMixin:
         return obs, whos, bundles, reads
 
     def _stream_now(self):
-        obs, whos, bundles, reads = self._window_tensors()
+        obs, whos, bundles, reads = self._window_tensors(lesson=False)
         u = self.m.inputs(self.anatomy, obs, whos, bundles)
         return self.m.stream(u)[-1]
 

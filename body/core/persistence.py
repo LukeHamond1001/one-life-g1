@@ -80,17 +80,26 @@ class PersistenceMixin:
                          "sym_freq": self.sym_freq, "perf": {int(k): float(v) for k, v in self.perf.items()}, "last_night": self.last_night, "rbar": float(self.rbar),
                          "feat_mu": (self._feat_mu.cpu() if getattr(self, "_feat_mu", None) is not None else None),
                          "vrel": list(self._vrel), "vrel_gain": float(self._vrel_gain), "vrel_corr": float(self._vrel_corr),
-                         "dop_ms": float(getattr(self, "_dop_ms", 1.0)),            # A172: dopamine's running mean square (the actors' adaptive gain)
+                         "actor_in_m": None if getattr(self, "_actor_in_m", None) is None else [float(x_) for x_ in self._actor_in_m.reshape(-1).tolist()],   # D4
+                         "actor_in_v": None if getattr(self, "_actor_in_v", None) is None else [float(x_) for x_ in self._actor_in_v.reshape(-1).tolist()],
+                         "asense_m": {k_: [float(x_) for x_ in v_.reshape(-1).tolist()] for k_, v_ in (getattr(self, "_asense_m", None) or {}).items()},   # A226
+                         "asense_v": {k_: [float(x_) for x_ in v_.reshape(-1).tolist()] for k_, v_ in (getattr(self, "_asense_v", None) or {}).items()},
+                         "dop_ms": float(getattr(self, "_dop_ms", 1.0)), "dop_shape_m": {str(k_): float(v_) for k_, v_ in getattr(self, "_dop_shape_m", {}).items()},   # (D3b/D3d: each shaping band's term's running mean)            # A172: dopamine's running mean square (the actors' adaptive gain)
                          "vbuf_v": list(self._vbuf_v), "vbuf_r": list(self._vbuf_r), "sharp_cal": float(self.sharp_cal),
                          "frel": list(self._frel), "frel_gain": float(self._frel_gain), "frel_corr": float(self._frel_corr),
                          "fh_A": self._fh_A.clone(), "fh_b": self._fh_b.clone(), "fh_w": self._fh_w.clone(),
                          "arel": list(self._arel), "arel_gain": float(self._arel_gain), "arel_corr": float(self._arel_corr),
+                         "vte_m": {k_: [float(x_) for x_ in v_] for k_, v_ in getattr(self, "_vte_m", {}).items()},   # A219
+                         "shape_m": {str(k_): [float(x_) for x_ in v_] for k_, v_ in getattr(self, "_shape_m", {}).items()},   # D3c/D3d: each shaping band's anticipation moments
                          "store_after_night": self._store_after_night, "utts": self.utts, "utt_S": self.utt_S,
                          "utt_N": self.utt_N, "utt_serial": int(self._utt_serial), "c_mu": self._c_mu.clone(), "c_n": int(self._c_n), "ctx_cur": self.ctx_cur.clone(), "ctx_prev": self.ctx_prev.clone(),
                          "bands": self.bands.detach().cpu().clone(), "writes_today": int(getattr(self, "_writes_today", 0)), "store_fresh": bool(getattr(self, "_store_fresh", False)), "utt_open": bool(self._utt_open),
                          "pace": {k_: (list(v_) if isinstance(v_, list) else v_) for k_, v_ in self._pq.items()}, "pace_day": {k_: (list(v_) if isinstance(v_, list) else v_) for k_, v_ in self._pace_day.items()}}}
         if int(self.cfg.get("tag_trace", 0)):                         # defect 7 (tag_trace, R7c): the felt entries' running mean saved (a key only
             blob["life"]["utt_felt"] = {"m": float(getattr(self, "_utt_felt_m", 0.0)), "n": int(getattr(self, "_utt_felt_n", 0))}   # under the switch)
+        if getattr(self, "_imag_n", None) is not None:                 # I3 (2026-10-17): the waking imaginings so far (A138's count, the record's
+            blob["life"]["imag_n"] = int(self._imag_n)                  # 'imag'), kept across a restart (it began again at 0 at each landing); a key
+                                                                        # only a body that has imagined awake holds
         if hasattr(self, "_episodes"):                                # step R8: the episodes, their reels, the entries' running mean (saved and
             blob["life"]["episodes"] = {"reels": list(self._reels or []), "episodes": [dict(ep) for ep in self._episodes],   # bias-corrected:
                                         "mean": [float(self._ep_mean[0]), int(self._ep_mean[1])],                           # defect 7's fix)
@@ -102,12 +111,14 @@ class PersistenceMixin:
             blob["life"]["motor"] = {e_.name: {"inv_conf": (None if st_["inv_conf"] is None else [[[float(x_) for x_ in r_] for r_ in c_] for c_ in st_["inv_conf"]]),
                                                "inv_kappa": [float(x_) for x_ in st_["inv_kappa"]], "inv_gain": float(st_["inv_gain"]),
                                                "inv_n": int(st_["inv_n"]),
+                                               **({"inv_own": True} if e_.inverse and getattr(e_, "approach", None) else {}),   # A228: counted on its own moves
                                                **({"perf": [[float(x_) for x_ in r_] for r_ in st_["perf"]]} if st_.get("perf") is not None else {}),
                                                # step R6h: its own fatigue; the kappa correction's running agreement and chance; act_inv's
                                                # pairs gathered for the next batch (each key only where it has something)
                                                **({"fatigue": float(st_["fatigue"])} if float(st_.get("fatigue", 0.0)) != 0.0 else {}),
                                                **({"inv_ch": [[float(x_) for x_ in r_] for r_ in st_["inv_ch"]]} if st_.get("inv_ch") is not None else {}),
                                                **({"inv_batch": [(p_[0].tolist(), p_[1].tolist(), int(p_[2]), (None if p_[3] is None else [q_.tolist() for q_ in p_[3]]))
+                                                                 + ((tuple(bool(k_) for k_ in p_[4]),) if len(p_) > 4 else ())   # A228: its joints' mask
                                                                  for p_ in st_["inv_batch"]]} if st_.get("inv_batch") else {})}
                                      for e_, st_ in zip(self.anatomy.motors, self.motor)}
             # THE DAY (A70; the module's doc): the stream, the optimizers' moments, the life's working attributes (a test's instrument
@@ -142,9 +153,17 @@ class PersistenceMixin:
         cb_saved = sorted(k_ for k_ in blob["organs"] if k_.split(".")[0] == "cereb")
         cb_built = sorted("cereb." + k_ for k_ in organs.cereb.state_dict()) if "cereb" in organs._modules else []
         if cb_saved != cb_built:
-            raise ValueError(f"load: the save's organs hold {len(cb_saved)} entries of a cerebellum and its constants under this load switch it "
-                             f"{'on' if cb_built else 'off'} ({len(cb_built)} entries): a body is born with its switches (SIM_DESIGN.md A20), so a "
-                             f"cerebellum is neither dropped nor grown at a load")
+            # A227 (2026-10-17): THE WALK'S TURN READOUT, BORN AT ZERO BESIDE A SAVED CEREBELLUM. The walk command joined the body after
+            # its birth (W8), as its recall map did; the readout that calibrates it is that command's, and born at zero it changes
+            # nothing until it learns. Every saved entry must still be built and nothing but the readout's entries may be new: a
+            # cerebellum is otherwise neither dropped nor grown at a load (A20)
+            lc_extra_ = sorted(set(cb_built) - set(cb_saved)); lc_lost_ = sorted(set(cb_saved) - set(cb_built))
+            if cb_saved and not lc_lost_ and lc_extra_ and all(k_.split(".", 1)[1] in ("lc_w", "lc_top", "lc_g", "lc_n", "n_loco") for k_ in lc_extra_):
+                print("load: the cerebellum's walk turn readout born at zero beside the saved organ (A227)", flush=True)
+            else:
+                raise ValueError(f"load: the save's organs hold {len(cb_saved)} entries of a cerebellum and its constants under this load switch it "
+                                 f"{'on' if cb_built else 'off'} ({len(cb_built)} entries): a body is born with its switches (SIM_DESIGN.md A20), so a "
+                                 f"cerebellum is neither dropped nor grown at a load")
         rc_saved = sorted(k_ for k_ in blob["organs"] if k_.split(".")[0] in ("recall", "head_code"))   # step R7f: recall's maps likewise (A20)
         rc_built = sorted(["head_code"] + ["recall." + k_ for k_ in organs.recall.state_dict()]) if "recall" in organs._modules else []
         if rc_saved != rc_built:
@@ -236,8 +255,10 @@ class PersistenceMixin:
                             or (k_ == "stri_eline" and not anatomy.events)])
         if dropped:
             print("load: the save holds organs of channels or effectors this anatomy does not declare (not loaded):", dropped, flush=True)
-        if [k_ for k_ in missing.missing_keys if not (k_.startswith("vc_") or k_.startswith("vf_") or k_.startswith("stri_") or k_.startswith("vfast.") or k_.startswith("actor.") or k_.startswith("actors.") or k_.startswith("wm_"))]:
-            print("load: organs without", [k_ for k_ in missing.missing_keys if not (k_.startswith("vc_") or k_.startswith("vf_") or k_.startswith("stri_") or k_.startswith("vfast.") or k_.startswith("actor.") or k_.startswith("actors.") or k_.startswith("wm_"))], "(an older recipe; born fresh where missing)")
+        if [k_ for k_ in missing.missing_keys if not (k_.startswith("vc_") or k_.startswith("vf_") or k_.startswith("stri_") or k_.startswith("vfast.") or k_.startswith("actor.") or k_.startswith("actors.") or k_.startswith("wm_") or k_.endswith(".inv_mu") or k_.endswith(".inv_sd") or k_.endswith(".inv_m1") or k_.endswith(".inv_m2") or k_.endswith(".inv_c"))]:
+            print("load: organs without", [k_ for k_ in missing.missing_keys if not (k_.startswith("vc_") or k_.startswith("vf_") or k_.startswith("stri_") or k_.startswith("vfast.") or k_.startswith("actor.") or k_.startswith("actors.") or k_.startswith("wm_") or k_.endswith(".inv_mu") or k_.endswith(".inv_sd") or k_.endswith(".inv_m1") or k_.endswith(".inv_m2") or k_.endswith(".inv_c"))], "(an older recipe; born fresh where missing)")
+        if any(k_.endswith(".inv_mu") for k_ in missing.missing_keys):
+            print("load: act_inv's input statistics born at 0 and 1 (A229n; a save before it: the same function)", flush=True)
         life = cls(organs, anatomy, cfg=c, device=device, seed=seed, save_path=save_path or path, world=world)
         born_ = set(vars(life))                                      # the working attributes a life is born with (the day's, A70, below)
         saved_norm = vc_saved.get("vc_mu") is not None and vc_saved["vc_mu"].numel() > 0; norm_on = int(c.get("vcrit_norm_tau", 0)) > 0
@@ -327,6 +348,9 @@ class PersistenceMixin:
                     a_ = life.m.get_submodule(e_.actor)
                     if w_ is not None and b_ is not None and w_.shape == a_.weight.shape:
                         a_.weight.copy_(w_.to(device)); a_.bias.copy_(b_.to(device))
+                    elif w_ is not None and b_ is not None and w_.dim() == 2 and w_.shape[0] == a_.weight.shape[0] and w_.shape[1] < a_.weight.shape[1]:
+                        a_.weight[:, :int(w_.shape[1])].copy_(w_.to(device)); a_.bias.copy_(b_.to(device))   # A225: the band's columns as saved,
+                        print(f"load: {e_.name}'s actor widened from {int(w_.shape[1])} to {int(a_.weight.shape[1])} inputs: its learned columns kept, the new born at 0 (A225)", flush=True)
         life.store.load_state_dict(blob["store"])
         life.store.saturate = bool(int(life.cfg.get("store_sat", 0)))
         if life.store.saturate and not life.store.sat_done:
@@ -337,8 +361,18 @@ class PersistenceMixin:
                 setattr(life, k, L[k])
         if L.get("feat_mu") is not None:
             life._feat_mu = L["feat_mu"].to(device)                  # the gate's adapted input, its running mean
+        if isinstance(L.get("actor_in_m"), list) and isinstance(L.get("actor_in_v"), list) and len(L["actor_in_m"]) == len(L["actor_in_v"]) > 0:   # D4
+            life._actor_in_m = torch.tensor(L["actor_in_m"], dtype=torch.float64); life._actor_in_v = torch.tensor(L["actor_in_v"], dtype=torch.float64); life._actor_in_t = -1
+        if isinstance(L.get("asense_m"), dict) and isinstance(L.get("asense_v"), dict) and L["asense_m"]:   # A226: each limb's sense moments
+            life._asense_m = {k_: torch.tensor(v_, dtype=torch.float64) for k_, v_ in L["asense_m"].items()}
+            life._asense_v = {k_: torch.tensor(L["asense_v"][k_], dtype=torch.float64) for k_ in L["asense_m"] if k_ in L["asense_v"]}
+            life._asense_t = {k_: -1 for k_ in life._asense_m}; life._asense_n = {k_: 10 ** 9 for k_ in life._asense_m}   # (past the birth rate)
         if L.get("dop_ms") is not None:
             life._dop_ms = float(L["dop_ms"])                        # (A172; an older save: born at 1, re-adapts within the tau)
+        if isinstance(L.get("dop_shape_m"), dict):                            # D3d: per band
+            life._dop_shape_m = {int(k_): float(v_) for k_, v_ in L["dop_shape_m"].items()}
+        elif L.get("dop_shape_m") is not None:                                 # (D3b's one band: the clock-256 band's)
+            life._dop_shape_m = {4: float(L["dop_shape_m"])}          # (D3b: the shaping term's running mean; an older save: born 0)
         if L.get("vrel") is not None:                                # THE THIRTEENTH DEFECT (2026-09-08): the prefrontal voice's evidence was dropped at every load
             life._vrel = [float(v) for v in L["vrel"]]; life._vrel_gain = float(L.get("vrel_gain", 0.0)); life._vrel_corr = float(L.get("vrel_corr", 0.0))
             life._vbuf_v.extend(float(v) for v in (L.get("vbuf_v") or [])); life._vbuf_r.extend(float(v) for v in (L.get("vbuf_r") or []))
@@ -360,6 +394,12 @@ class PersistenceMixin:
                 life._fh_w.copy_(L["fh_w"])
         if L.get("arel") is not None:
             life._arel = [float(v) for v in L["arel"]]; life._arel_gain = float(L.get("arel_gain", 0.0)); life._arel_corr = float(L.get("arel_corr", 0.0))
+        if isinstance(L.get("shape_m"), dict):                                 # D3d: per band (older saves: born 0, earned within a day)
+            life._shape_m = {int(k_): [float(x_) for x_ in v_] for k_, v_ in L["shape_m"].items() if len(v_) == 6}
+        elif isinstance(L.get("shape_m"), (list, tuple)) and len(L["shape_m"]) == 6:   # (D3c's one band: the clock-256 band's)
+            life._shape_m = {4: [float(x_) for x_ in L["shape_m"]]}
+        if isinstance(L.get("vte_m"), dict):                                 # A219 (older saves: born at 1 until earned)
+            life._vte_m = {str(k_): [float(x_) for x_ in v_] for k_, v_ in L["vte_m"].items()}
         if L.get("bands") is not None and tuple(L["bands"].shape) == tuple(life.bands.shape):
             life.bands.copy_(L["bands"].to(device))                  # the slow bands survive a reload as they survive the night (the review of 2026-09-19: zeroed at every reload, every morning a birth)
         life._writes_today = int(L.get("writes_today", 0)); life._store_fresh = bool(L.get("store_fresh", False))
@@ -405,7 +445,9 @@ class PersistenceMixin:
                     st_["inv_ch"] = [[float(x_) for x_ in r_] for r_ in ch_]
                 if e_.inverse and isinstance(mv_.get("inv_batch"), list):   # act_inv's pairs gathered for the next batch
                     st_["inv_batch"] = [(torch.tensor(p_[0], dtype=torch.float32, device=device), torch.tensor(p_[1], dtype=torch.float32, device=device), int(p_[2]),
-                                         (None if p_[3] is None else [torch.tensor(q_, dtype=torch.float32) for q_ in p_[3]])) for p_ in mv_["inv_batch"]]
+                                         (None if p_[3] is None else [torch.tensor(q_, dtype=torch.float32) for q_ in p_[3]]))
+                                        + ((list(bool(k_) for k_ in p_[4]),) if len(p_) > 4 and p_[4] is not None else ())   # A228: its mask
+                                        for p_ in mv_["inv_batch"]]
                 pf_ = mv_.get("perf")                             # step R6h: its performance error's running means, when it declares one
                 if st_.get("perf") is not None and isinstance(pf_, list) and [len(r_) for r_ in pf_] == [int(k_) for k_ in e_.factors]:
                     st_["perf"] = [[float(x_) for x_ in r_] for r_ in pf_]
@@ -424,11 +466,20 @@ class PersistenceMixin:
                 elif e_.inverse and cf_ is not None:             # counts of other joints than this anatomy declares
                     print(f"load: {e_.name}'s act_inv confusion was saved for other joints than its declaration {list(e_.factors)}: it is "
                           f"earned again from its next act", flush=True)
+                if e_.inverse and getattr(e_, "approach", None) and not mv_.get("inv_own"):
+                    # A228 (2026-10-17): a save from before it: the counts behind its reliability held the born approach's pushes, summed
+                    # into the act's own moves, as the act's; they restart, earned again from its next own acts, clean (its weights kept)
+                    print(f"load: {e_.name}'s act_inv reliability restarts (A228: its counts held the born approach's pushes as its own acts; "
+                          f"it read {[round(float(x_), 2) for x_ in (mv_.get('inv_kappa') or [])]})", flush=True)
+                    st_["inv_conf"] = None; st_["inv_ch"] = None
+                    st_["inv_kappa"] = [0.0] * len(e_.factors); st_["inv_gain"] = 0.0
             if adam_:
                 print(f"load: act_pred's and the corrections' moments were saved by R6 fix 5 or 6 (2026-09-24, their Adam's) for {adam_}: "
                       f"not read, act_pred steps plainly since R6 fix 7 (no state)", flush=True)
         if isinstance(L.get("utt_felt"), dict) and int(life.cfg.get("tag_trace", 0)):   # defect 7 (tag_trace, R7c): the felt entries' mean
             life._utt_felt_m = float(L["utt_felt"].get("m", 0.0)); life._utt_felt_n = int(L["utt_felt"].get("n", 0))
+        if L.get("imag_n") is not None:                                 # I3: the waking imaginings so far
+            life._imag_n = int(L["imag_n"])
         if isinstance(L.get("episodes"), dict):                        # step R8: the episodes kept across nights (body/core/sleep.py)
             life._episodes_back(L["episodes"])
         if L.get("store_after_night") is not None:
@@ -445,6 +496,11 @@ class PersistenceMixin:
             day_ = blob.get("day")
             if isinstance(day_, dict) and day_.get("anatomy") == _anatomy_sig(life.anatomy):
                 life._day_back(day_, born_)
+                for e_, st_ in zip(life.anatomy.motors, getattr(life, "motor", ())):   # D2: a trace saved for a head of another width
+                    w_ = int(life.m.get_submodule(e_.actor).weight.shape[1])              # (the actors' input changed) is dropped
+                    for k_ in ("e_actor", "a_tag"):
+                        if st_.get(k_) is not None and hasattr(st_[k_], "shape") and int(st_[k_].shape[-1]) != w_:
+                            st_[k_] = None
             elif isinstance(day_, dict):
                 print("load: the save's day was lived by another anatomy (its channels or joints): not read; the working state begins as a "
                       "night leaves it", flush=True)
@@ -453,6 +509,8 @@ class PersistenceMixin:
                       "leaves it (no cry, unit or chunk under way, no act last tick, no foresight, the cord's counts from zero, no orienting "
                       "cue seen before), the stream from the load's seed and the optimizers' moments born again: R6h's rule for older "
                       "saves", flush=True)
+            if getattr(life, "opt_inv", None) is not None:
+                life._inv_pinned_reborn()                           # A229y: an inverse pinned by its statistics born again
         return life
 
     @staticmethod
