@@ -71,7 +71,6 @@ STEP R7f, RECALL INTO ACTION (7.6, A45; the switch `recall`, and `wm_frames`; ph
   night's report at dusk and in `insides`: reported, never corrected."""
 import math
 
-import math
 import torch
 import torch.nn.functional as F
 from .memory import GOAL_TAU, INNER_P                               # A130: the held word's time constant; A137: the inner word's sureness

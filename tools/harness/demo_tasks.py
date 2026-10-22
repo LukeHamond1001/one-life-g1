@@ -43,6 +43,7 @@ from body.sim import demo as DM  # noqa: E402
 from body.sim.anatomy import SIM_CFG, SimAnatomy, born_table  # noqa: E402
 from body.sim.lang import lexicon as LX  # noqa: E402
 from body.sim import reflexes as R  # noqa: E402
+from body.sim import extras as X  # noqa: E402  (the room's extras: the book, the box, the buckets, the scanned objects, the screen)
 from demo_sim import Recorder  # noqa: E402
 
 FAMILIES = ("come", "look", "where", "what", "echo", "greet", "call")
@@ -236,7 +237,6 @@ def enter_room2(world, expert, gen, lane, rng):
 def build(out, seed, claim2=False, objects=0, screen=False):
     DM.DEMO_WALK = False; DM.DEMO_REACH = False                  # the expert alone drives the child: the life's walk and reach hands
                                                                  # (E1, E2) off in a demo world (their pushes are not the recorded acts)
-    from body.sim import extras as X
     from body.sim.voice import synth as V
     ex_ = X.EXTRAS["book_box_buckets" if claim2 else "book_box_bucket"]()                                 # (P1 claim two: its room's second bucket)
     gso_ = X.add_gso(seed, int(objects)) if int(objects) > 0 else None                                     # the scanned objects for this seed
@@ -829,8 +829,7 @@ class Generator:
             from demo_shown import Shown                          # clean set's 'what objects do', 17:50): one show helper a world
         except ImportError:
             from tools.harness.demo_shown import Shown
-        from body.sim import extras as X_
-        self.sh = Shown(world, expert, rng, lane, HIDE_SHOW_TICKS * 4, HIDE_SHOW_OUT_M, HIDE_SHOW_DOWN_M, X_.BUCKET_H)
+        self.sh = Shown(world, expert, rng, lane, HIDE_SHOW_TICKS * 4, HIDE_SHOW_OUT_M, HIDE_SHOW_DOWN_M, X.BUCKET_H)
         self.demo = bool(demo)
         expert.align_early = bool(claim2)                         # (claim two's expert walks with the repair; claim one's as frozen)
         self.force_next = None                                    # (claim two: the come that runs between a hide and its ask)

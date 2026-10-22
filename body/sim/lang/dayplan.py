@@ -1096,7 +1096,8 @@ class DayPlan:
             # Lying within STAND_CLEAR_M of anything standing it is laid on its back at its mat first (the environment's carry, C277), the stand
             # offered again next tick
             try:
-                here_ = np.asarray(world.d.qpos[:2], float)
+                pm = c.motion                                   # (2026-10-21: `pm` was never bound here; the try swallowed the NameError and
+                here_ = np.asarray(world.d.qpos[:2], float)     # the carry to its mat before a stand never ran: a teacher bug found by lint)
                 if pm._standing_clear_m(here_) < STAND_CLEAR_M and not pm.holds and not any(v is not None for v in pm.holding.values()):
                     world.carry_to_mat()
                     world.toys_beside(list(self.focus))

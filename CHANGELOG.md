@@ -3,6 +3,15 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.208.1 (2026-10-21): the cleanup's second pass
+
+- The folder: `tools/` by job (`tools/README.md`), the pre-G1 prototype worlds in `legacy/sim_prototype/`, the finished pre-registrations
+  in `docs/archive/` with their verdicts; the front page's 'Where it stands now'; the switch table in `docs/ARCHITECTURE.md`.
+- The body: R3 (`actor_guided`) removed; the cord's earned-orienting read safe for a body without it; two names never bound found by
+  lint and fixed (the generator's extras module; `pm` in her C349 branch, whose carry to the mat before a stand had never run).
+- The tests: run file by file on the reorganized tree: 551 tests, 19 red, every one red before this day; the list in `docs/README.md`.
+- The living run records its nights without the teacher's record; the guide never takes an unasked (rung 3) task.
+
 ## 0.208.0 (2026-10-21): the pretraining line, and the living program begun
 
 Not a dawn of the life: the code as it stands at the start of the living program, after three days in which the same architecture was

@@ -126,10 +126,10 @@ that follows it about 40 minutes. Resume with `--resume`.
 
 Tests are plain functions under `body/tests/` (`tools/README.md` shows how to run one). Behaviour is guarded by pinned digests:
 `tools/measure/determinism_check.py` lives a tiny body on a fixed script and hashes every weight, memory and feeling; `tools/measure/pins/digests.txt`
-keeps every pin ever taken and why it moved. Of 423 tests, 46 are red at this writing, all of them before this
-cleanup too: the teacher's staged scenarios from before her room's table moved and its door opened, and refactor-era invariants of
-the brain that later, documented changes moved. The project's rule since September is targeted tests and the pins as the gate, not
-suite gates; `docs/README.md` lists every red test by group with its reason, and they stay in the tree until each is fixed or rewritten.
+keeps every pin ever taken and why it moved. Of 551 tests, 19 are red at this writing (2026-10-21), all of them before this
+day's cleanup too: the teacher's staged scenarios from before her room's table moved and its door opened (17), a language measure
+and a night stub. The project's rule since September is targeted tests and the pins as the gate, not suite gates; `docs/README.md`
+lists every red test by group with its reason, and they stay in the tree until each is fixed or rewritten.
 
 ## Map
 

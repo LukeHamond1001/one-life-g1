@@ -455,7 +455,7 @@ def parent():
         if kin.SEG_PARENT[s] is None:
             p, R = segs[s]
             head = f'{pad}<body name="parent_{s}" childclass="room" pos="{f(*p)}" quat="{f(*kin.mjquat(R))}">'
-            joints = [f'<freejoint name="parent_root"/>']
+            joints = ['<freejoint name="parent_root"/>']
         else:
             head = f'{pad}<body name="parent_{s}" pos="{f(*kin.OFFSET[s])}">'
             joints = parent_joints_xml(s)

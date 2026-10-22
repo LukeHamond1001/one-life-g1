@@ -1335,7 +1335,7 @@ class Conduct:
                 return self._probe_drop(t, form, f"a combination needs one word in two colours: {oa.id}, {ob.id}")
             twins = [o for o in (oa, ob) if (o.colour, o.name) in {tuple(h) for h in K.HELD_PAIRS}]
             if len(twins) != 1:
-                return self._probe_drop(t, form, f"a combination needs exactly one held-out pair between them (A55)")
+                return self._probe_drop(t, form, "a combination needs exactly one held-out pair between them (A55)")
             col = twins[0].colour
             if not (self.ledger.understood(col) and self.ledger.understood(oa.name)):
                 return self._probe_drop(t, form, f"'{col} {oa.name}' is tested only once both its words are understood "
@@ -2558,9 +2558,9 @@ class Conduct:
                 return self._drop(t, intent, f"no {o.name} within the child's reach as she sees it: no act of its could "
                                              f"answer it (4.8; P3's fourth round)")
         if it.ask == "name" and o.id not in {s.id for s in p.attended()}:
-            return self._drop(t, intent, f"a name ask is of what the child attends as she reads it (its head's line on it, "
-                                         f"in its hand or reached toward): while it is pending she shows nothing, so "
-                                         f"'what is this?' can mean only that (A51)")
+            return self._drop(t, intent, "a name ask is of what the child attends as she reads it (its head's line on it, "
+                                         "in its hand or reached toward): while it is pending she shows nothing, so "
+                                         "'what is this?' can mean only that (A51)")
         if it.ask == "call" and p.child_target == "mama":
             return self._drop(t, intent, "she reads the child already looking at her face: nothing to call it to")
         if it.ask is not None and self.pending is not None:

@@ -61,7 +61,7 @@ def _born(tok, cfg):
 
 def _served_cfg():
     """the served save's constants as the determinism check's pins froze them (tools/measure/pins/served_cfg.pkl), the physiology's keys"""
-    p = os.path.join(ROOT, "tools", "pins", "served_cfg.pkl")
+    p = os.path.join(ROOT, "tools", "measure", "pins", "served_cfg.pkl")
     if not os.path.exists(p):
         return None
     with open(p, "rb") as f:

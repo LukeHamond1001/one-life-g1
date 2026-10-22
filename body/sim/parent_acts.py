@@ -63,7 +63,6 @@ def solve(at, yaw, hands, mode="heels", knee_w=.115, look_at=None, expr=None, tw
 # ---------------------------------------------------------------- the child's geometry, read from the sim
 class ChildView:
     def __init__(self, m, d):
-        import mujoco
         self.m, self.d = m, d
         b = lambda n: m.body(n).id
         s = lambda n: m.site(n).id

@@ -19,7 +19,6 @@ forward half, the stream and the gate; the striatum credits only its own selecti
 stuck child; DAgger's states (the student's own) with the expert's acts really lived. The score counts a task met unguided apart."""
 import argparse
 import json
-import math
 import os
 import sys
 import time
@@ -217,6 +216,7 @@ def main():
         except Exception as e_:
             print(f"the film could not start: {e_!r}"[:200], flush=True)
     LIVE = None
+    nights_seen = int(L.nights) if L is not None else 0          # P6: a living run's nights, recorded without the teacher's record too
     if args.teach and L is not None:                   # L1: THE LIVING LIFE'S OWN RECORDS, as the relive's trainer kept them (its reports,
         LIVE = dict(log=open(os.path.join(args.out, "train_log.jsonl"), "a"), nights=int(L.nights), t0=time.time(), k0=0,   # its nights:
                     agree={}, n0=int(L.ticks))         # the curve and the frontier read them), and its own-state ruler from its life
@@ -532,7 +532,7 @@ def main():
         if (k + 1) % 500 == 0:
             dt = time.time() - t0
             print(f"{k + 1} ticks ({1000 * dt / (k + 1):.0f} ms a tick): " + ", ".join(f"{f} {v[0]}/{v[1]}" for f, v in score.items())
-                  + (f"; unguided " + ", ".join(f"{f} {v[0]}/{v[1]}" for f, v in unguided.items()) + f"; guided {guide['ticks']} ticks in {guide['takes']} takes"
+                  + ("; unguided " + ", ".join(f"{f} {v[0]}/{v[1]}" for f, v in unguided.items()) + f"; guided {guide['ticks']} ticks in {guide['takes']} takes"
                      if args.guide else ""), flush=True)
         if LIVE is not None:
             # L1: THE OWN-STATE RULER, READ FROM ITS LIFE: each tick, for the walk and the gaze, act_pred's own best setting of each joint
@@ -567,6 +567,11 @@ def main():
                     own_state={nm_: [[a_[0], a_[1], a_[2], round(a_[0] / a_[2], 3) if a_[2] else None] for a_ in v_] for nm_, v_ in LIVE["agree"].items()},
                     score={f_: list(v_) for f_, v_ in score.items()}, guided=dict(guide), at=time.strftime("%Y-%m-%d %H:%M"))) + "\n")
                 LIVE["log"].flush(); LIVE["agree"] = {}
+        if L is not None and args.learn and LIVE is None and int(L.nights) != nights_seen:   # P6: a night slept in a living run without
+            nights_seen = int(L.nights); L.save()                                            # --teach: the night's save and its line (the
+            with open(os.path.join(args.out, "nights.jsonl"), "a") as fn_:                  # --teach branch above does the same)
+                fn_.write(json.dumps(dict(getattr(L, "last_night", None) or {}, night=nights_seen, ticks=int(L.ticks),
+                                          at=time.strftime("%Y-%m-%d %H:%M")), default=str) + "\n")
         if L is not None and args.save_every and args.learn and (k + 1) % args.save_every == 0:
             if LIVE is not None:
                 L.save(os.path.join(args.out, "life_day.pt"))   # L1: the day's save apart (life.pt: each night's, the curve's to test)

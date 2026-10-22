@@ -2365,7 +2365,7 @@ def test_new_word_on_its_peak():
     if _have_engine():                                                       # the measure made again: bit for bit
         import importlib.util                                                # noqa: PLC0415
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        spec = importlib.util.spec_from_file_location("svc", os.path.join(root, "tools", "sim_voice_check.py"))
+        spec = importlib.util.spec_from_file_location("svc", os.path.join(root, "tools", "measure", "sim_voice_check.py"))
         svc = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(svc)
         tmp = tempfile.mkdtemp()
@@ -5419,7 +5419,7 @@ def test_trial_invariance():
         if len(voices) > 1:
             import importlib.util                                            # noqa: PLC0415
             root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            spec = importlib.util.spec_from_file_location("svc", os.path.join(root, "tools", "sim_voice_check.py"))
+            spec = importlib.util.spec_from_file_location("svc", os.path.join(root, "tools", "measure", "sim_voice_check.py"))
             svc = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(svc)
             cache = voices[1][1]

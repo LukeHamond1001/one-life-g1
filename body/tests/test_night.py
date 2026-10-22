@@ -650,7 +650,7 @@ def test_the_born_config():
     the evening's, not zeroed"""
     import pickle
     from body.sim.anatomy import SIM_CFG
-    with open(os.path.join(ROOT, "tools", "pins", "served_cfg.pkl"), "rb") as f:
+    with open(os.path.join(ROOT, "tools", "measure", "pins", "served_cfg.pkl"), "rb") as f:
         served = pickle.load(f)
     taken = ("night_keep_bands", "fast_input", "fast_rls", "stri_k", "stri_m", "stri_quiet", "fast_rls_prior", "wm", "wm_burst", "wm_max",
              "vcrit_rls", "vcrit_auto", "vcrit_ceiling", "vcrit_forget", "vcrit_traces", "vcrit_clock", "vcrit_norm_tau", "vcrit_rls_prior",

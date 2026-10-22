@@ -122,7 +122,8 @@ class CordMixin:
                 st["cord_n"]["breath"] = int(st["cord_n"].get("breath", 0)) + 1
         if e.orient and e.vor and int(self._reflex_const("orient")) and int(self._reflex_const("orient_saccade")):
             sc_ = self._orient_saccade(e, frame)                           # A186: the born saccade toward a cue, on the eyes
-            if sc_ is not None and self._orient_earned_on():
+            oe_ = getattr(self, "_orient_earned_on", None)                # (a body without the earned orienting: the saccade whole)
+            if sc_ is not None and oe_ is not None and oe_():
                 sc_ = [s_ * (1.0 - self._earned_share(st, j_)) for j_, s_ in enumerate(sc_)]   # D4b: yielding as the cortex earns the joint
             if sc_ is not None:
                 out = sc_ if out is None else [a_ + b_ for a_, b_ in zip(out, sc_)]

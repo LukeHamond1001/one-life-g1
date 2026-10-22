@@ -15,7 +15,6 @@ import collections
 import math
 
 import torch
-import torch.nn.functional as F
 from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swallowed unseen)
 
 ACTOR_H, BAND_H, RECALL_EVERY, TAU = 16, 64, 16, 36000

@@ -177,10 +177,11 @@ FRAMES = {
     # THE SHOWN TASKS (docs/PREREGISTRATION_LIVE.md 3, 2026-10-21): she does the thing before its eyes, then asks it to do the same
     # (her birth words only, the focus last: 'put', 'watch', 'like', 'shake' and 'bucket' are not hers at stage 2 and her check refuses
     # a word she has not got, 17:15; the meaning is in what she just did before its eyes, the words are the cue)
-    "watch_me": [F("look. look at mama.", "mama"), F("{n}. look.", "look"), F("look here.", "here")],
-    "do_in": [F("in. in. the {o}.", "{o}"), F("you. in. the {o}.", "{o}"), F("the {o}. in. the {o}.", "{o}")],
-    "do_shake": [F("up. up. the {o}.", "{o}"), F("you. up. up. the {o}.", "{o}"), F("more. up. the {o}.", "{o}")],   # (the show: up and down)
-    "do_put": [F("there. there. the {o}.", "{o}"), F("on the mat. the {o}.", "{o}"), F("you. there. the {o}.", "{o}")],
+    "watch_me": [F("look. look at mama.", "mama"), F("{n}. look at mama.", "mama"), F("look. mama.", "mama")],   # (the focus a content word)
+    # (each an ask by her own rule: 'look' with a word after it, 'more', or the child's name, so the fast layer alone may say them, A14)
+    "do_in": [F("look in. the {o}.", "{o}"), F("{n}. look in. the {o}.", "{o}"), F("look in. look in. the {o}.", "{o}")],
+    "do_shake": [F("look up. the {o}.", "{o}"), F("more up. the {o}.", "{o}"), F("{n}. look up. the {o}.", "{o}")],   # (the show: up and down)
+    "do_put": [F("look there. the {o}.", "{o}"), F("{n}. look there. the {o}.", "{o}"), F("look on the mat. the {o}.", "{o}")],
     # THE WATCH TASKS (tools/harness/demo_tasks.py 'watch', 2026-10-21 17:50, the owner: 'what objects do' in the pretraining diet, the child only
     # watching): her word as she does the thing with the toy before its eyes (rolls it, lets it fall, lifts it, puts it in the bucket)
     "see_roll": [F("roll. the {o}.", "{o}"), F("roll. roll. the {o}.", "{o}"), F("look. roll. the {o}.", "{o}")],

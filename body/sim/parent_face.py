@@ -65,7 +65,6 @@ SOURCES (looked up 2026-09-24 unless marked)
   closes a blink with the least turn), their clearance behind the skin (LID_CLEAR), the share of the fissure a blink closes
   (BLINK_INNER), the lash line's reach (LASH_SPAN) and thickness; the pupil's disc seated on the iris (PUPIL_SEAT); the vertex
   280 mm up (under her hair)."""
-import hashlib
 import math
 from pathlib import Path
 

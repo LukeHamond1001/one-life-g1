@@ -10,7 +10,6 @@ import torch.nn.functional as F
 class InstrumentsMixin:
     def _bookkeep(self, u, who, nxt, its_face, felt, ent, p_act, delta, level, r, vlong, delta_long, conf1, surp1, probs):
         """the stream, the page, the tick's record for the instruments, the sleep switch"""
-        m = self.m
         # --- bookkeeping ---
         self.stream.append((int(u), 0)); self.stream.append((int(nxt), 1))
         self.page.append(((self.anatomy.decode([int(u)]) if u != self.sil else ""), 0, round(self.face_now, 2), round(its_face, 2), who))

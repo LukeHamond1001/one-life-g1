@@ -127,7 +127,7 @@ import numpy as np
 
 from . import consts as K
 from . import templates as TP
-from .lexicon import NAME, PARENT_NAME
+from .lexicon import PARENT_NAME
 
 ACT_WORDS = {"roll": ("rolled",), "sit": ("sat",), "give": ("gave",), "up": ("sat",), "down": ("fell",), "look": ()}
 SCORING = "look-share-4"                  # its trials scored by the proportion of looking over a fixed window and tested by

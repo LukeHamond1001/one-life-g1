@@ -1231,7 +1231,7 @@ class ParentMotion:
         elif kind == "lean_in" and any(self._act(j)["kind"] == "lean_in" for j in list(self.queue["body"]) + ([self.cur["body"]] if self.cur["body"] is not None else [])):
             self._end(a, "refused", "request: a lean-in is under way: one at a time (C333; life day 125: five and six queued at once, each planned afresh)")
         elif kind in NOT_AT_BIRTH and not _OPENED[0]:
-            self._end(a, "refused", f"not at birth: she never moves its body through a movement or a posture it did not make (A25c)")
+            self._end(a, "refused", "not at birth: she never moves its body through a movement or a posture it did not make (A25c)")
         else:
             self.queue[chan].append(i)
         self._prune()

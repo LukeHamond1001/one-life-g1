@@ -12,7 +12,7 @@
   <!-- multi-point CCD off: with it on (MuJoCo 3.9's default) 2-4 of 12 hand-overs of the block or the car into a Dex3
        hand blew up about 0.1 s into the fingers' closing (NaN accelerations, an automatic reset); off, none did -->
   <!-- impratio 10: friction's impedance ten times the normal's. CHOSEN BY THE PHYSICS OF THESE CONTACTS (the owner's decision
-       of 2026-09-24, made for him; tools/sim_friction.py, measured 2026-09-24 at 1 and 10, never by pain rates or grasp counts):
+       of 2026-09-24, made for him; tools/measure/sim_friction.py, measured 2026-09-24 at 1 and 10, never by pain rates or grasp counts):
        real rubber, plastic, foam and housings hold without a slide below mu N; MuJoCo's soft contacts creep there "by design"
        (MuJoCo 3.9 docs, Overview, "Softness and slip"), and the docs name the remedy: "using the Newton solver with elliptic
        friction cones and large value of impratio is the recommended way of reducing slip" (ibid.; Modeling, "Solver

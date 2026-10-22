@@ -1294,7 +1294,6 @@ class MouthMixin:
     def _feel_and_learn(self, delta, delta_slow, delta_long, feat, acted, int_t, p_act, drew=None):
         """the feelings from dopamine; the gate's buffer and its lesson, for every effector (the voice's, then each later one's: the
         same credit, the effector's own act, draw and cost); the waking cortex lesson"""
-        m = self.m
         # --- feelings from dopamine ---
         self.mood = max(-6.0, min(6.0, self.mood + float(self.cfg["mood_gain"]) * delta))
         # A215 (2026-10-09): under stress_slow the stress follows the SLOW band's dip (delta_slow, gate_slow_band: the tonic loss), not the

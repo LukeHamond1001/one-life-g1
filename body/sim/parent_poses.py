@@ -8,7 +8,7 @@ import math
 import numpy as np
 
 import parent_kin as kin
-from parent_kin import rz, ry, rx, unit, frame
+from parent_kin import rz, ry, rx, unit
 
 ANKLE_H = .07          # the ankle joint's height when the sole is flat on the floor
 KNEE_FLOOR = .062      # the knee joint's height when the knee rests on the floor (shin radius + a little)

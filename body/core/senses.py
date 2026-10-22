@@ -101,7 +101,6 @@ class SensesMixin:
         pops the queue here, where it was always read, and reads the face its hand holds, so nothing moves); kept as the world's `now`,
         the frame this tick is lived on (a channel of the world's frames observes it; the mouth reads it for the effectors). The words
         channel's symbol in it is the tick's world symbol (the rest where the frame names none); who sent it is the frame's truth."""
-        m = self.m
         if frame is None:
             frame = self.world.frame()
         self.world.now = frame

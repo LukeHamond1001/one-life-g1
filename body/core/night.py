@@ -239,7 +239,6 @@ class NightMixin:
         replay; the gauge before and after; then the store fades, the working state wakes fresh and the body is saved. A night is
         kept whatever it does; only a non-finite lesson reloads the evening's organs."""
         self.asleep = True
-        m = self.m
         rep = {"night": self.nights + 1, "tick": self.ticks}
         if not self._offset_done:
             # THE NIGHT ENDS EVERY UTTERANCE (the review of 2026-09-19): the switch fires on the tick count, blind to a line in progress;
