@@ -28,7 +28,7 @@ It is generalized and crude, whole-limb, as a newborn's is:
   So the precise local withdrawal of the W1 fix 2 (a local sign computed on an exact kinematic copy of the body, born tuned) is
   gone, with its skin-site afferent (`pain_site`: no approved part reads it). A newborn's withdrawal can press a limb into a worse
   contact (a flexing hip drives the thigh's housing into the pelvis, a knee toward the chest): C22 writes down how often, at birth,
-  with the limb at rest and the babble as the chance comparisons (tools/sim_pain.py); it falls only if a learned mechanism tunes
+  with the limb at rest and the babble as the chance comparisons (tools/measure/sim_pain.py); it falls only if a learned mechanism tunes
   the reflex, which is an open design item, not built.
 Each limb's flexion joints and their flexion signs, measured on the G1's own geometry (body/tests/test_sim_world.py, world 8):
   a leg:  the triple flexion of the lower limb: the hip's flexion (hip pitch, negative: the knee forward), the knee's (positive)
@@ -323,6 +323,17 @@ def traction(limb, own, pull_N, state=None):
 # sources give the posture in words (the arms flexed and adducted, the hands before the chest), never in this body's joint angles
 TONE_REST = {"arm_l": {"left_shoulder_pitch_joint": 0.0, "left_shoulder_roll_joint": 0.2, "left_shoulder_yaw_joint": 0.0, "left_elbow_joint": -0.7},
              "arm_r": {"right_shoulder_pitch_joint": 0.0, "right_shoulder_roll_joint": -0.2, "right_shoulder_yaw_joint": 0.0, "right_elbow_joint": -0.7}}
+TONE_WRISTS = True              # A185b (2026-10-19, the second life): the wrists in the resting tone too, at their middle (roll, pitch and
+                                # yaw 0: the newborn's tone holds every joint of the limb, the wrist not at its stop). The second life's
+                                # day 0 hurt its wrists on 12 to 14% of its floor ticks (the first life's day 0: 0.02%), and at 30 of 32
+                                # of them (the tick-10,000 copy) the child's own act was stepping a wrist further into the stop it stood
+                                # at (q -1.55 of -1.61, the motor stalled at its hold): a joint the cord leaves without tone drifts to its
+                                # stop under random acts and stays there, where any step on into it hurts. The pain still pays the act
+                                # (A91); the tone only keeps the wrist off its stop between acts. False: A185's proximal joints alone
+if TONE_WRISTS:
+    for _arm, _side in (("arm_l", "left"), ("arm_r", "right")):
+        for _j in ("wrist_roll", "wrist_pitch", "wrist_yaw"):
+            TONE_REST[_arm][f"{_side}_{_j}_joint"] = 0.0
 TONE_GAIN = 0.3                 # a tick: the tone's step is this share of the joint's distance from its rest (ours): a soft spring, at the
                                 # shoulder's and the elbow's gain (40 N m a rad) 12 N m a rad, three and a half times the gradient of the
                                 # forearm's weight about the elbow (3.4 N m a rad), so a forearm standing near its rest stays standing;
@@ -353,8 +364,8 @@ def tone(limb, q):
         return None
     out = []
     for i, j in enumerate(_JOINTS[limb]):
-        if j in rest:
-            out.append(min(max(TONE_GAIN * (float(rest[j]) - float(q[i])), -TONE_STEP), TONE_STEP))
+        if j in rest and (TONE_WRISTS or "_wrist_" not in j):                 # (A185b's switch read here too: the first life's wrists, for
+            out.append(min(max(TONE_GAIN * (float(rest[j]) - float(q[i])), -TONE_STEP), TONE_STEP))   # the tests of its geometry)
         else:
             out.append(0.0)
     return tuple(out)

@@ -97,7 +97,7 @@ faster than 0.5 m/s; laid back gently past 30 deg after a catch); the brief turn
 straight up, then over, the force growing at 100 N/s, at most 2 s); the pull-to-sit by both forearms (only from where one trunk of
 hers reaches both: C7; growing to the brief cap; at the cap for 2 ticks she stops and lays it back gently). None of these supplies
 a rise, and none can lift or slide it: each is bounded by her caps (156-200 N against its 337 N weight, and 312-433 N to slide it
-on the mat), and tools/sim_parent_motion.py measures each act's peak force against its cap, the G1's rise, slide and trunk, her
+on the mat), and tools/measure/sim_parent_motion.py measures each act's peak force against its cap, the G1's rise, slide and trunk, her
 reach and her timing.
 
 EXACT DETERMINISM. Nothing here draws a random number; every choice is a deterministic search. state() carries every act, phase,
@@ -268,7 +268,7 @@ HAND_HIGH_M = 0.06                              # C139: a pick whose hand stoppe
                                                 # the front wall, day 37: 8 hand-overs refused 11 cm off): the toy is beyond her reach from above, left
                                                 # where it lies (conduct.left), and the morning tidy puts it back (ours)
 HIDE_REACH_M = 0.55                             # C138: the hide brings the bucket to within this of one of the child's hands (a G1 arm reaches 0.55, lane.arm_reach; ours)
-TP_OPEN_CONTAINERS = frozenset({"bucket"})      # (templates.OPEN_CONTAINERS, named here without the import: the lang package imports this module)
+TP_OPEN_CONTAINERS = frozenset({"bucket", "bucket2"})      # (templates.OPEN_CONTAINERS, named here without the import: the lang package imports this module)
 NEVER_FETCHED = K.NEVER_FETCHED                 # C119: what she never carries: the hide game's container (day 27: ten shows of it refused at the put, 45 to 50 cm off);
                                                 # C309: in parent_consts, shared with her conduct and her day plan (day 109: 25 shows of the bucket asked and refused)
                                             # (ours: the far shoulder's grip in her tall reach from 0.55 to 0.65 m in the rig)
@@ -371,7 +371,7 @@ def trunk_pose(at, yaw, mode, lean, spine, twist, lift=0.0):
 
 # parent_poses.kneel_down's pace (A25b: her carried body kneels at a person's pace): the time her kneeling down takes from standing
 # (u 0) to u, at u = 0, 0.05, ... 3 (s), each step of u as slow as its slowest-allowed segment needs (her pelvis at KNEEL_PELVIS_MPS,
-# every other segment at KNEEL_SEG_MPS), measured on the pose raised off the floor as her plan raises it (tools/sim_parent_motion.py
+# every other segment at KNEEL_SEG_MPS), measured on the pose raised off the floor as her plan raises it (tools/measure/sim_parent_motion.py
 # kneel_time; body/tests/test_sim_parent.py measures it again). Her kneeling down runs along it eased in and out (a trapezoid: _ease),
 # its fastest moment at these speeds. (The first physical build's KNEEL_PATH timed it by her fastest segment alone, so her pelvis sat
 # back onto her heels at 0.6 m/s and her carried body met the floor at 1.6 kN)
@@ -3277,7 +3277,30 @@ class ParentMotion:
 
     def _ph_hold_out(self, a, ph):
         """a hand (or both) held out to the child, or over her face, while nothing else is asked of her body, at most n ticks: the
-        act stays under way as long as it directs the child's eyes (P3's contract); the next act asked ends it"""
+        act stays under way as long as it directs the child's eyes (P3's contract); the next act asked ends it.
+        D2g (2026-10-19): THE GIVE'S OPEN HAND TAKES WHAT IS GIVEN. Her open hand held out for the give (`catch`: its side) never
+        closed on anything: a toy the child brought to it and let go fell through, so the give ask ('give me the X') could not be met by
+        any act of the child's (the lane's 'gave' is a toy come into her hand from its within GAVE_TICKS). A toy within TAKE_OFFERED_M of
+        the hand's grip point is taken into it as her grasp takes one (the weld switched on where the toy is, her proxy in carry), and
+        the hold-out ends: a parent holding out her hand closes it on what is put there"""
+        sd = ph.get("catch")
+        if sd is not None and self.holding.get(sd) is None:
+            g, _ = self._grip_now(sd, actual=True)
+            held_ = set(v for v in self.holding.values() if v is not None)
+            for toy, b in self.toys.items():
+                if toy in held_ or toy in NEVER_FETCHED:
+                    continue
+                if float(np.linalg.norm(self.d.xpos[b] - g)) <= K.TAKE_OFFERED_M:
+                    self._proxy(sd, "carry")
+                    self.scene.weld(f"hold_{sd}_{toy}", True)
+                    hb = self.bm.hand_body[sd]
+                    Rh = self.d.xmat[hb].reshape(3, 3)
+                    self.carry[sd] = dict(toy=toy, off=_lst(Rh.T @ (self.d.xpos[b] - self.d.xpos[hb])))
+                    self.holding[sd] = toy
+                    if a is not None:
+                        a["info"]["taken"] = toy
+                    self.stats["give_taken"] = self.stats.get("give_taken", 0) + 1
+                    return "done"
         return "done" if self.queue["body"] or ph.get("t", 0) + 1 >= int(ph["n"]) else "run"
 
     def _ph_plan(self, a, ph):
@@ -5167,7 +5190,7 @@ class ParentMotion:
     def _far_miss(self, what, sd, g, want, body, tag):
         """C312 (2026-10-07): AN INSTRUMENT FOR THE IMPOSSIBLE MISS. Days 108 and 109: every stand refused, 'her left hand did not arrive on
         it (182 to 246 cm off: it moved)' with her kneeling 0.6 m from the child, and picks 'the cup was not under her hand (393 cm off,
-        27 cm above it)'; the end-of-109 copy stood it up and walked it (p1_tools/standup.py), its hands' physical places within 0.4 m of
+        27 cm above it)'; the end-of-109 copy stood it up and walked it (p1_tools/life/probes/standup.py), its hands' physical places within 0.4 m of
         its plan's through 420 ticks. A miss past a metre is a fault of a frame, a stale id or a body left behind, not a child that
         moved; when one happens the state that could explain it goes to the run log in one line (stats['far_miss']: her grip's physical
         place, the hand body's, the target, the link's or the toy's place and id, her base, the arm's mode and target, the tick)"""
@@ -5213,7 +5236,7 @@ class ParentMotion:
             self.phases[i:] = [dict(type="plan", what="pull_regather", args={})]   # the rest of the direct take gives way
             return "next"
         if ph["kind"] == "stand" and int(c_.get("stand_tries", 0)) < K.STAND_RETRIES and ph in self.phases:
-            # C302 (2026-10-06): THE STAND'S GRIP REACHES AGAIN WHERE ITS TRUNK IS NOW. The day-104 pair's probes (p1_tools/standup.py,
+            # C302 (2026-10-06): THE STAND'S GRIP REACHES AGAIN WHERE ITS TRUNK IS NOW. The day-104 pair's probes (p1_tools/life/probes/standup.py,
             # ten stands): three refused 'her hand cannot reach it from here (16 to 60 cm short)': C273's spot reaches both grips where
             # the child LAY, and a live child rolls or sits up in the seconds her reach takes (C235's lesson for the pull). The hand
             # that came up short reaches again for its grip on the trunk as it lies now, STAND_RETRIES times; the other hand's phases
@@ -5630,7 +5653,7 @@ class ParentMotion:
             elif c["t"] >= K.RAISE_MAX_TICKS:
                 c["mode"] = "lower"; c["why"] = "it did not come to its feet"
         elif mode == "steady":
-            # C342 (2026-10-09, 00:50): STEADIED OVER ITS HIPS, NOT ITS FEET. The dawn-127 copy (p1_tools/standup.py, every tick): stood in
+            # C342 (2026-10-09, 00:50): STEADIED OVER ITS HIPS, NOT ITS FEET. The dawn-127 copy (p1_tools/life/probes/standup.py, every tick): stood in
             # her hands (pelvis 0.75, trunk 16 deg) its right leg swung a step (A193) and set down ahead, the feet's middle moved a half
             # step forward, her led point went with it, and the chest, led ahead of hips that stood still, folded forward at them to 56
             # deg in three ticks (her hands at 80 to 100 N, the spring slack toward the new point); day 126's 19 stands of 24 'walked
@@ -6725,7 +6748,7 @@ class ParentMotion:
             sd = "L" if sd == "R" else "R"
         spec = dict(k="open", at=_lst(ch.grasp[cs]), off=_lst(to_her * 0.10 + np.array([0, 0, -0.02])))
         return [dict(type="reach", hands={sd: spec}, shape={sd: dict(curl=.15, thumb=.2, index=None)}, stay=True),
-                dict(type="hold_out", n=K.OFFER_HOLD_TICKS), dict(type="relax", sides=sd)]
+                dict(type="hold_out", n=K.OFFER_HOLD_TICKS, catch=sd), dict(type="relax", sides=sd)]   # (D2g: the hand takes what is given)
 
     # ---- guiding, the roll's ladder, the pull-to-sit, the prop, the turn (A7-A10)
     def _act_guide(self, a, t):

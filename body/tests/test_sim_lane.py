@@ -50,6 +50,63 @@ def _run(w, n, greet_at=None, acts=None):
     return out
 
 
+
+def _first_lifes_wrists(fn):
+    """A185b (2026-10-19): the wrists in the resting tone turn the child's hands; a test whose scene is set by the first life's free
+    wrists (her eyes' en-face smile, the roll rung's reach) runs under the first life's wrists (TONE_WRISTS False)"""
+    import functools
+
+    @functools.wraps(fn)
+    def run_(*a, **k):
+        from body.sim import reflexes as R_
+        was_ = R_.TONE_WRISTS
+        R_.TONE_WRISTS = False
+        try:
+            return fn(*a, **k)
+        finally:
+            R_.TONE_WRISTS = was_
+    return run_
+
+def test_the_sibling_and_she_talk():
+    """E3 and E3b (the second life's pretraining): in floor play the sibling and she talk, turn by turn, of a toy she can name (the
+    sibling's lines in its child voice, its words on the words channel; hers by her conduct, held to her own check, her look on the
+    toy); a toy whose name is not hers is not talked of; the talk's state goes through the plan's and the lane's saves"""
+    from body.sim import g1scene as G
+    w = W.G1World(seed=1, xml=G.scene_path("door", "a"))                     # (the figure stands in the door stage's scene)
+    lane = L.ParentLane(w, seed=1, voice=FakeVoice(), plan=True, day_ticks=2400)
+    old_gap = DP.TALK_GAP
+    DP.TALK_GAP = 20
+    try:
+        _run(w, 40)                                                          # into the day's first block (floor play)
+        assert lane.plan.kind == "floor" and getattr(w, "_sib", None), lane.plan.kind
+        lane.plan.next_talk = 0
+        sib_line = her = None; saved = False
+        for _ in range(400):
+            w.frame(); w.apply({})
+            ss = getattr(lane, "sib_said", None)
+            if ss is not None and len(ss) > 3 and ss[2] == "talk" and sib_line is None:
+                sib_line = ss
+            if lane.plan.talk is not None and not saved:
+                st_p, st_l = lane.plan.state(), lane.state()
+                assert st_p["talk"] == lane.plan.talk and "sib_queue" in st_l
+                saved = True
+            ln = lane.last.get("line")
+            if ln and str(lane.last.get("line_intent", "")).startswith("talk_") and her is None:
+                her = (ln, lane.last.get("line_intent"))
+            if her is not None and sib_line is not None:
+                break
+        assert sib_line is not None and sib_line[1] is not None, sib_line
+        hers_ = set(lane.conduct.fast.vocab) | set(lane.conduct.fast.new_words)
+        assert sib_line[1] in hers_, (sib_line, sorted(hers_)[:10])          # a toy she can name
+        assert her is not None, [x for x in lane.plan.log if "E3" in str(x)][-4:] + [r for r in lane.conduct.fast.refused if "talk" in str(r[1])][-3:]
+        assert sib_line[1] in her[0] or her[1] == "talk_ask_what", (sib_line, her)   # they talk of the same toy
+        steps = [x for x in lane.plan.log if str(x[1]).startswith("E3")]
+        assert any("E3 her turn" in str(x[1]) for x in steps) and any("E3 the sibling says" in str(x[1]) for x in steps), steps[-6:]
+        print(f"E3: the sibling {sib_line[3]!r}; she answers {her[0]!r} ({her[1]})")
+    finally:
+        DP.TALK_GAP = old_gap
+
+
 def test_she_is_brought_back_to_her_floor():
     """C366b: outside a walk block, off the floor she can plan on while the child is on it (the practice ground: day 187), her acts end
     and her approach to the child sets her beside it on her floor within HER_FLOOR_EVERY ticks and a few more, logged"""
@@ -564,6 +621,7 @@ def test_no_meal():
           "charge; no bottle in the room")
 
 
+@_first_lifes_wrists
 def test_her_eyes():
     """lane 10 (A89, the teacher's build 2a): her eyes on its acts. A ball set against its still left palm is not "got" (its own
     reach and hold needs that hand to have moved, or reached toward it, as the touch began); in another world, after its left arm
@@ -801,6 +859,7 @@ def test_a_face_down_morning():
     assert lane.off_back == 0 and lane.tummy_over is False, (lane.off_back, lane.tummy_over)
     print("13 a face-down spell starts anew at dawn: the distress flag and the face-down count reset with the day (A107)")
 
+@_first_lifes_wrists
 def test_the_roll_rung():
     """lane 14 (A109, C91): once the child rolls (her book's 'rolled' at MASTERED_N) and lies on its back or front, every other
     reach-rung lesson is the roll rung: "set_far" (her line "look. the X." or "look. here. the X.") with her motion's bring_far, the

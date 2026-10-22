@@ -180,7 +180,7 @@ TOUCH_DEPTH_M = 0.02            # m: a resting hand's target lies this far insid
 GUIDE_CAP_FACTOR = 1.5          # the guide's cap: min(1.5 x the limb's own push at that pose, CAP_ONE) (A10; ours)
 GUIDE_MAX_TICKS = 8             # a guide's path lasts at most one movement unit (A10)
 GUIDE_MAX_SPEED = 0.30          # m/s, the guide's fastest pace (A10); its pace is set on the yielding arm (A25): GUIDE_SPEED
-GUIDE_SPEED = 0.30              # m/s: the guide's pace, set in W2 on the limp arm A25 names (tools/sim_parent_motion.py guide_pace:
+GUIDE_SPEED = 0.30              # m/s: the guide's pace, set in W2 on the limp arm A25 names (tools/measure/sim_parent_motion.py guide_pace:
                                 # the arm's actuators zeroed, the near forearm raised GUIDE_RAISE_M), the fastest of 0.30 / 0.25 /
                                 # 0.20 / 0.15 / 0.12 / 0.10 / 0.08 m/s whose peak stayed within the arm's own push (93.9 N there):
                                 # peaks 53.5 / 50.3 / 50.3 / 47.2 / 47.1 / 47.0 / 36.1 N, all within it and within the design's
@@ -261,7 +261,7 @@ LAY_BACK_S = 2.0                # s: laying the child back gently eases her hold
 # at most BRIEF_S, and a trunk not back within PROP_MAX_DEG by then is laid back gently. C6 counts a fall as caught when it is
 # stopped short of CATCH_STOP_DEG (back within PROP_MAX_DEG, or held until she lays it back) and neither its trunk, head nor
 # pelvis strikes the mat, the floor, the furniture or a toy at F_pain (A12's 10 ms filter) while it falls, never counting its own
-# links pressing each other (tools/sim_parent_motion.py catch, Strike)
+# links pressing each other (tools/measure/sim_parent_motion.py catch, Strike)
 CATCH_STOP_DEG = 60.0           # a fall stopped short of this is caught (ours: past 60 deg its upper body lies closer to the mat
                                 # than to upright, and its head is within about 0.2 m of the mat)
 
@@ -357,6 +357,7 @@ SUPPORT_BEND_DEG = 45.0         # leaning (lean + spine) this far, her free hand
                                 # far lean reached down onto the child; the floor beside her knee was where its arm lay: W2; ours)
 SUPPORT_OFF_DEG = 35.0          # ... and lets it hang again once she straightens past this (ours: 10 deg under, so it does not
                                 # flicker at the edge)
+TAKE_OFFERED_M = 0.09          # D2g: a toy this near her open hand's grip point while it is held out for the give is taken into it (ours)
 OFFER_HOLD_TICKS = 40           # ticks: her open hand held out for a toy (the give ask's level 0), or her hands over her face
                                 # (peekaboo), wait at most this long for the next act (ours: A4's own patience with the child's
                                 # hand, 40 ticks for a hand-over's release); the act is under way while they wait (P3's contract)

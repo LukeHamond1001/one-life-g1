@@ -21,7 +21,7 @@ when, in which register, the acts her talk accompanies, and her formal trials of
                word's set: 3 lines in the new-word register, the word last and emphasized, its referent shown (4.4, 4.8, A15);
                only a word the world can show (templates.showable, against the world's inventory) that she can show now
                (templates.show_now), in lines measured to put it on the line's pitch peak (A34, the line check); up
-               to NEW_PER_DAY = 3 new words a day and NEW_EVERY = 1 a minute (A14), each joining her words at the
+               to NEW_PER_DAY (6; 3 until C376) new words a day and NEW_EVERY = 1 a minute (A14), each joining her words at the
                night. Claude's steering lines (4.5, A14):
                each held to the line check (and its situation), used at most 3 times, a line ending on the day's new word said in
                the new-word register and emphasized. Every refusal, and every request dropped, is logged.
@@ -524,6 +524,17 @@ INTENTS = {
     "redirect": Intent("plain", False, None, (Act("point", "{o}"), LOOK_O)),
     "ask_where": Intent("plain", True, "gaze", (EYES,)),                 # never a point or a look to it: the ask tests the word
     "ask_what": Intent("plain", True, "name", (EYES,)),     # of what the child attends: no show while an ask is pending (A51)
+    # THE SHOWN TASKS (tools/harness/demo_shown.py, docs/PREREGISTRATION_LIVE.md 3): her word before she shows, and her asks to do the same; expectant,
+    # judged by the generator on the world (the toy in the bucket, shaken, set at the spot), her smile owed through its met_ask (D2ag)
+    "watch_me": Intent("plain", False, None, (EYES,)),
+    "do_in": Intent("plain", True, None, (EYES,)),
+    "do_shake": Intent("plain", True, None, (EYES,)),
+    "do_put": Intent("plain", True, None, (EYES,)),
+    # THE WATCH TASKS: her word as she does the thing (nothing expected of the child but its eyes)
+    "see_roll": Intent("plain", False, None, (EYES,)),
+    "see_down": Intent("plain", False, None, (EYES,)),
+    "see_up": Intent("plain", False, None, (EYES,)),
+    "see_in": Intent("plain", False, None, (EYES,)),
     "ask_give": Intent("plain", True, "act", (Act("open_hand", "child"), EYES)),    # her hand held out to the child, never
                                                                                      # toward the toy (A51)
     "confirm": Intent("approval", False, None, (Act("lean_in", "child_line"), EYES)),      # her face ONTO its line of sight as she
@@ -552,6 +563,11 @@ INTENTS = {
     "narrate_get": Intent("plain", False, None, (LOOK_O,)),             # C300: said before her show of the toy
     "narrate_sib": Intent("plain", False, None, (EYES,)),               # D2: the sibling walking where the child looks
     "narrate_sib_get": Intent("plain", False, None, (LOOK_O,)),         # D2: the sibling getting a toy
+    "talk_where": Intent("plain", False, None, (LOOK_O,)),              # E3: her answer to the sibling's question, her look on the toy
+    "talk_ask": Intent("plain", False, None, ()),                       # E3b: her question to the sibling: plain, never an ask of the child
+    "talk_ask_what": Intent("plain", False, None, ()),                  # E3b: (no ask: nothing of the child's is judged by it)
+    "talk_yes": Intent("plain", False, None, (LOOK_O,)),                # E3b: her reply to the sibling's answer, her look on the toy
+    "talk_what": Intent("plain", False, None, (LOOK_O,)),               # E3: her answer to the sibling's name, her look on the toy
     "body": Intent("plain", False, None, (Act("touch", "{b}"),)),
     "motor_sit": Intent("plain", False, None, (Act("stand_up", "child"),)),   # C268: the motor block's offer is her stand_up (it sits the
                                                                               # child up on the way, stands it, walks it, sits it down);
@@ -727,8 +743,8 @@ class FastLayer:
                 continue
             text, focus, refs = got
             refs = refs or ((o.id,) if o is not None else ())      # the object the line is about, slot or not ("what is this?")
-            if TP.key(text) in skip or self.last_said.get(TP.key(text), NEVER) > t - K.SAME_LINE:
-                continue
+            if TP.key(text) in skip or (self.last_said.get(TP.key(text), NEVER) > t - K.SAME_LINE and intent not in REPEATED_CALLS):
+                continue                                                # (C376: a call is said again as it was; a mother calls 'pip! pip!')
             reg = "new_word" if (intent == "new_word" or (focus is not None and focus in self.new_words)) else \
                 register_for(intent, text)
             ok, why = TP.check(text, self.vocab, self.new_words, p, refs, self.held, recent_events=self.recent)
@@ -970,6 +986,9 @@ ASKS_NEEDING_O = {"ask_where", "ask_give", "ask_what"}                # asks abo
 
 
 ONE_PENDING = ("come_call", "come_again")   # C359: intents queued at most once (a repeat of a call needs no backlog)
+REPEATED_CALLS = ("come_call", "come_again")   # C376 (2026-10-19): her calls from across the room are said again as they were (the same line
+                                               # within SAME_LINE ticks): with four frames and a repeat every COME_REPEAT (12) ticks, one repeat
+                                               # in five found every line said within 60 ticks and went unsaid ('no line passes the check')
 
 
 class Conduct:
@@ -1786,7 +1805,7 @@ class Conduct:
             missing = ear.missing(self.fast.vocab)
             if missing:
                 raise ValueError(f"her ear has no templates for {missing}: it is built with every word before birth "
-                                 f"(tools/sim_parent_ear.py --words all)")
+                                 f"(tools/measure/sim_parent_ear.py --words all)")
 
     # ------------------------------------------------------------------ her imperfection (A52)
     def _latency(self):
@@ -1957,8 +1976,12 @@ class Conduct:
         w e^(-n/HABIT_TAU), none under HABIT_FLOOR (A2's fall with mastery without its floor: Knox and Stone 2015's positive
         circuits). A new object starts n again. Every judgment, given or withheld, goes to book_log."""
         self._levels_now = dict(getattr(p, "levels", None) or {})         # C262: the personal-best rungs of this tick's events
+        owed_ = list(getattr(self, "owed", None) or ())                  # D2ag: a demo's requests met by the body (tools/harness/demo_tasks.py:
+        if owed_:                                                         # her smile owed at once; away, none; a life holds none)
+            self.owed = []
         if self.trial is not None or not p.present:
             return
+        out.judgments.extend(owed_)
         hands_on = [a[0] for a in self.acts_open if a[1] in HANDS_ON and a[5] not in ENDED]
         if getattr(p, "her_hold", False):
             self.touched.update(hands_on)                   # A111: her hold engaged in a hands-on act: from now to its end
@@ -1969,9 +1992,13 @@ class Conduct:
             return                                          # A90: while she guides, turns or pulls it, nothing it does is its own;
                                                             # A111 (C95): her approach to it is not that: day 8's turn approaches ran
                                                             # 890 and 346 ticks and 29 of 105 acts of the child's fell in them unjudged
+        routine_ = getattr(self, "routine", None) or ()
         for k, o in p.events:
             if k == "came" and getattr(self, "come_calls", None):          # C365: her latest call answered
                 self.come_calls[-1][1] = True
+            if k in routine_:                                               # D2ag: an act the child mastered long ago (a demo's parent: the
+                self.book_log.append((t, k, o, "routine: mastered before the day (D2ag)", 0)); del self.book_log[:-200]   # life's: none)
+                continue
             row = K.MOTOR_WORTH.get(k)
             if row is None or (guided and k not in K.HELD_PAID):            # C285: in her hands only its stand and its step are its own
                 continue
@@ -2352,6 +2379,13 @@ class Conduct:
                 f.last_set[o.id] = t
                 f.queue = lines[1:]
                 return lines[0], False, "follow_in"
+            if not lines:                                               # C378 (2026-10-19): NOTHING OF HERS NAMES IT: SHE LETS IT BE. The
+                f.last_set[o.id] = t                                    # second life's day 3: the child attending the bucket, its name not
+                                                                        # yet hers, her follow-in composed its set on every tick and every
+                                                                        # line was refused ('a bucket. a bucket.' 374 times in 1,770 ticks,
+                                                                        # 'not her word'); a set none of whose lines passes now spaces the
+                                                                        # object as a set said does (SET_PER_OBJECT), as a parent without
+                                                                        # the word for a thing turns to the next
         # 8. the episode's act: a formal trial her day plan asked for (4.8: she brings its things, or holds still for the name),
         #    an intent asked for by L3 or Claude, and Claude's lines for the moment
         if self.probes:

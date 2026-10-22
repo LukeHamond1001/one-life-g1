@@ -52,6 +52,8 @@ DAY_TICKS = 24000                      # a life day (4.7)
 WAKE = 300                             # the wake episode (4.7)
 WIND = 1000                            # the winding down (4.7)
 GOODNIGHT = 300                        # goodnight (4.7)
+LURES = False   # A239 (2026-10-19): the toy held a step ahead of its feet (C348) retired with the other scaffolds. True: C348's lure
+
 BLOCKS = (("floor", 2, 4000, 5000), ("command", 4, 2500, 3000), ("walk", 2, 2500, 3000), ("show", 1, 1500, 1500), ("away", 1, 400, 600),
           ("tasks", 1, 600, 600))   # W9 (2026-10-13): two of the five command blocks become walk blocks, out on the practice ground      # 4.7's table: kind, how many, shortest, longest. TRAINING MODE (2026-09-29, the owner's word: fix
                                        # fast; her pace is the lead's): away 2-4 x 400-1,200 and her own tasks 3,000 cut to one short block
@@ -75,7 +77,11 @@ COME_FAR_M = 3.5                        # C351 amended five times: a call from f
                                         # face's reach in its eyes' field, had her abandon her spot whenever the gait had walked it off (the copy's block: six spots,
                                         # no call in 900 ticks); the call is voice-led now (the born turn toward a voice at every repeat), and a voice carries
                                         # across the room where a face does not, so she calls from where she stands up to the room's reach
-COME_AFTER = 300                        # C351 amended six times: after it has come (or is too near to teach) she stays with it this long before her next spot (ours: 45 s of praise and play)
+COME_AFTER = 150                        # C351 amended six times: after it has come (or is too near to teach) she stays with it this long before her next spot (ours: 45 s of praise and play)
+                                        # C379 (2026-10-19, the second life's day 4): 150 (22 s; 300 until now): a come cycle ran about 650 ticks (her walk
+                                        # to a spot, her calls every COME_GAP until it came, then this interlude), four comings a command block, and E1's
+                                        # walk is shown only while she calls (about a fifth of a shown block); a parent practising 'come to mama' repeats
+                                        # sooner. Day 141's chase (the first life following her to the next spot before she called) stays prevented
 COME_STAY_MAX = 900                     # C351 amended four times: she keeps her spot, calling every COME_GAP, until it comes (within COME_MIN_M) or this long   # C351: in a command block she calls it from this far, this often; her walk to the spot waits
                                                                         # this long at most; no call from nearer than COME_MIN_M (the copy: a call from 0.74 m paid 'came' at once). Ours
                                                                         # C351 amended (00:15): her shows are quiet in a command block (c.quiet_shows) and the wait is 150: day 138's first
@@ -95,6 +101,21 @@ DOOR_THROUGH_XY, DOOR_RUG_XY, DOOR_ARCH_XY = (2.9, -1.5), (4.1, -1.5), (4.4, -2.
 # second room's far wall (x 5.9) and its own thrust (A193) loaded its left ankle and its waist: day 128, 55 pain ticks at that one spot,
 # stress to its cap and crying. From 4.4 the feet reach 5.5 at most. Ours
 SIB_NARRATE_GAP, SIB_DEG, SIB_M = 300, 30.0, 4.0   # D2: she names the sibling's walking when the child's head camera is on it (within this many degrees, this near), this often; ours
+TALK_GAP, TALK_WAIT, TALK_REPLY = 150, 300, 3   # E3 (E3b: the gap 150, was 200): ticks between the sibling's talks with her, a talk let go unanswered after, her answer
+                                                # this long after its line ends (a turn's pause; ours: 30 s, 45 s, 0.45 s)
+SIB_ASKS = ("where is the {o}?", "mama. where is the {o}?", "the {o}? where is the {o}?")   # E3: the sibling's question about a toy in view
+SIB_SHOWS = ("look. a {o}!", "mama. look. a {o}.", "a {o}! look.")                     # E3: the sibling's name for the toy in its hand
+# E3b (2026-10-19, day 1): THE TALKS AS SHORT EXCHANGES, back and forth (the owner's word). Each a script of turns: ("sib", its line) or
+# ("her", her intent, said by her conduct and held to her check). Of a toy in view, or of the one in the sibling's hand. Her asks here
+# are plain (asked of the sibling, never judged of the child); the sibling's answers point the word at the thing (its 'there!')
+TALKS_WHERE = ((("sib", "where is the {o}?"), ("her", "talk_where"), ("sib", "the {o}!")),
+               (("sib", "mama. where is the {o}?"), ("her", "talk_where"), ("sib", "there. the {o}.")),
+               (("her", "talk_ask"), ("sib", "there! the {o}."), ("her", "talk_yes")),
+               (("her", "talk_ask"), ("sib", "the {o} is there."), ("her", "talk_yes")))
+TALKS_SHOW = ((("sib", "look. a {o}!"), ("her", "talk_what"), ("sib", "a {o}.")),
+              (("sib", "mama. look. a {o}."), ("her", "talk_what"), ("sib", "a {o}! a {o}.")),
+              (("her", "talk_ask_what"), ("sib", "a {o}!"), ("her", "talk_yes")))
+TALK_HER_WAIT = 150                     # E3b: her turn not said within this many ticks of its ask (her check refused it, her voice busy): let go
 DEMO_GAP, DEMO_M = 900, 1.6             # C300: in floor play she shows walking this often (135 s), a walk this far in its view and back; ours
 FREE_PELVIS_M, FREE_DEG, FREE_STAND_MAX = 0.62, 35.0, 400   # C287: let go, it stands alone while its pelvis is this high and its trunk within this of upright, this many ticks at most (60 s); ours
 LURE_AHEAD_M, LURE_Z_M = 0.35, 0.85   # C348: the toy held this far ahead of its feet, this high, while it stands alone (ours: a step, a little under its chest)
@@ -224,6 +245,9 @@ class DayPlan:
         self.day_ticks = int(day_ticks)
         self.day = -1
         self.blocks = []                   # [[start, end, kind, info]] for the day
+        self.talk, self.next_talk = None, 0   # E3: the sibling's talk with her under way, and the next one's earliest tick
+        self.talk_rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence(int(seed), spawn_key=(PLAN_STREAM, 3))))   # E3's own
+                                              # stream: its draws leave the plan's (the day's layout, her play's gaps) as they were
         self.kind = None                   # the episode now
         self.away = False                  # she is away (the hall) or on her way there
         self.greeted = None                # the tick she greeted it this morning
@@ -336,6 +360,14 @@ class DayPlan:
                 self.sit_due = True                                         # (C254: owed whatever its posture; a prone child is turned first)
                 self.log.append((t, "motor block two: a sit owed again (C220)" + ("" if self._lying_on_back(lane) else "; the child not on its back: turned over first (C254)")))
             self.block_i = bi
+        if kind in ("floor", "show") and world is not None and getattr(world, "_sib", None) and not getattr(world, "night", False) and not self.away:
+            try:
+                self._talk(t, c, p, lane, world)
+            except Exception as e_:
+                self.talk = None; self.next_talk = t + TALK_GAP; self.log.append((t, "E3 talk failed", str(e_)[:80]))
+        elif getattr(self, "talk", None) is not None:                       # E3: the block over (or she away): the talk let go, the
+            self.talk = None; lane.sib_queue = []                           # sibling's owed line with it
+            self.log.append((t, "E3 talk let go: the block over"))
         if kind != "walk" and world is not None and t % HER_FLOOR_EVERY == 0:
             self._her_floor(t, lane, world)                             # C366b: off her floor outside a walk block: her way back
         if kind in ("ghost", "command"):
@@ -441,7 +473,7 @@ class DayPlan:
                 # on the stance hip it extends in the lean, A193), paid by her smile as every step is. Unaided steps before: one a day
                 try:
                     lure_ = getattr(self, "lure", None)
-                    if lure_ is None:
+                    if lure_ is None and LURES:                           # A239: her lures retired for the new life
                         held_ = {v for v in pm.holding.values() if v is not None}
                         cands_ = [o for o in list(self.focus) + sorted(pm.toys) if o not in TP.OPEN_CONTAINERS and o not in held_]
                         lure_ = cands_[0] if cands_ else None
@@ -1185,6 +1217,64 @@ class DayPlan:
         self.next_play = t + int(self.rng.integers(*PLAY_GAP))
 
     # ------------------------------------------------------------------ the save
+    def _talk(self, t, c, p, lane, world):
+        """E3 (2026-10-19, the owner's word: 'for talking we can bring teacher and have it talk to teacher back and forth'): THE SIBLING AND
+        HER TALK, the child overhearing. E3b: each talk is a short exchange, turn by turn (TALKS_WHERE of a toy she sees, in the child's
+        view if one is; TALKS_SHOW of the toy in the sibling's hand): the sibling's line in its child voice from its head, her line by her
+        conduct when her voice is free and held to her check (her look on the toy), each turn TALK_REPLY ticks after the last ended.
+        Every TALK_GAP, when neither speaks and she has no ask pending. Neither speaks to the child: its words channel carries both voices'
+        words while they are audible, as the talk of a home goes on around a child"""
+        tk = getattr(self, "talk", None)
+        if tk is None:
+            if t < getattr(self, "next_talk", 0) or c.pending is not None or lane.utt is not None or lane.sib_utt is not None or lane.sib_queue:
+                return
+            hers_ = set(c.fast.vocab) | set(c.fast.new_words)                  # her words: they talk only of a toy she can name (her check)
+            st_, toy_ = getattr(world, "_sib_state", None), getattr(world, "_sib_toy", None)
+            if st_ == "lift" and toy_ and p.obj(toy_) is not None and p.obj(toy_).name in hers_:
+                scripts, toy = TALKS_SHOW, str(toy_)
+            else:
+                seen_ = [s_ for s_ in p.seen if s_.name in getattr(c.motion, "toys", {}) and s_.name in hers_]
+                pool_ = [s_ for s_ in seen_ if getattr(s_, "child_sees", False)] or seen_
+                if not pool_:
+                    self.next_talk = t + TALK_GAP
+                    return
+                scripts, toy = TALKS_WHERE, str(pool_[int(self.talk_rng.integers(len(pool_)))].id)
+            k_ = int(self.talk_rng.integers(len(scripts)))
+            self.talk = tk = dict(script=("show" if scripts is TALKS_SHOW else "where"), k=k_, step=0, toy=toy, t=int(t), phase="next", end=int(t) - TALK_REPLY,
+                                  name=(p.obj(toy).name if p.obj(toy) is not None else toy))
+        tk.setdefault("step", 0)
+        if t - tk["t"] > TALK_WAIT + 150 * 2:
+            self.talk = None; self.next_talk = t + TALK_GAP; self.log.append((t, "E3 talk let go", tk["toy"], tk["step"]))
+            return
+        script = (TALKS_SHOW if tk.get("script") == "show" else TALKS_WHERE)[int(tk.get("k", 0))] if "script" in tk else \
+            ((("sib", ""), ("her", tk.get("kind", "talk_where"))))                  # (a talk saved by E3's first form: its answer owed)
+        if tk["phase"] == "queued" and not lane.sib_queue:
+            tk["phase"] = "speaking"
+        if tk["phase"] == "speaking" and lane.sib_utt is None:
+            tk["phase"], tk["end"] = "ended", int(t)
+        if tk["phase"] == "asked":
+            if str(lane.last.get("line_intent") or "") == tk["ask"]:
+                tk["phase"] = "her_speaking"
+            elif t - int(tk["at"]) > TALK_HER_WAIT:
+                self.talk = None; self.next_talk = t + TALK_GAP; self.log.append((t, "E3 her turn not said", tk["ask"], tk["toy"]))
+                return
+        if tk["phase"] == "her_speaking" and lane.utt is None:
+            tk["phase"], tk["end"] = "ended", int(t)
+        if tk["phase"] == "ended":
+            tk["step"] += 1; tk["phase"] = "next"
+            if tk["step"] >= len(script):
+                self.talk = None; self.next_talk = t + TALK_GAP; self.log.append((t, "E3 talk done", tk["toy"]))
+                return
+        if tk["phase"] == "next" and t >= int(tk["end"]) + TALK_REPLY:
+            who, what = script[tk["step"]]
+            if who == "sib":
+                line = what.replace("{o}", tk.get("name", tk["toy"]))
+                lane.sib_queue.append((line, tk["toy"])); tk["phase"] = "queued"
+                self.log.append((t, "E3 the sibling says", line))
+            elif lane.utt is None and c.pending is None:
+                c.request(what, o=tk["toy"]); tk["phase"], tk["ask"], tk["at"] = "asked", what, int(t)
+                self.log.append((t, "E3 her turn", what, tk["toy"]))
+
     def state(self):
         return dict(rng=self.rng.bit_generator.state, day_ticks=self.day_ticks, day=self.day,
                     blocks=[[s, e, k, dict(i)] for s, e, k, i in self.blocks], kind=self.kind, away=self.away,
@@ -1203,7 +1293,9 @@ class DayPlan:
                     reach_turn=bool(self.reach_turn),                                 # C261
                     lure=getattr(self, "lure", None), lure_steps0=int(getattr(self, "lure_steps0", 0)),   # W9b: the command block's lure, her
                     ghost_follow=int(getattr(self, "ghost_follow", 0)),               # follow and her come-here calls survive a save (a mid-block
-                    come=None if getattr(self, "come", None) is None else _plain(self.come))   # save of a command block was a sibling without them)
+                    come=None if getattr(self, "come", None) is None else _plain(self.come),   # save of a command block was a sibling without them)
+                    talk=None if getattr(self, "talk", None) is None else dict(self.talk), next_talk=int(getattr(self, "next_talk", 0)),   # E3
+                    talk_rng=self.talk_rng.bit_generator.state)
 
     def load_state(self, s):
         self.lure = s.get("lure", getattr(self, "lure", None)); self.lure_steps0 = int(s.get("lure_steps0", getattr(self, "lure_steps0", 0)))   # W9b
@@ -1213,6 +1305,10 @@ class DayPlan:
             self.prone_run, self.prone_pain = int(s["prone_run"]), int(s["prone_pain"])
         if "come" in s:
             self.come = None if s["come"] is None else _unplain(s["come"])
+        self.talk = None if s.get("talk") is None else dict(s["talk"])            # E3 (a save before it: no talk under way)
+        self.next_talk = int(s.get("next_talk", 0))
+        if s.get("talk_rng") is not None:
+            self.talk_rng.bit_generator.state = s["talk_rng"]
         self.rng.bit_generator.state = s["rng"]
         self.day_ticks, self.day = int(s["day_ticks"]), int(s["day"])
         self.blocks = [[int(a), int(b), str(k), dict(i)] for a, b, k, i in s["blocks"]]

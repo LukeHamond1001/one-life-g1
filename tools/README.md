@@ -1,23 +1,14 @@
-# tools
+# tools/
 
-The life, its rulers and its guards. Run everything from the repository root.
+The scripts around the body (`body/` is the architecture; nothing here changes it). Each folder has one job.
 
-- `sim_life.py` — the life. A new one: `python3 tools/sim_life.py --out data/mylife --days 1 --d 512 --seed 1 --voice fake --threads 4 --room door --extra book_box_bucket`.
-  Resume a saved pair with `--resume`. `--voice real` uses the macOS speech engine through the pair's voice cache; `--voice cached`
-  uses the cache alone (a replay on any machine); `--voice fake` is tones. `--page` serves a live view on port 8030.
-- `replay.sh` — downloads a released pair, replays it for `TICKS` (1,500 by default: about ten minutes) and prints its rulers.
-- `sim_rulers.py` — the day's rulers from a life's record: `python3 tools/sim_rulers.py data/mylife --day 3`.
-- `determinism_check.py` — the behaviour guard: a tiny body lives a fixed script and every weight, memory and feeling is hashed.
-  `--profile sim` is the G1's. The pinned digests and how each was taken are in `pins/digests.txt`; two machines with the same
-  thread count must print the same digest.
-- `sim_page.py` — the live page the runner serves with `--page`, and the studio view it draws (also `--film` frames): the robot and
-  toys alone, her voice where it comes from, its words, and its reward, mood and stress bars.
-- `sim_migrate_world.py` — carries a saved life into a changed room or body (new toys, the door).
-- The probes (`sim_*.py`, `cereb_day.py`, `motor_units.py`) measure one organ or one sense on a saved pair; each file's first lines say
-  what it reads and how to run it.
+| folder | what it holds |
+|---|---|
+| `harness/` | **The harness** shared by the living run and the pretraining relive: the demo sim (`demo_sim.py`), the task generator and expert (`demo_tasks.py`), the relive trainer (`demo_train.py`), the student's test and living run (`demo_test.py`), the learning curve and held-out ruler (`demo_curve.py`, `demo_holdout.py`), the generator slots and watchdog, the film (`demo_film.py`, `film_pair.py`), the screen's clips and show (`demo_clips.py`, `demo_screen.py`), the shown tasks, the scanned objects' fetch. The modules import each other by name, so they stay together. |
+| `live/` | **The living run** (P6, the iPad; docs/PREREGISTRATION_P6.md): `start_p6.sh`, `resume_p6.sh`, `screen_rung1.sh`; the earlier living test's start/resume. |
+| `pretrain/` | **The relive** (P1-P5, finished 2026-10-21): the clean set's daemon (`gen_clean.sh`), the runs' start/resume scripts, the stop. Kept as the record of the method. |
+| `compare/` | **The withdrawn comparison**: the behaviour-cloning, diffusion and Dreamer-style baselines at the student's size, the frontier follower and table, P1's conductor and report. |
+| `measure/` | **The instruments**: the behaviour guard (`determinism_check.py`, its pins in `pins/`), the sim profile, the day's rulers and growth chart, the sim's measurements (eyes, face, friction, grasp, pain, the parent's ear and motion, the sink rates, the voices), the P1 probes. |
+| `life/` | **The diary life's runner** (`sim_life.py`), its page, the world's migration, the film's cut, the stills, the forecast repair, the replay; `probes/` holds the life's probe and watch scripts (the sentinel, alert_wake, the day's diagnostics). |
 
-Tests are plain functions under `body/tests/`. Run one with the room set:
-
-```bash
-ROOM=door python3 -c "import sys; sys.path.insert(0, '.'); from body.tests.test_sim_world import test_the_scene as t; t()"
-```
+Run everything from the repository root (`python3 tools/harness/demo_test.py ...`, `tools/live/resume_p6.sh`); each script finds the root itself.

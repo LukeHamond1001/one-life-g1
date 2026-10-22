@@ -29,7 +29,7 @@ THE CHILD'S VOICE AND THE WORD SCAFFOLD: what we chose, and why.
     exact only when it is also the nearest of all her words. Her templates are made through this voice's cache (VoiceCache.clip
     with prosody=: other voices, the old child pitch) and kept in its ledger. Nothing she hears is added to her ear. The babbler's
     accepted approximations are written down as chance; the tract's first accepted word is milestone M6t
-    (tools/sim_parent_ear.py measures the margins, the held-out voices and the cost).
+    (tools/measure/sim_parent_ear.py measures the margins, the held-out voices and the cost).
   - The design's figures for the tract in the parent's ear (4.9: 2 of 12 echoes accepted, the tract's reach table) are still the
     voice study's, measured through its own cochlea (allout/lang/ear2.py, filters 1.6 ERB wide): P3v measures them again on this
     ear. Her ear's own figures (the margins, the other voices' recognition, its cost) were measured again on ears.cochlea in P3.

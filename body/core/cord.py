@@ -69,6 +69,17 @@ import torch
 from .physiology import REFLEX
 
 
+def cueline_spec(anatomy, cfg):
+    """D4a: WHAT THE ORGANS BUILD FOR THE CUE LINE (Organs(..., cueline=)): None while the switch is off (the diary's, a body born before
+    it) or where the anatomy names no orienting cue; else the line's width (three numbers a cue) and each motor effector's name and its
+    settings' count (its map's outputs)"""
+    c = cfg or {}
+    if not int(c.get("cue_line", 0)) or not (getattr(anatomy, "orienting", None) or ()):
+        return None
+    from .anatomy import motor_effectors
+    return dict(n=3 * len(anatomy.orienting), effectors=[(e.name, sum(int(k) for k in e.factors)) for e in motor_effectors(anatomy.effectors)])
+
+
 class CordMixin:
     def _reflex_const(self, k):
         """a born pattern's or bias's constant: the body's cfg when it was given, else REFLEX's"""
@@ -111,6 +122,8 @@ class CordMixin:
                 st["cord_n"]["breath"] = int(st["cord_n"].get("breath", 0)) + 1
         if e.orient and e.vor and int(self._reflex_const("orient")) and int(self._reflex_const("orient_saccade")):
             sc_ = self._orient_saccade(e, frame)                           # A186: the born saccade toward a cue, on the eyes
+            if sc_ is not None and self._orient_earned_on():
+                sc_ = [s_ * (1.0 - self._earned_share(st, j_)) for j_, s_ in enumerate(sc_)]   # D4b: yielding as the cortex earns the joint
             if sc_ is not None:
                 out = sc_ if out is None else [a_ + b_ for a_, b_ in zip(out, sc_)]
                 st["cord_n"]["saccade"] = int(st["cord_n"].get("saccade", 0)) + 1
@@ -136,12 +149,19 @@ class CordMixin:
         E, I = int(self._reflex_const("breath_expire")), int(self._reflex_const("breath_inspire"))
         amp = float(self._reflex_const("breath_amp"))
         k = int(st.get("breath_t", 0)) % (E + I)
+        steady = int(self._reflex_const("breath")) == 2                    # A238: the air supplied steadily, as a speaker's power is
         bc_, bi_ = cy["breath"]
         b_ = frame.obs.get(bc_)
-        if k < E and b_ is not None and float(b_[int(bi_)]) <= 0.0:
+        if not steady and k < E and b_ is not None and float(b_[int(bi_)]) <= 0.0:
             k = E; st["breath_t"] = (int(st.get("breath_t", 0)) // (E + I)) * (E + I) + E   # the reservoir empty: breathe in now
         lungs = int(cy["lungs"])
         out = [0.0] * len(e.factors)
+        if steady:                                                          # A238b (2026-10-19): THE VOICE'S POWER ON DEMAND. The steady
+            acting_ = bool((st.get("now") or {}).get("acted"))              # supply (A238) kept the lungs up between acts: air through the
+            out[lungs] = amp if acting_ else -amp                           # open glottis, a hiss on ~90% of ticks, the child's voice never
+            st["breath_t"] = int(st.get("breath_t", 0)) + 1                 # resting (her ear held one utterance 15,694 ticks long: C377).
+            return out                                                      # The lungs are driven while the voice acts and drawn back while
+                                                                            # it rests: a speaker's power, no breath's rhythm and no limit
         out[lungs] = amp if k < E else -amp
         brake = float(self._reflex_const("breath_brake"))
         if brake > 0.0 and cy.get("glottis") is not None:
@@ -323,6 +343,52 @@ class CordMixin:
         t_ = torch.tensor(out, dtype=torch.float32)
         self._acue_now = (int(self.ticks), t_)
         return t_
+
+    def _cue_line_on(self):
+        """the switch `cue_line` (D4a): 0 for the diary and for a body born before it (its cfg holds no such key)"""
+        return bool(int(self.cfg.get("cue_line", 0))) and "cueline" in self.m._modules
+
+    def _cue_line(self, frame):
+        """D4a (2026-10-20, P1's gaze probes): THE BORN ORIENTING CUES AS A LINE INTO THE PROPOSAL (the colliculus's map reaches the frontal
+        cortex through the thalamus: Sommer and Wurtz 2002, 2004; the road A225 gave the striatum, McHaffie et al. 2005). [fired,
+        direction on yaw, direction on pitch] per cue in the anatomy's order (rad from the fovea's centre, + right / + up, held to +-1 as
+        A225's; the voice's side held voice_hold ticks after its sound, as A225 holds it); zeros where the cue is silent. Cached for the
+        tick. Why: act_pred reads the stream alone, and none of the cues is a channel of the cortex: on the expert's own held-out ticks
+        its guess took the expert's side on 0.55 of the gaze's yaw moves and 0.51 of the walk's turns (the pitch 0.69, the step forward
+        0.74), and a linear read of the frame's cues took it on 0.78 and 0.70 (fitted on one recording, scored on another); the
+        behaviour-cloning baseline, which reads them, turned the expert's way 0.77 of the time. A demonstration can teach where only a
+        proposal that sees where"""
+        now_ = getattr(self, "_cue_now", None)
+        if now_ is not None and now_[0] == self.ticks:
+            return now_[1]
+        out = []
+        for c in (self.anatomy.orienting or ()):
+            o_ = frame.obs.get(c.obs) if frame is not None else None
+            f_, y_, p_ = 0.0, 0.0, 0.0
+            if o_ is not None:
+                y_ = float(o_[int(c.yaw)]) if c.yaw is not None else 0.0
+                p_ = float(o_[int(c.pitch)]) if c.pitch is not None else 0.0
+                f_ = 1.0 if (float(o_[int(c.fired)]) > 0.0 or (c.side_only and y_ != 0.0)) else 0.0
+            if c.side_only and y_ == 0.0:
+                vh_ = getattr(self, "_voice_hold", None)
+                if vh_ is not None and 0 < int(self.ticks) - int(vh_[0]) <= int(self._reflex_const("voice_hold")):
+                    y_ = float(vh_[1]); f_ = 1.0
+            cl_ = lambda v_: max(-1.0, min(1.0, float(c.sense) * v_)) if f_ else 0.0   # noqa: E731
+            out += [f_, cl_(y_), cl_(p_)]
+        t_ = torch.tensor(out, dtype=torch.float32)
+        self._cue_now = (int(self.ticks), t_)
+        return t_
+
+    def _cue_term(self, e, q):
+        """D4a: THE CUE LINE'S TERM IN MOTOR EFFECTOR e's PROPOSAL for cue lines `q` [.., n]: a score per setting through its map (born at
+        zero: at birth every proposal is exactly as it was), read back through its rows, as recall's map is (frames `_recall_term`): [.., d].
+        THE LINE AT THE STREAM'S POWER: act_pred's plain step was derived for its input, the stream, LayerNorm'd to a norm of sqrt(d)
+        (timing `GatedDescent`); one cue firing is three numbers of about unit size, so read raw it would move the proposal |q|^2 / d as
+        fast as the stream does (0.2% at d 512: the dawn of 2026-10-20's test, the map at 0.09 after 900 ticks and the guess at a coin's).
+        Each cue enters at the stream's power, its three numbers times sqrt(d / 3) (A225's rule for the actors' pathways: each at its own
+        unit power)"""
+        R = self.m.acts[e.name].rows
+        return self.m.cueline[e.name](q.to(R.device, R.dtype) * math.sqrt(float(self.m.d) / 3.0)) @ R
 
     def _orient_in(self, frame):
         """THE BORN GATE INPUT (3.7): 1 on a tick a face, a sound's onset or a sudden change appeared, else 0 (0 while orienting is off)"""

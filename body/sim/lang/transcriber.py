@@ -144,7 +144,7 @@ class Transcriber:
         if self.utt is not None:
             self.utt["x"].append(pa if pa is not None else np.zeros(E.TICK))
             self.utt["quiet"] = 0 if audible else self.utt["quiet"] + 1
-            if self.utt["quiet"] >= K.TURN_END_REST:
+            if self.utt["quiet"] >= K.TURN_END_REST or len(self.utt["x"]) >= K.UTT_MAX:   # C377: a long sound heard in pieces
                 out.append(self._hear(t, expected, vocab, said_word))
         self.turn_start = self.utt["start"] if self.utt is not None else None
         # the token output
@@ -230,7 +230,8 @@ class Transcriber:
         if s["pin"] is not None and (self.pin is None or tuple(s["pin"]) != self.pin):
             raise ValueError(f"the saved world heard with her ear {s['pin'][0][:16]}, not this one "
                              f"{None if self.pin is None else self.pin[0][:16]}: the ear is fixed for the life (A27)")
-        self.utt = None if s["utt"] is None else dict(s["utt"], x=[np.array(a) for a in s["utt"]["x"]])
+        self.utt = None if s["utt"] is None else dict(s["utt"], x=[np.array(a) for a in s["utt"]["x"][-K.UTT_MAX:]])   # (C377: a save
+                                                                                     # holding a longer one keeps its last piece)
         self.sounding, self.turn_start, self.turn_end = s["sounding"], s["turn_start"], s["turn_end"]
         self.letters, self.letters_start, self.rests = s["letters"], s["letters_start"], s["rests"]
         self.held, self.n_utts = [tuple(h) for h in s["held"]], s["n_utts"]

@@ -27,7 +27,7 @@ tick's acts and run the cerebellum's sub-steps, and its night's save is written 
 A life is born with a world (`Life(..., world=None)`: the DiaryWorld unless one is given; `life.world`) and asks it for the tick's frame
 at the senses' phase (`_sense`, body/core/senses.py), where the queue was always read, so the draw order does not move. The sleep switch
 pauses the world before the night and resumes it after (`_sleep_now`, body/core/night.py). The world is an interface object: it is not
-saved with the body (the body's save never held the queue), `--full` leaves it to the tests (tools/determinism_check.py's skip list, since
+saved with the body (the body's save never held the queue), `--full` leaves it to the tests (tools/measure/determinism_check.py's skip list, since
 R1), nothing here draws a random number, and the pace log is logging only, outside the life, so the digests do not move. The diary's
 frame holds no tensor and no module."""
 import abc

@@ -205,7 +205,7 @@ def load_model(xml=XML, extra=None):
         _add_sibling(spec)                                                  # D2: the sibling figure, after it
     # A187 (2026-10-04, speed only): THE EYE'S OWN MESHES. Unitree's visual meshes carry 630,000 triangles (a finger link 30,000) and
     # the eyes drew them six times a tick (three views, each with the sun's shadow pass): 119 of a 436 ms tick on the day-78 copy.
-    # Each visual geom (no contact, group 2) whose mesh has a decimated copy in assets_vis (tools/make_vis_meshes.py: 12% of the
+    # Each visual geom (no contact, group 2) whose mesh has a decimated copy in assets_vis (tools/life/make_vis_meshes.py: 12% of the
     # faces, quadric decimation, kept in git) is drawn from the copy; the collision geoms keep Unitree's files, so the physics is
     # the same to the bit
     vis_dir = pathlib.Path(__file__).parent / "assets" / "unitree_g1" / "assets_vis"
@@ -503,7 +503,7 @@ def eye_option():
     return opt
 
 
-# the G1 prototype's names (main's 1eb268b: body/sim/g1eyes.py, tools/sim_look_g1.py read them), kept so the prototype's stills
+# the G1 prototype's names (main's 1eb268b: body/sim/g1eyes.py, tools/life/sim_look_g1.py read them), kept so the prototype's stills
 # still run against the built scene: its World is this Scene; its periphery pool and fovea size are the eyes' (body/sim/eyes.py)
 World = Scene
 POOL = 3

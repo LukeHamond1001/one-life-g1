@@ -238,6 +238,18 @@ class SleepMixin:
             blk["pk"] = torch.zeros(int(blk["v"].shape[0]), dtype=torch.bool)
         blk["p"][r] = torch.cat([x_.reshape(-1).float().cpu() for x_ in xs_]); blk["pk"][r] = True
 
+    def _tape_cue(self, blk, r, w):
+        """D4a (2026-10-20): THE CUE LINE TAPED BESIDE THE ACT. The cue line the position's proposals read (the window's "cue": body/core/
+        cord.py `_cue_line`), into the block's cue columns ("q" [rows, width], float16: its numbers are 0 or 1 and directions within +-1),
+        the columns added at the first position that holds one (a row with none, zeros: no cue read, as an imagined position's)"""
+        q_ = w.get("cue")
+        if q_ is None:
+            return
+        if "q" not in blk:
+            blk["q"] = torch.zeros(int(blk["v"].shape[0]), int(q_.numel()), dtype=torch.float16)
+        if int(blk["q"].shape[1]) == int(q_.numel()):
+            blk["q"][r] = q_.reshape(-1).to(torch.float16)
+
     def _tape_driven(self, blk, r):
         """A230 (2026-10-17): WHETHER THE WORLD DROVE EACH EFFECTOR, TAPED BESIDE THE MOVE. For every motor effector, whether the frame the
         tick is lived on shows the world drove its joints in the tick before (timing `_sense_driven`): the block's column "dv" (int8,
@@ -256,7 +268,27 @@ class SleepMixin:
         "bk:<name>" (int8, one per setting of each joint in order: 1 blocked, 0 not, -1 not shown), added at a block's first row that
         shows them (a world that shows none tapes none; a block's rows before it, unknown), so the night reads a blocked setting as the
         rest as the day does (timing `_timing_loss`)"""
+        if "lbl:words" in w:                                        # D1y: its words at this row no lesson (-1; a row without: -2)
+            if "lb:words" not in blk:
+                blk["lb:words"] = torch.full((int(blk["v"].shape[0]),), -2, dtype=torch.long)
+            blk["lb:words"][r] = int(w["lbl:words"])
         for e in self.anatomy.motors:
+            if w.get("gdd:" + e.name):                              # D1e: a guided act at this row (the D1 trainer's; a life: never)
+                if "gd:" + e.name not in blk:
+                    blk["gd:" + e.name] = torch.zeros(int(blk["v"].shape[0]), dtype=torch.int8)
+                blk["gd:" + e.name][r] = 1
+                if w.get("wch:" + e.name):                          # W1: a watched act at this row (the inverse model's reading)
+                    if "wc:" + e.name not in blk:
+                        blk["wc:" + e.name] = torch.zeros(int(blk["v"].shape[0]), dtype=torch.int8)
+                    blk["wc:" + e.name][r] = 1
+            if w.get("tch:" + e.name):                              # L1: its own act with the teacher's correction at this row
+                if "td:" + e.name not in blk:
+                    blk["td:" + e.name] = torch.zeros(int(blk["v"].shape[0]), dtype=torch.int8)
+                blk["td:" + e.name][r] = 1
+            if ("lbl:" + e.name) in w:                              # D1y: the act to learn apart from the act done (-2 the act done, -1 none)
+                if "lb:" + e.name not in blk:
+                    blk["lb:" + e.name] = torch.full((int(blk["v"].shape[0]),), -2, dtype=torch.long)
+                blk["lb:" + e.name][r] = int(w["lbl:" + e.name])
             f_ = w.get("blk:" + e.name)
             if f_ is None:
                 continue
@@ -289,6 +321,7 @@ class SleepMixin:
                 blk["a"][r, j] = int(w[e.field])
             blk["bands"][r] = w["bundle"].to("cpu", torch.float16)   # the ladder's bands the cortex received at this tick (the lead's item 1)
             self._tape_push(blk, r)                                  # A228c: the cord's push beside the move it is part of
+            self._tape_cue(blk, r, w)                                # D4a: the cue line the tick's proposals read
             self._tape_driven(blk, r)                                # A230: whether the world drove each effector, beside the move
             self._tape_blocked(blk, r, w)                            # A233: the settings its actuator could not carry out, beside the act
         blk["end"][r] = bool(w.get("end", False))
@@ -375,9 +408,17 @@ class SleepMixin:
             out["p"] = torch.cat([blk["p"] if "p" in blk else torch.zeros(int(blk["v"].shape[0]), w_) for blk in tape])[:n].clone()   # its
             out["pk"] = torch.cat([blk["pk"] if "pk" in blk else torch.zeros(int(blk["v"].shape[0]), dtype=torch.bool)   # first known push:
                                    for blk in tape])[:n].clone()                                                       # unknown)
+        wq_ = next((int(blk["q"].shape[1]) for blk in tape if "q" in blk), None)
+        if wq_ is not None:                                              # D4a: the cue line (a block taped before its first: zeros)
+            out["q"] = torch.cat([blk["q"] if "q" in blk and int(blk["q"].shape[1]) == wq_ else torch.zeros(int(blk["v"].shape[0]), wq_, dtype=torch.float16)
+                                  for blk in tape])[:n].clone()
         if any("dv" in blk for blk in tape):                              # A230: the world's drive per effector (a block taped before its first: unknown)
             m_ = len(self.anatomy.motors)
             out["dv"] = torch.cat([blk["dv"] if "dv" in blk else torch.full((int(blk["v"].shape[0]), m_), -1, dtype=torch.int8) for blk in tape])[:n].clone()
+        for k_ in sorted({k_ for blk in tape for k_ in blk if k_.startswith("gd:") or k_.startswith("td:") or k_.startswith("wc:")}):   # D1e: the guided rows (W1: the watched)
+            out[k_] = torch.cat([blk[k_] if k_ in blk else torch.zeros(int(blk["v"].shape[0]), dtype=torch.int8) for blk in tape])[:n].clone()
+        for k_ in sorted({k_ for blk in tape for k_ in blk if k_.startswith("lb:")}):   # D1y: the labels (a block with none: the acts done)
+            out[k_] = torch.cat([blk[k_] if k_ in blk else torch.full((int(blk["v"].shape[0]),), -2, dtype=torch.long) for blk in tape])[:n].clone()
         for k_ in sorted({k_ for blk in tape for k_ in blk if k_.startswith("bk:")}):   # A233: the blocked settings (a block taped before its first: unknown)
             F_ = next(int(blk[k_].shape[1]) for blk in tape if k_ in blk)
             out[k_] = torch.cat([blk[k_] if k_ in blk and int(blk[k_].shape[1]) == F_ else torch.full((int(blk["v"].shape[0]), F_), -1, dtype=torch.int8)
@@ -479,8 +520,9 @@ class SleepMixin:
     def _episode_rows(self, ep):
         """an episode's dream window: its reel's rows w0..w1 (views)"""
         r_ = self._reels[ep["reel"]]; s = slice(ep["w0"], ep["w1"] + 1)
-        out = {k_: r_[k_][s] for k_ in ("s", "v", "xo", "a", "end", "G", "p", "pk", "dv") if k_ in r_}   # (A228c: the push where the reel keeps it; A230: the drive)
-        out.update({k_: r_[k_][s] for k_ in r_ if k_.startswith("bk:")})   # (A233: the blocked settings)
+        out = {k_: r_[k_][s] for k_ in ("s", "v", "xo", "a", "end", "G", "p", "pk", "dv", "q") if k_ in r_}   # (A228c: the push where the reel keeps it; A230: the drive; D4a: the cue line)
+        out.update({k_: r_[k_][s] for k_ in r_ if k_.startswith("bk:") or k_.startswith("gd:") or k_.startswith("td:") or k_.startswith("wc:") or k_.startswith("lb:")})   # (A233: the blocked
+                                                                                         # settings; D1e: the guided rows; D1y: the labels)
         return out
 
     def _tape_nightfall_reset(self):
@@ -533,7 +575,7 @@ class SleepMixin:
         warm_ = int(self.cfg.get("night_warm", 0)); base_lr_ = float(self.cfg["night_lr"]); nstep_ = 0
         m.train()
         nb = max(1, int(self.cfg.get("night_batch", 0)))          # night_batch 0: a dream a batch (THE BUILDER'S READING: windows of frames
-        losses = []; nrem = 0; wstats = [0, 0, 0]; inv_pairs = 0  # run in lockstep batches; SIM_CFG's 16)
+        losses = []; nrem = 0; wstats = [0, 0, 0, 0, 0]; inv_pairs = 0  # run in lockstep batches; SIM_CFG's 16)
         parts_sum = {}; parts_n = 0                                 # the last round's lesson parts (the night report's, W8 amended's rule)
         for _ in range(int(self.cfg["night_rounds"])):
             order = torch.randperm(len(dreams), generator=self.gen).tolist(); tot = 0.0; ok = 0
@@ -556,7 +598,7 @@ class SleepMixin:
                     self._forecast_scaling()                      # A154: the forecast heads held at the act rows' scale, by night as by day
                 opt.zero_grad(set_to_none=True); self.opt_pred.zero_grad(set_to_none=True)
                 inv_pairs += self._frames_inverse(parts)          # act_inv replayed over the batch's own acts (its own optimizer)
-                for k_ in range(3):
+                for k_ in range(len(parts["w"])):
                     wstats[k_] += parts["w"][k_]
                 for k_, v_ in (parts.get("parts") or {}).items():
                     parts_sum[k_] = parts_sum.get(k_, 0.0) + float(v_)
@@ -600,7 +642,13 @@ class SleepMixin:
                     "nrem_curve": [round(float(x), 4) for x in losses], "rem_steps": rem_steps,
                     "rem_cos": (round(rem_cos[-1], 3) if rem_cos else None), "rem_cos_first": (round(rem_cos[0], 3) if rem_cos else None),
                     "rem_limb_acts": int(getattr(self, "_rem_limb_n", 0)),      # A132: the limbs' imagined acts (not rest) this night
-                    "act_pred_weight": {"positions": wstats[0], "below_1": round(wstats[1] / pos, 4), "zero": round(wstats[2] / pos, 4)},
+                    "act_pred_weight": {"positions": wstats[0], "below_1": round(wstats[1] / pos, 4), "zero": round(wstats[2] / pos, 4),
+                                        # D1p: the keys above are the replayed credit's signs (since A152 the shares taught toward and
+                                        # against, the names older); where positions were guided (the D1 trainer's; a life: none, the
+                                        # report unchanged) "guided" their share (taught at the day's 1) and "against_taught" the share
+                                        # still taught against
+                                        **({"guided": round(wstats[3] / pos, 4), "against_taught": round(wstats[4] / pos, 4)}
+                                           if wstats[3] else {})},
                     "act_inv_pairs": inv_pairs,
                     "gauge": {"before": before, "after_nrem": mid, "after": after}})
         return opt, params
@@ -655,6 +703,13 @@ class SleepMixin:
                 if "p" in r_ and int(r_["p"].shape[1]) == w_:
                     P_[b, :lens[b]] = r_["p"].float(); K_[b, :lens[b]] = r_["pk"]
             obs["@push"] = P_.to(dev); obs["@pushk"] = K_.to(dev)
+        if self._cue_line_on():                                           # D4a: the cue line at each position (a reel taped without it: zeros)
+            nq_ = 3 * len(self.anatomy.orienting)
+            Q_ = torch.zeros(B, T, nq_)
+            for b, r_ in enumerate(rows):
+                if "q" in r_ and int(r_["q"].shape[1]) == nq_:
+                    Q_[b, :lens[b]] = r_["q"].float()
+            obs["@cue"] = Q_.to(dev)
         m_ = len(mot)
         if any("dv" in r_ and int(r_["dv"].shape[1]) == m_ for r_ in rows):     # A230: the world's drive per effector at each position (-1: unknown)
             DV_ = torch.full((B, T, m_), -1, dtype=torch.int8)
@@ -662,6 +717,41 @@ class SleepMixin:
                 if "dv" in r_ and int(r_["dv"].shape[1]) == m_:
                     DV_[b, :lens[b]] = r_["dv"]
             obs["@driven"] = DV_.to(dev)
+        if any("lb:words" in r_ for r_ in rows):                          # D1y: the rows whose words are no lesson (-1; else -2)
+            LW_ = torch.full((B, T), -2, dtype=torch.long)
+            for b, r_ in enumerate(rows):
+                if "lb:words" in r_:
+                    LW_[b, :lens[b]] = r_["lb:words"]
+            obs["@lbl:words"] = LW_.to(dev)
+        for e_ in mot:                                                    # D1e: the guided positions (a reel with none: no key)
+            k_ = "gd:" + e_.name
+            if any(k_ in r_ for r_ in rows):
+                GD_ = torch.zeros(B, T, dtype=torch.bool)
+                for b, r_ in enumerate(rows):
+                    if k_ in r_:
+                        GD_[b, :lens[b]] = r_[k_] == 1
+                obs["@gdd:" + e_.name] = GD_.to(dev)
+            kw_ = "wc:" + e_.name                                         # W1: the positions watched
+            if any(kw_ in r_ for r_ in rows):
+                WC_ = torch.zeros(B, T, dtype=torch.bool)
+                for b, r_ in enumerate(rows):
+                    if kw_ in r_:
+                        WC_[b, :lens[b]] = r_[kw_] == 1
+                obs["@wch:" + e_.name] = WC_.to(dev)
+            kt_ = "td:" + e_.name                                         # L1: the positions the teacher corrected
+            if any(kt_ in r_ for r_ in rows):
+                TD_ = torch.zeros(B, T, dtype=torch.bool)
+                for b, r_ in enumerate(rows):
+                    if kt_ in r_:
+                        TD_[b, :lens[b]] = r_[kt_] == 1
+                obs["@tch:" + e_.name] = TD_.to(dev)
+            kl_ = "lb:" + e_.name                                         # D1y: the labels (-2: the act done; -1: none)
+            if any(kl_ in r_ for r_ in rows):
+                LB_ = torch.full((B, T), -2, dtype=torch.long)
+                for b, r_ in enumerate(rows):
+                    if kl_ in r_:
+                        LB_[b, :lens[b]] = r_[kl_]
+                obs["@lbl:" + e_.name] = LB_.to(dev)
         for e_ in mot:                                                    # A233: the settings each actuator could not carry out at each position
             k_ = "bk:" + e_.name; F_ = sum(int(f_) for f_ in e_.factors)  # (unknown, or a window from a reel taped before A233: none)
             if any(k_ in r_ and int(r_[k_].shape[1]) == F_ for r_ in rows):
@@ -708,6 +798,30 @@ class SleepMixin:
         y, w = self._word_targets(obs[words.name], ends, lens)
         ll, _ = m.latent_loss(m.latent_pred(C), y, w=w)
         lp_ = {"words": float(ll.detach())}                        # THE LESSON'S PARTS (the rule of W8 amended, 2026-10-10): the words', each
+        if hasattr(m, "word_pred") and xos is not None:
+            # D1j: the own-word forecast replayed: its own symbol at the next position (the rest included), the stream read detached
+            # (the night form act_pred's lesson takes), each window's pairs alike
+            xo_ = xos.to(C.device).long()
+            yo_ = torch.cat([xo_[:, 1:], xo_[:, -1:]], dim=1)
+            wo_ = torch.zeros_like(xo_, dtype=torch.float32)
+            for b_, L_ in enumerate(lens):
+                if L_ >= 2:
+                    wo_[b_, :L_ - 1] = 1.0
+            lwd_ = obs.get("@lbl:words")                            # D1y: a position whose next words are no lesson (-1) teaches none
+            if lwd_ is not None:
+                wo_ = wo_ * (torch.cat([lwd_[:, 1:], lwd_[:, -1:]], dim=1) != -1).float()
+            if int(self.cfg.get("own_words_split", 0)) and hasattr(m, "speak_pred"):
+                # D1o: what it says where it spoke; when, its speaking's head (the stream read detached, as by night always)
+                spk_ = (yo_ != int(self.sil)).float()
+                lo_ = m.latent_loss(m.word_pred(C.detach()), yo_, w=wo_ * spk_)[0] if bool((spk_ * wo_).any()) else C.sum() * 0.0
+                zs_ = m.speak_pred(self._speak_in(C.detach())).squeeze(-1)
+                pw_ = self._speak_balance(spk_, wo_, count=False)                 # D1r (the night's replays not counted again)
+                zb_ = zs_ if pw_ is None else zs_ + torch.log(pw_)
+                lo_ = lo_ + (F.binary_cross_entropy_with_logits(zb_, spk_, reduction="none", pos_weight=pw_) * wo_).sum() / wo_.sum().clamp_min(1.0)
+            else:
+                lo_, _ = m.latent_loss(m.word_pred(C.detach()), yo_, w=wo_)
+            ll = ll + lo_
+            lp_["own_words"] = float(lo_.detach())
         es = self._err_scales()                                    # channel's and each effector's share of the night's loss, for the report
         pair = mask[:, 1:]
         npair = float(pair.sum())
@@ -721,12 +835,19 @@ class SleepMixin:
                 ll = ll + lc_
                 lp_["ch:" + str(c_.name)] = float(lc_.detach())
         W_ = G.clamp(-1.0, 1.0); WL_ = (1.0 + G).clamp(0.0, 1.0)  # act_pred_night_weight (A152: the own acts' by dopamine's credit alone) and the labels' (R8's)
-        wst = [0, 0, 0]
+        if W_.device != C.device:                                  # (the night on its own device, night_dev: the credit is the tape's, kept at
+            W_ = W_.to(device=C.device, dtype=torch.float32); WL_ = WL_.to(device=C.device, dtype=torch.float32)   # home in float64)
+        wst = [0, 0, 0, 0, 0]
+        gks_ = [k_ for k_ in obs if k_.startswith("@gdd:") or k_.startswith("@tch:")]   # D1p: the guided positions (L1: and the taught), at the day's 1
         for b, L_ in enumerate(lens):
             if L_ < 2:
                 continue
             wb = W_[b, :L_]
             wst[0] += L_ - 1; wst[1] += int((wb[1:] > 0.0).sum()); wst[2] += int((wb[1:] < 0.0).sum())   # A152: positions taught toward, and against
+            ga_ = torch.zeros(L_ - 1, dtype=torch.bool, device=wb.device)
+            for k_ in gks_:
+                ga_ = ga_ | obs[k_][b, 1:L_].to(wb.device)
+            wst[3] += int(ga_.sum()); wst[4] += int(((wb[1:] < 0.0) & ~ga_).sum())
         for i_ in range(1, len(self.anatomy.motors) + 1):
             tot = None
             for b, L_ in enumerate(lens):
@@ -864,6 +985,13 @@ class SleepMixin:
         bands = bands0.float().to(dev); bundles, Cs, bnext = [], [], []
         bans = list(self.bans)
         macts = {e.name: [int(r_["a"][t, j]) for t in range(T0)] for j, e in enumerate(mot)} if limbs else {}
+        # R13 (2026-10-19): THE ROLLOUT BY ITS CACHE. Each step fed the cortex the whole window again (inputs and stream over n positions
+        # for the n-th: a rollout of IMAG_SEED + rem_steps = 11 positions passed 66), though while the window only grows no earlier
+        # position can change (the attention is causal, and the stream has no position code): the newest position's input alone through
+        # the stream's cache (stream_step, the night's lockstep arithmetic) is the same computation, the floats' order aside. Past the
+        # window (a rollout longer than it) the window slides and the full read stands. The waking imagination (A138) and the
+        # deliberation (A182, A190) are a third of the waking tick's cost; rollout_cache 0 (the core's default): the full read every step
+        cache_ = [None] * len(m.blocks) if int(self.cfg.get("rollout_cache", 0)) else None
         with torch.no_grad():
             for step in range(T0 + L):
                 if step >= T0:
@@ -883,6 +1011,8 @@ class SleepMixin:
                 bundles.append(bands.clone())
                 n = step + 1
                 s0 = max(0, n - int(m.window))                              # R10 (2026-10-16): the cortex reads at most its window, as by day
+                if cache_ is not None and s0 == 0:                         # R13: the window still growing: the newest position alone
+                    s0 = n - 1
                 k_ = n - s0                                                 # (the rollout fed T0 + L positions whatever the window: a window
                 ob = {c_.name: torch.tensor(syms[c_.name][s0:n], dtype=torch.long, device=dev) for c_ in sym}   # of 8 under T0 + L = 9 faulted
                 for e in mot:                                               # the night, amyg 12; a larger rem_steps would at any size)
@@ -890,7 +1020,11 @@ class SleepMixin:
                                   else torch.full((k_,), int(e.rest_id), dtype=torch.long, device=dev))
                 u = m.inputs(self.anatomy, ob, torch.full((k_,), int(self.sil), dtype=torch.long, device=dev), torch.stack(bundles[s0:n]),
                              codes={c_.name: torch.stack(codes[c_.name][s0:n]) for c_ in vec})
-                C = m.stream(u)[-1]; Cs.append(C)
+                if cache_ is not None and n <= int(m.window):
+                    C = m.stream_step(u, cache_)[0]                         # R13: [1, d] through the cache -> [d]
+                else:
+                    C = m.stream(u)[-1]
+                Cs.append(C)
                 bands = m.band_update(bands, C)
                 bnext.append(bands.clone())
         return dict(Cs=Cs, bnext=bnext, syms=syms, codes=codes, macts=macts, sym=sym, vec=vec, mot=mot)
@@ -1348,7 +1482,10 @@ class SleepMixin:
                 if e.sense is None:
                     continue
                 s1 = self._frame_sense(e, p_[4])
-                le = 0.5 * ((m.timing[e.name].fwd(C0[b]).float() - s1.float()) ** 2).sum()
+                fb_ = m.timing[e.name].fwd(C0[b])
+                if getattr(m, "eff_fwd", None) is not None and e.name in m.eff_fwd:     # R1: the twitch's own act, its corollary discharge
+                    fb_ = fb_ + m.eff_fwd[e.name](m.efference(self.anatomy, {k_: v_[b] for k_, v_ in obs.items() if k_ in {e2_.name for e2_ in mot}})[0])
+                le = 0.5 * ((fb_.float() - s1.float()) ** 2).sum()
                 loss = le if loss is None else loss + le
             if loss is None:
                 continue

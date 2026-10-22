@@ -19,6 +19,9 @@ HOLD = 2                              # a gaze ask is met when its trunk turns t
                                       # she reads them, and that holds 2 ticks (4.8, A40): her reading of its trunk is the one
                                       # held TARGET_TICKS running (percept.Reader.look), so a turn meets it after 3 + 1 ticks
 TURN_END_REST = 2                     # the child's turn ends when its voice has rested 2 ticks after sounding (4.6)
+UTT_MAX = 40                          # C377 (2026-10-19): an utterance of the child's is heard in pieces of at most 40 ticks (6 s): her ear reads
+                                      # a longer sound as it goes, as a listener takes in a long babble (the second life's steady air made
+                                      # one sound of 15,694 ticks that her ear held, 300 MB, copied whole at every tick's capture)
 REPLY_AFTER = 3                       # she replies 3 ticks after the child's turn ends on average (4.6; Goldstein et al.
                                       # 2003): the mean of REPLY_PAUSE's draws (2.91), and her latency made perfect for a test
 CALL_EVERY = 240                      # the call at most once per 240 ticks (4.6, A13)
@@ -26,7 +29,8 @@ SAME_LINE = 60                        # the same line not within 60 ticks (4.6)
 SAME_OBJECT = 20                      # the same object named at most once per 20 ticks; a variation set counts as one naming (4.6)
 SET_PER_OBJECT = 120                  # at most one variation set per object per 120 ticks (4.5)
 SET_LINES = (2, 3)                    # a variation set is 2-3 lines sharing the focus word (4.5); a new word's set is 3 (4.8)
-NEW_PER_DAY = 3                       # at most 3 new words a life day, each joining her words at the night (4.8, A14, A15)
+NEW_PER_DAY = 6                       # at most 6 new words a life day, each joining her words at the night (4.8, A14, A15; C376, the
+                                      # second life: 3 until 2026-10-19: her words were the talk's ceiling, the growth queue 25 days long)
 NEW_EVERY = 400                       # and at most 1 a minute (A14; 60 s at 150 ms a tick), whoever asks: a new word's set of 3
                                       # lines takes its minute (4.8)
 REDIRECT_AFTER = 40                   # she redirects ("look! the drum.", with a point) only after 40 ticks with no target (4.10)
@@ -138,10 +142,10 @@ STEER_USES = 3                        # each of Claude's lines is used at most 3
 HELD_PAIRS = (("blue", "ball"), ("red", "block"), ("yellow", "cup"), ("green", "car"))
 
 # The new word on its pitch peak (A34): she says the day's new word only in a line measured to put it on the line's pitch peak,
-# the new word emphasized in the new-word register (4.4): its peak F0 (tools/sim_voice_check.py's f0_word: the largest of its
+# the new word emphasized in the new-word register (4.4): its peak F0 (tools/measure/sim_voice_check.py's f0_word: the largest of its
 # voiced frames median-filtered over 3, octave errors dropped) above every other word's in the line: a tie at the tracker's
 # resolution (one lag of its autocorrelation, about 4 Hz near 255 Hz) is no peak (P3's fourth round). The measure is
-# tools/sim_voice_check.py --peak, over every line she can say with a growth word as the new word (templates.new_word_lines),
+# tools/measure/sim_voice_check.py --peak, over every line she can say with a growth word as the new word (templates.new_word_lines),
 # written to PEAK_FILE; a line not measured, or measured off its peak, fails the line check.
 PEAK_FILE = "peak_lines.json"         # beside this file
 
@@ -197,7 +201,7 @@ NOUN_FOILS = {"ball": "zeb", "bear": "fep", "block": "gub", "bottle": "tuma", "c
                                       # voice and register"); each beyond edit distance 1 of her 128 words, the name, its foils
                                       # and one another, measured in her voice on the form's timeline and contour (the stress's
                                       # pitch within TRIAL_F0), at the form's one loudest 10 ms under the level ceiling
-                                      # (tools/sim_voice_check.py --trial-foils: margins 1.26-1.53 dB at the clip, 1.04-1.58 at
+                                      # (tools/measure/sim_voice_check.py --trial-foils: margins 1.26-1.53 dB at the clip, 1.04-1.58 at
                                       # the child's ears; "dax", "nef", "gaf" and "dap" left, no step of the engine's rate
                                       # putting them on the timeline); each noun its own, the first of its written syllables in
                                       # the measured order (zeb, fep, gub, tam, koob, kem, tuv; tuma, modi, zibo) whose first and
@@ -302,7 +306,7 @@ FOIL_MATCH = dict(energy=0.05, peak=0.12, rise_ms=10, f0=0.12)   # the foils' ma
 # and since P3's fourteenth round spliced into one carrier phrase a form, one recording before the test word and one tag after
 # it ("where is the X? see?", "hi. pip. hi."), the test word at one level under both (the level ceiling), checked on the
 # rendered audio; a set that is not one timeline is not used for a trial.
-TRIAL_FILE = "trial_lines.json"       # the recipe, beside this file (tools/sim_voice_check.py --trial --write)
+TRIAL_FILE = "trial_lines.json"       # the recipe, beside this file (tools/measure/sim_voice_check.py --trial --write)
 TRIAL_LOUD_DB = -36.0                 # each tick of a trial sentence loud (its RMS above -36 dB of the engine's full scale: within
 TRIAL_SILENT_DB = -60.0               # 20 dB, a tenth of the pressure, of her plain speech's level, synth.SYNTH_RMS's -16) or
                                       # silent (its loudest 10 ms below -60: the edge of hearing at a metre, where -16 is 62 dB
@@ -314,7 +318,7 @@ TRIAL_SILENT_DB = -60.0               # 20 dB, a tenth of the pressure, of her p
                                       # before and after it is one recording, sample for sample). The engine's own floor after
                                       # a line is -75 to -85
 TRIAL_CEILING_DB = 1.0                # the level ceiling (P3's fourteenth round): every test word of a form said at one
-TRIAL_CEILING_EAR_DB = 0.5            # loudest 10 ms (the form's target, a gain a word: tools/sim_voice_check.py --trial), so
+TRIAL_CEILING_EAR_DB = 0.5            # loudest 10 ms (the form's target, a gain a word: tools/measure/sim_voice_check.py --trial), so
                                       # every window of her sound from 2.5 ms to a tick (stimuli.WINDOWS) overlapping its slot is
                                       # at least 1 dB quieter than the loudest wholly in the carrier before it and the loudest
                                       # wholly in the tag after it, and every 10 ms frame the child's own ears hear of the slot
@@ -345,7 +349,7 @@ EAR_SLOPE = 2.0                       # Itakura's constraint: a template 1/2 to 
 #   m      d(word) - d(the babble bank) < -m: held-out babble passes as the context word at most 2% of the time (A27)
 #   delta  the word is the nearest of all her words, or within delta of it: the held-out voices' words she does not expect pass as
 #          the context word at most 2% of the time (P3: without it they passed as an expected word on 36-95% of trials by size)
-# Measured by tools/sim_parent_ear.py on her ear as built (ears.cochlea; the 550 templates of the 50 birth words; a bank of 241
+# Measured by tools/measure/sim_parent_ear.py on her ear as built (ears.cochlea; the 550 templates of the 50 birth words; a bank of 241
 # turns of the stand-in babbler, seed 8; held out: 93 turns of seed 7 x 200 random sets a size for m, the 8 other voices' 50 words
 # with their own templates held out x 80 sets a size for delta), 2026-09-24. The stand-in is the voice study's babbler; W4's
 # babbler records the bank before birth (P3v), and both tables are measured again on it then. (The study's m = -0.35 was on its
@@ -356,7 +360,7 @@ EAR_SLOPE = 2.0                       # Itakura's constraint: a template 1/2 to 
 EAR_FALSE_PASS = 0.02
 EAR_M = {1: -4.15, 2: -4.20, 3: -4.20, 4: -4.40, 5: -4.40, 6: -4.40, 7: -4.45, 8: -4.85}
 EAR_DELTA = {1: 3.30, 2: 3.35, 3: 3.55, 4: 3.55, 5: 3.65, 6: 3.90, 7: 3.90, 8: 3.90}
-EAR_M_SOURCE = "tools/sim_parent_ear.py, the stand-in babbler (seeds 8 and 7), 2026-09-24; P3v measures it again on W4's"
+EAR_M_SOURCE = "tools/measure/sim_parent_ear.py, the stand-in babbler (seeds 8 and 7), 2026-09-24; P3v measures it again on W4's"
 EAR_VOICES = (                        # her templates (A27): (label, voice, pitch, rate); each word said alone
     ("parent_plain", "com.apple.voice.compact.en-US.Samantha", 1.15, 0.25),     # her own voice, plain (4.4)
     ("parent_approval", "com.apple.voice.compact.en-US.Samantha", 1.35, 0.25),  # her own voice, approval pitch (4.4)

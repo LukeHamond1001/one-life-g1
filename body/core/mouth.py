@@ -28,6 +28,9 @@ from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swal
 # "almost perfect" (_motor_sharp)
 KAPPA_FAIR = 0.2
 KAPPA_ALMOST_PERFECT = 0.8
+SPEAK_STD_N = 1000.0     # D1v: the speaking head's running spread over at most this many lessons (a day's: 24,000 ticks a lesson each 24)
+GUIDED_ROW = "guided"   # D1q: the mark a guided tick's gate sample ends with (the D1 trainer's; a life's samples never carry it)
+TAUGHT_ROW = "taught"   # L1: the mark an own tick the teacher corrected ends with: (TAUGHT_ROW, the teacher's acting)
 
 class MouthMixin:
     def _imagine_value(self, first, h):
@@ -449,7 +452,27 @@ class MouthMixin:
             # gate's salience reads. The sharpness here is the readout's times (1 + sharp_conf x that norm): a sure forecast is read
             # decisively, an unsure one as before. The readouts of the probes, the gauge and the dreams are untouched.
             sc_ = float(self.cfg.get("sharp_conf", 0.0)); self._sharp_eff = float(m.read_sharp) * (1.0 + sc_ * float(pred1.norm()))
-            logits = m.readout(pred1).clone() * (1.0 + sc_ * float(pred1.norm()))
+            own_w_ = hasattr(m, "word_pred")
+            if own_w_:
+                # D1j: THE MOUTH SAYS ITS OWN FORECAST: what it forecasts it will say (word_pred), the rest among it, in place of the
+                # forecast of what it will hear (her words, which the cortex goes on learning and the gate's salience reads).
+                # D1k (2026-10-19): READ AS THE PROBABILITIES IT IS. Trained by squared error to the unit row of its next symbol, its
+                # dot product with a symbol's row is its probability of saying it; read at the readout's sharpness (25) a word at 0.3
+                # beside the rest at 0.7 was drawn ~e^-10 of the time: student2's chance of speaking fell to 0.007 where the expert
+                # spoke and 0.0007 where it was silent within 8,000 ticks of its birth, its best word the expert's 1 in 4 all the
+                # while. The draw is now from those probabilities (log of the clamped dot products as the logits): it says the word
+                # as often as its forecast says it would, the rest as often as the rest
+                pw_ = m.word_pred(C1)
+                # D1k amended (2026-10-19, 22:25): the probabilities UNMIXED. The forecast is the mix sum_k p_k E_k of the lexicon's unit
+                # rows, which are not orthogonal (their cosines ~0.06): read one by one, each of 78 words takes ~0.03 of the rest's mass
+                # and the speaking chance read 0.75 where the expert spoke and 0.68 where it was silent (student2's first 1,000 ticks
+                # under D1k). The least-squares unmixing, p = pinv(E^T) forecast (the lexicon fixed, so the matrix is computed once)
+                if getattr(self, "_own_dec", None) is None or self._own_dec.shape[0] != m.E.weight.shape[0]:
+                    self._own_dec = torch.linalg.pinv(F.normalize(m.E.weight.detach(), dim=-1).t())
+                self._own_p = self._own_dec @ pw_                            # its probabilities (the rest's read whole below)
+                logits = torch.log(self._own_p.clamp_min(1e-4))
+            else:
+                logits = m.readout(pred1).clone() * (1.0 + sc_ * float(pred1.norm()))
             if getattr(self.anatomy, "grounding", None) is not None:
                 gs_ = self._ground_say(self.world.now)                  # A202: the word whose look fills the fovea, a prior on its logit
                 self._ground_say_now = None
@@ -533,7 +556,20 @@ class MouthMixin:
                                 logits = planned
                     else:
                         logits = logits + a_bias
-            if self.cfg.get("end_rest"):
+            if own_w_:
+                # D1j: its own forecast of the rest keeps it silent though the gate drew yes. D1k amended twice (22:50): THE REST'S SHARE IS
+                # THE ORGAN'S OWN. Unmixed, the organ read the rest at 0.98 where the expert was silent and 0.88 where it spoke; the words'
+                # small leftover masses (0.05 to 0.1 on a few) and the grounding and situation priors on a seen thing's name then took the
+                # rest's share down to 0.23 at the draw (student2's dawn-3 copy, 400 relived ticks). The rest keeps its own probability
+                # (clamped to [0, 1]); the words share the remainder in their proportions, the priors and the striatum's bias in them
+                ps_ = float(min(1.0, max(0.0, float(self._own_p[self.sil]))))
+                if int(self.cfg.get("own_words_split", 0)) and hasattr(m, "speak_pred"):
+                    ps_ = 1.0 - float(torch.sigmoid(m.speak_pred(self._speak_in(C1.detach())).squeeze()))   # D1o: the rest's share its speaking head's
+                lw_ = logits.clone(); lw_[self.sil] = float("-inf"); lw_[self.bans] = float("-inf")
+                pd_ = torch.softmax(lw_, -1) * (1.0 - ps_)
+                pd_[self.sil] = ps_
+                logits = torch.log(pd_.clamp_min(1e-12))
+            elif self.cfg.get("end_rest"):
                 # THE END IS A REST: the forecast's vote for the turn's end (a symbol the mouth can never say) is its
                 # vote for silence; banned outright, a sure forecast of the end raised the proposal's salience and then
                 # the next-best symbol was said in its place
@@ -583,7 +619,20 @@ class MouthMixin:
                         self._chunk_words = getattr(self, "_chunk_words", 0) + 1
             else:
                 nxt, p_choice = self.sil, 0.0
+            forced_ = getattr(self, "_forced_acts", None)                 # D1: the demonstration's word takes the mouth's choice (0: its rest)
+            if getattr(self, "_guided_now", False):
+                self._guided_now = False                                  # D1b: a guided word's mark lasts its tick (never set in a life)
+            if forced_ is not None and self.anatomy.voice.name in forced_:
+                self._guided_now = True                                   # D1b: a guided word (no striatal credit, `_act`)
+                self._own_word = int(nxt)
+                f_ = int(forced_[self.anatomy.voice.name])
+                nxt = int(self.sil) if f_ == 0 else f_
+                acted = nxt != self.sil; drew = bool(drew or acted)
+                p_choice = float(probs[nxt]) if acted else 0.0
             top_ = int(torch.argmax(logits))
+            if own_w_:                                                    # D1j's ruler: its best word apart from the rest, and the rest's chance
+                lw_ = logits.clone(); lw_[self.sil] = float("-inf"); self._own_top = int(torch.argmax(lw_))
+                self._own_psil = float(torch.softmax(logits, -1)[self.sil])
             self._last_choice = {"p_act": float(p_act), "acted": bool(acted), "nxt": int(nxt), "p_choice": float(p_choice), "norm": float(pred1.norm()),
                                  "top": top_, "p_top": float(probs[top_]), "sharp": float(getattr(self, "_sharp_eff", m.read_sharp))}   # the tick's choice, for the
                                                                                                                                        # instruments and the inner word (A137)
@@ -639,6 +688,8 @@ class MouthMixin:
         m = self.m; e = self.anatomy.motors[i - 1]; st = self.motor[i - 1]; tab = m.get_submodule(e.organ)
         self._timing_sense(i)                                             # act_inv's lesson on the last tick, the forward error now (step R6)
         prev = st["now"]
+        if self._cue_line_on():
+            self._cue_line(frame)                                         # D4a: the cue line this tick's proposals read (cached for the tick)
         with torch.no_grad():
             pred = e.propose(self, C1)                                    # act_pred's, corrected by the forward half's error (step R6)
             guess_ = ([int(lg_.argmax()) for lg_ in tab.logits(pred, 1.0)] if (pred is not None and getattr(e, "inverse", False)) else None)   # A235
@@ -712,6 +763,8 @@ class MouthMixin:
             act_on = bool(int(self.cfg.get("actor", 0)) and stri and getattr(self, "_z_now", None) is not None and self._actor_x() is not None)   # (D2)
             if e.orient and int(self._reflex_const("orient")):            # STEP R6h: the born orienting bias (body/core/cord.py; 3.7, A43)
                 ob_ = self._orient_bias(e, frame, tab)
+                if ob_ is not None and self._orient_earned_on():
+                    ob_ = [b_ * (1.0 - self._earned_share(st, j_)) for j_, b_ in enumerate(ob_)]   # D4b: yielding as the cortex earns the joint
                 if ob_ is not None:
                     logits = [lg + b_ for lg, b_ in zip(logits, ob_)]
             proposal = logits                                             # A176: the cortex's proposal with the born orienting bias, the
@@ -790,6 +843,45 @@ class MouthMixin:
                 else:
                     act = rest; acted = False; p_choice = 0.0
                     dig = [int(x_) for x_ in tab.digits(torch.tensor(act)).tolist()]
+            taught_ = False                                               # L1: the teacher's correction on an own act (below)
+            watched_ = False                                              # W1: the act read from the recording's senses (below)
+            forced_ = getattr(self, "_forced_acts", None)                 # D1 (2026-10-19): A DEMONSTRATION'S ACT TAKES THE CHOICE. Where the
+            if forced_ is not None and e.name in forced_:                 # trainer hands one in (tools/harness/demo_train.py: a fresh brain reliving an
+                st["own_choice"] = (int(act), [int(lg.argmax()) for lg in logits])   # expert's recorded life), the expert's act is the act, in its
+                act = int(forced_[e.name])                                # digits, with the chance the brain's own policy gave it; what the
+                dig = [int(x_) for x_ in tab.digits(torch.tensor(act)).tolist()]     # brain would have done (its draw, and each joint's best) is
+                acted = act != rest; drew = bool(drew or acted); cont = False; stop = None   # kept for the instruments; every lesson after
+                p_choice = 1.0                                            # reads the act as its own. None (the life): nothing changes
+                for p_, a_ in zip(probs, dig):
+                    p_choice *= float(p_[a_])
+                if not acted:
+                    p_choice = 0.0
+                guided_ = True                                            # D1b: not the striatum's choice (`_act_effectors`)
+                watched_ = bool(getattr(self, "_watch_now", False))       # W1 (2026-10-21): THE WATCH. The act was not in the recording: the
+                                                                          # trainer read it from the senses' change by this body's own inverse
+                                                                          # model (tools/harness/demo_train.py --watch-from); a guided act in every way,
+                                                                          # and taught as far as that model has earned (timing._timing_loss)
+                lb_ = (getattr(self, "_label_acts", None) or {}).get(e.name)   # D1y: the act to learn where it is not the act done
+                st["label"] = None if lb_ is None or int(lb_) == int(act) else int(lb_)   # (-1: none; kept on the effector's state below)
+                if self._orient_earned_on() and not (lb_ is not None and int(lb_) < 0):   # D4b: the guess against the demonstration's changes
+                    tg_ = dig if lb_ is None else [int(x_) for x_ in tab.digits(torch.tensor(int(lb_))).tolist()]
+                    self._earn_count(e, st, guess_, tg_, (prev or {}).get("digits"))
+            else:
+                guided_ = False
+                # L1 (2026-10-21, the owner's word: 'we need it living right'): THE TEACHER'S CORRECTION ON THE CHILD'S OWN ACT. Living
+                # (tools/harness/demo_test.py --teach), the act is the child's own and is done; the teacher says, every tick, what it would have
+                # done in the child's state (the expert's act there: DAgger's label, Ross, Gordon and Bagnell 2011, given online). That
+                # act is the lesson at this position apart from the act done (D1y's label, now on an own tick: act_pred's target at the
+                # demonstration's weight, the gate's decision taught beside its own rule); the act done is still what the body did, the
+                # efference copy, the forward half's sense and the striatum's own selection (its credit unchanged). -1 or no label (a
+                # life, the relive): nothing changes. teach_own 0: never
+                lt_ = (getattr(self, "_label_acts", None) or {}).get(e.name) if int(self.cfg.get("teach_own", 0)) else None
+                if lt_ is not None and int(lt_) >= 0:
+                    taught_ = True
+                    st["label"] = None if int(lt_) == int(act) else int(lt_)
+                    if self._orient_earned_on():                                # D4b: its guess against the teacher's changes
+                        self._earn_count(e, st, guess_, [int(x_) for x_ in tab.digits(torch.tensor(int(lt_))).tolist()],
+                                         (prev or {}).get("digits"))
             st["unit"] = list(dig) if acted else None                    # step R6h: the settings a unit under way holds
             if int(self.cfg.get("chunk_gate", 0)):
                 if acted:
@@ -806,6 +898,17 @@ class MouthMixin:
                      "disengaged": bool(dis_),
                      "blk": self._blocked_flags(e, frame, tab),                  # A233: the settings its actuator could not carry out this tick, every tick
                      "guess": guess_}                                             # A235: act_pred's own best setting per joint this tick
+        if guided_:
+            st["now"]["guided"] = True                                   # D1b: a guided act (the D1 trainer's), not the striatum's choice
+            if watched_:
+                st["now"]["watched"] = True                              # W1: and read from the senses, not the recording's acts
+            if st.get("label") is not None:
+                st["now"]["label"] = int(st["label"])                    # D1y: the act to learn apart from the act done (-1: none)
+        elif taught_:
+            st["now"]["taught"] = True                                   # L1: its own act, the teacher's correction beside it
+            if st.get("label") is not None:
+                st["now"]["label"] = int(st["label"])                    # (None: the teacher's act was the act done)
+        st.pop("label", None)                                            # (a life never holds the key: its state as it was)
         # STEP R6h: THE CORD'S PATTERNS (body/core/cord.py): its spinal pattern generator and its born cry, added below the gate to the act
         # this tick (the world adds them to the targets it re-anchors: acts.cord); the gate's draw and the act's eligibility are the gate's
         st["now"]["cord"] = self._cord(i, frame, p_act, dig, rfx is not None) if (e.spg or e.cry or (e.orient and e.vor) or e.approach) else None   # (A216: the born approach)
@@ -879,7 +982,9 @@ class MouthMixin:
                 self._e_actor = g_tr * self._e_actor
             if getattr(self, "_e_chooser", None) is not None:
                 self._e_chooser = g_tr * self._e_chooser
-        if acted and act_on and not self._chunk_cont:            # the actor's act and credit: once per word under the chunk form
+        if acted and act_on and not self._chunk_cont and not getattr(self, "_guided_now", False):   # the actor's act and credit: once per word
+            # under the chunk form. D1b (2026-10-19): A GUIDED WORD IS NOT THE STRIATUM'S CHOICE (the D1 trainer's: its credit none, as a
+            # chunk's continuation is not; `_act_effectors`)
             self._ring_torn.append(1.0 if self._torn_now else 0.0); self._ring_ent.append(float(self._ent_now)); self._torn_now = False
             if getattr(self, "_a_bias_now", None) is not None:
                 ab_ = self._a_bias_now
@@ -1141,7 +1246,14 @@ class MouthMixin:
             if now["acted"]:
                 self.ledger_act(e_, now)                                 # I1: the vote for the act taken, the lean's following
                 self._vte_credit(e_, now)                                # A219: the lean's credit (the share that followed, the reward after)
-            if now["acted"] and now["act_on"] and not now["cont"] and self._actor_x() is not None:   # (D2: no input yet, no credit)
+            if now["acted"] and now["act_on"] and not now["cont"] and not now.get("guided") and self._actor_x() is not None:   # (D2: no input
+                # yet, no credit). D1b (2026-10-19): A GUIDED ACT IS NOT THE STRIATUM'S CHOICE. Under the D1 trainer the expert's act takes the
+                # choice; the actor's eligibility is (the act's one-hot - the policy's probabilities) x its input, whose mean is zero only for
+                # acts the policy itself drew, so dopamine's offset under guidance moved every actor along the expert's acts or against them
+                # (student1 at 20,000 ticks: the gaze's pitch, the expert's setting 75% of the moved ticks and act_pred's guess 75%, chosen 9%
+                # under the actors' bias; the vergence 100%, 100%, 0%). The striatum learns from its own selections; a guided act, like a
+                # chunk's continuation (act_pred's program) and a reflex's act, earns it nothing. The gate, act_pred, act_inv, the forward
+                # half, the critics and the stream learn from it as before
                 with torch.no_grad():
                     oh = torch.cat([F.one_hot(torch.tensor(a_), int(k_)).to(p_.dtype).to(p_.device) - p_
                                     for a_, k_, p_ in zip(now["digits"], e_.factors, now["probs"])])
@@ -1204,11 +1316,18 @@ class MouthMixin:
         row = [feat.cpu(), acted, credit, int_t, self.fatigue, r_tr, p_act]   # the reward-rate trace at the tick, for the drive; the probability it acted with
         if drew is not None and int(self.cfg.get("gate_own_draw", 0)):
             row.append(bool(drew))                                     # the gate's own draw (defect 4)
-        self.gate_buf.append(row)
-        for st_ in getattr(self, "motor", ()):                         # the later effectors' rows (step R5): its draw and its act's cost always;
+        self.gate_buf.append(row)                                      # (D1q: the voice's gate not marked: its when is D1o's speaking head)
+        for e_r, st_ in zip(self.anatomy.motors, getattr(self, "motor", ())):   # the later effectors' rows (step R5): its draw and its act's cost always;
             n_ = st_["now"]                                             # step R6: whether a reflex took the tick (no eligibility)
-            st_["buf"].append([n_["feat"], n_["acted"], credit, n_["int"], (float(st_["fatigue"]) if int(self._motor_const("own_fatigue")) else self.fatigue),
-                               r_tr, n_["p_act"], n_["drew"], n_["cost"], bool(n_["reflex"] or n_.get("disengaged", False))])   # (A231: a disengaged tick too)
+            row_ = [n_["feat"], n_["acted"], credit, n_["int"], (float(st_["fatigue"]) if int(self._motor_const("own_fatigue")) else self.fatigue),
+                    r_tr, n_["p_act"], n_["drew"], n_["cost"], bool(n_["reflex"] or n_.get("disengaged", False))]   # (A231: a disengaged tick too)
+            if n_.get("guided"):
+                lb_ = n_.get("label")                                   # D1y: the act to learn where it is not the act done
+                row_.append(GUIDED_ROW if lb_ is None else (GUIDED_ROW, None if int(lb_) < 0 else bool(int(lb_) != int(e_r.rest_id))))
+            elif n_.get("taught"):
+                lb_ = n_.get("label")                                   # L1: the teacher's acting here (no label: the act done was the teacher's)
+                row_.append((TAUGHT_ROW, bool(n_["acted"]) if lb_ is None else bool(int(lb_) != int(e_r.rest_id))))
+            st_["buf"].append(row_)
         lesson_now = self.ticks > 0 and self.ticks % int(self.cfg["gate_every"]) == 0
         if lesson_now and len(self.gate_buf) >= 16 + int(self.cfg["elig_ticks"]):
             try:
@@ -1232,6 +1351,45 @@ class MouthMixin:
                 self._wake_last = {"error": str(e)[:120]}
 
     # ---------------- the gate's lesson (the striatum's opponent rule) ----------------
+    def _speak_in(self, C, learn=False):
+        """D1v (2026-10-20): THE SPEAKING HEAD READS THE STREAM'S DEVIATIONS, EACH UNIT BY ITS OWN SPREAD. The head is a logistic readout
+        of the stream; the stream's units differ in scale by orders (LayerNorm's output, its gains learned), and a readout learning at
+        Adam's small rate from 1 positive in 80 found the few that carry when slowly: on student2's stream after night 11 (6,000 held-out
+        ticks, 59 spoken) the head as it learns online told speaking from silence at an AUC of 0.78 over the second half (its probability
+        0.012 where the expert spoke, 0.009 where silent), the same head reading each unit as its deviation from its running mean over its
+        running spread 0.86 (0.023 and 0.012); the stream itself carries 0.87 (a fitted probe). Under speak_std the head reads (C - mu) /
+        sqrt(var), mu and var the stream's running mean and variance per unit (a day's lessons update them at the count's rate, at most
+        1 in SPEAK_STD_N; the night's replays and the mouth read them); a neuron's gain set by its input's spread (homeostatic). Off: C"""
+        m = self.m
+        if not int(self.cfg.get("speak_std", 0)) or not hasattr(m, "speak_mu"):
+            return C
+        if learn:
+            with torch.no_grad():
+                x_ = C.reshape(-1, C.shape[-1]).float()
+                m.speak_k += 1.0; a_ = 1.0 / min(float(m.speak_k), SPEAK_STD_N)
+                mu_ = x_.mean(0); m.speak_mu.mul_(1.0 - a_).add_(a_ * mu_)
+                m.speak_var.mul_(1.0 - a_).add_(a_ * ((x_ - m.speak_mu) ** 2).mean(0))
+        return (C - m.speak_mu) / m.speak_var.clamp_min(1e-6).sqrt()
+
+    def _speak_balance(self, spk, w, count=False):
+        """D1r (2026-10-20): THE RARE SPEAKING WEIGHED AS THE COMMON REST. The speaking head (D1o) is taught at every position and the
+        expert spoke at about 1 in 80: its cross-entropy is the rest's at 98%, and after 9,000 relived ticks it spoke at 0.011 where the
+        expert spoke and 0.010 where it was silent, while a probe of the same stream (student2's 20,000 save, 6,000 held-out ticks, 52
+        spoken, five-fold) told the speaking ticks from the silent at an AUC of 0.83: the stream carries when; the head's lesson does not
+        reach it. Under own_words_balance the speaking positions weigh as all the rest together, (1 - r) / r, r its lessons' own count
+        of speaking (with one of each before the first). The lesson is the weighted cross-entropy of the head's logit plus the log of
+        that weight (whose optimum is the logit of speaking plus the log: the head itself stays the logit of speaking, read as it is,
+        its born bias still right). count: a day's lesson advances the counts, the night's replays do not. -> the weight (a tensor on the
+        head's device) or None (the switch off: D1o's lesson as it was)"""
+        m = self.m
+        if not int(self.cfg.get("own_words_balance", 0)) or not hasattr(m, "speak_n"):
+            return None
+        if count and spk is not None:
+            with torch.no_grad():
+                m.speak_n[0] += float((spk * w).sum()); m.speak_n[1] += float(w.sum())
+        r_ = (float(m.speak_n[0]) + 1.0) / (float(m.speak_n[1]) + 2.0)
+        return torch.tensor((1.0 - r_) / r_, device=m.speak_pred.weight.device)
+
     def _gate_lesson(self, i=0):
         """THE GATE'S LESSON for effector i (step R5: the lesson is the same for every effector, each on its own gate, buffer, baseline
         and report: the voice's (i = 0) m.mouth_gate with opt_gate, gate_buf, _g_base and _gate_last as always; a later effector's
@@ -1278,7 +1436,24 @@ class MouthMixin:
             self._g_base = g_base_new
         else:
             st_["g_base"] = g_base_new
-        if float(A.abs().max()) < 1e-4:
+        def _gmark(b_):                                                  # D1q: a guided tick's mark: (guided, the expert's acting or None)
+            m_ = b_[-1]
+            if isinstance(m_, str) and m_ == GUIDED_ROW:
+                return True, bool(b_[1]), False
+            if isinstance(m_, tuple) and len(m_) == 2 and m_[0] == GUIDED_ROW:
+                return True, m_[1], False                                # (D1y: the label's acting; None: no label)
+            if isinstance(m_, tuple) and len(m_) == 2 and m_[0] == TAUGHT_ROW:
+                return False, m_[1], True                                # L1: its own draw, the teacher's acting beside it
+            return False, None, False
+        gm_ = [_gmark(b) for b in buf[:n]]
+        gd_ = torch.tensor([1.0 if g_ else 0.0 for g_, _, _ in gm_])               # D1q: the guided ticks (none of the three-factor rule)
+        gs_ = torch.tensor([1.0 if ((g_ or t_) and a_ is not None) else 0.0 for g_, a_, t_ in gm_])   # ... and the taught (L1): the
+                                                                                    # demonstration's acting known, its BCE below
+        if i:
+            rf_ = torch.tensor([0.0 if (len(b) > 9 and b[9]) else 1.0 for b in buf[:n]])
+            gd_ = gd_ * rf_; gs_ = gs_ * rf_                              # (a reflex's tick: no lesson, as below)
+        any_g = bool(gd_.any()) or bool(gs_.any())                       # (L1: a taught tick's BCE too; its own rule kept)
+        if float(A.abs().max()) < 1e-4 and not any_g:
             return
         gate_.train()
         z = gate_(feats).squeeze(-1)
@@ -1294,12 +1469,31 @@ class MouthMixin:
         elig = (acts.to(self.dev) - p) + vig
         if i:
             elig = elig * torch.tensor([0.0 if (len(b) > 9 and b[9]) else 1.0 for b in buf[:n]], device=self.dev)   # a reflex's tick: none (step R6)
-        loss = -(A.to(self.dev) * elig * z).mean()
+        sup_ = None
+        if any_g:
+            # D1q (2026-10-20): A GUIDED TICK'S GATE LEARNS THE EXPERT'S CHOICE TO ACT. The three-factor rule's eligibility (act - p)
+            # has the policy's own draws for its mean; under the D1 trainer the act is the expert's (D1b's actors' defect, for the gate),
+            # and acting pays the tonic drive: the credit of a guided act stands above the running baseline and a guided rest's below,
+            # so the expected step is q (1 - q) x tonic > 0 wherever the expert acted on a share q of such ticks: every gate opened
+            # wherever acting was uncertain (student2's day 10: the walk's gate open 0.77 where the expert acted and 0.74 where it rested,
+            # the gaze's 0.79 and 0.76; the student wandered, D1n). At a guided tick the gate learns the decision itself: the cross-entropy
+            # of its probability to act (its floor and ceiling as read) toward the expert's acting there, the striatum's Go and NoGo taught
+            # by the demonstration; the three-factor rule keeps its own ticks (a life: every tick, unchanged)
+            elig = elig * (1.0 - gd_.to(self.dev))
+            ex_ = torch.tensor([1.0 if (a_ if a_ is not None else False) else 0.0 for _, a_, _ in gm_], device=self.dev)   # the expert's acting
+            pz_ = fl + top_ * torch.sigmoid(z)
+            bce_ = -(ex_ * torch.log(pz_.clamp_min(1e-6)) + (1.0 - ex_) * torch.log((1.0 - pz_).clamp_min(1e-6)))
+            sup_ = (bce_ * gs_.to(self.dev)).sum() / max(1.0, float(gs_.sum()))
+            loss = -(A.to(self.dev) * elig * z).mean() + sup_
+        else:
+            loss = -(A.to(self.dev) * elig * z).mean()
         opt_.zero_grad(set_to_none=True); loss.backward()
         torch.nn.utils.clip_grad_norm_(gate_.parameters(), 1.0)
         opt_.step(); gate_.eval()
         last = {"n": n, "credit_mean": round(float(G.mean()), 4), "baseline": round(float(base), 4),
                 "acted": round(float(sum(1 for b in buf[:n] if b[1]) / n), 3), "tick": self.ticks}
+        if sup_ is not None:
+            last["guided"] = round(float(gd_.mean()), 3); last["sup"] = round(float(sup_.detach()), 4)   # D1q's share and its lesson
         if i == 0:
             self._gate_last = last
         else:

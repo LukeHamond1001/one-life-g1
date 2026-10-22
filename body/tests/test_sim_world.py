@@ -48,7 +48,7 @@ import torch.nn.functional as F
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)   # this tree's body, not a fixed one
-sys.path.insert(0, os.path.join(ROOT, "tools"))
+sys.path.insert(0, os.path.join(ROOT, "tools", "life")); sys.path.insert(0, os.path.join(ROOT, "tools", "measure"))
 from body.sim import world as W  # noqa: E402
 from body.sim import reflexes as R  # noqa: E402
 from body.sim.world import G1World, WorldFault  # noqa: E402
@@ -114,6 +114,23 @@ def _same_frame(a, b):
 
 
 # ---------------------------------------------------------------- the scene
+
+def _first_lifes_wrists(fn):
+    """A185b (2026-10-19): the wrists in the resting tone turn the palm to their middle; a test whose stimulus is placed by the first
+    life's free wrist (the grasp's habituation, the tub, the held context) runs under the first life's wrists (TONE_WRISTS False)"""
+    import functools
+
+    @functools.wraps(fn)
+    def run_(*a, **k):
+        from body.sim import reflexes as R_
+        was_ = R_.TONE_WRISTS
+        R_.TONE_WRISTS = False
+        try:
+            return fn(*a, **k)
+        finally:
+            R_.TONE_WRISTS = was_
+    return run_
+
 def test_the_scene():
     """world 1: the scene is its maker's output and loads from any checkout; the stock G1 is unchanged; the solver as fixed"""
     sys.path.insert(0, SIM)
@@ -553,6 +570,7 @@ def _closure(w, hand):
     return float(sum(sg * w.d.qpos[w.qadr[W.JOINTS.index(j)]] for j, sg in R.CLOSING[hand].items()))
 
 
+@_first_lifes_wrists
 def test_the_grasp_habituates():
     """world 9b (A162): a ball kept in the left palm: the grasp fires on every resting tick for GRASP_HOLD_TICKS, then falls silent
     ('habituated': the hand's own acts rule, the fingers staying where they are) while the pressure is constant; the palm freed for
@@ -758,7 +776,7 @@ def test_withdrawal_c22():
     """world 16: C22 WRITTEN DOWN AS THE NEWBORN'S (under A37's joints, S5a): a load that hurts (a YANK_N yank upward on the left hand:
     the left wrist's gear past its limit, the yank going on), and from the saved state of that first painful tick, two ticks three ways: the withdrawal
     (the anatomy's: the arm's flexion both ticks), rest (tone) and pushing on (the arm's own big extension); the wrist's gear load
-    each tick written down, none a bar, and the same state gives the same numbers again. The instrument's count (tools/sim_pain.py
+    each tick written down, none a bar, and the same state gives the same numbers again. The instrument's count (tools/measure/sim_pain.py
     c22_counts) takes C22's question as the W1 verifier counted it: a withdrawal raises the pain it answers when EITHER of its ticks
     presses harder than the onset"""
     from sim_pain import c22_counts
@@ -801,7 +819,7 @@ def test_withdrawal_c22():
 
 
 def test_friction_realism():
-    """world 17: impratio CHOSEN BY PHYSICS (the owner's decision, made for him in the W1 verifier's third round; tools/sim_friction.py):
+    """world 17: impratio CHOSEN BY PHYSICS (the owner's decision, made for him in the W1 verifier's third round; tools/measure/sim_friction.py):
     at the room's own solver options, on the mat's contact, a 10 kg box pushed below its sliding force holds (at most 2 mm in 2 s,
     where impratio 1 lets it creep at least 3 mm: the soft model's slow slip, which real rubber, plastic, foam and housings do not
     have); above it, it slides as Coulomb's law says (within 2%); and the convex model's coupling of a slip into the normal force
@@ -1399,7 +1417,7 @@ def test_carried_to_the_mat():
 def test_a_world_migrates_to_the_book():
     """world 22 (A115, C99): a world saved in the room is carried into the room with the book (body/sim/extras.py, through
     load_model's extra hook): the old model is a prefix of the new, so every joint's position and velocity, the actuators, the time
-    and the model's mutable fields are copied by position (tools/sim_migrate_world.py), the book takes its compiled place, the lane
+    and the model's mutable fields are copied by position (tools/life/sim_migrate_world.py), the book takes its compiled place, the lane
     finds it by name and her inventory names it red, and the world lives on from the same moment"""
     import pickle
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "tools"))
@@ -1479,6 +1497,7 @@ def test_a_world_with_the_book_migrates_to_the_box():
           f"in the model), both found by the lane among {len(ln.toys)} toys; the tool's path with old_extra agrees")
 
 
+@_first_lifes_wrists
 def test_the_tub():
     """world 30 (A126): the third novel object, the first hollow one. The bucket (extras.add_bucket: an open-top box, 18 cm inside, 12 cm high,
     olive: a bucket) stands on the mat; the duck let go 5 cm above its rim falls in and is still inside 200 steps later (its centre within the
@@ -1748,6 +1767,39 @@ def test_waking_imagination():
     print(f"world 34: waking imagination: {out[1]['n']} imaginings in 60 ticks (at the frames kept as new and a forced event's end; a unit future held: {out[1]['unit']},",
           f"the key with it at cosine {out[1]['moved']:.3f} to the key without; the imagined valence {out[1]['N']}); the switches off: none",
           f"({out[0]['n']} imaginings, the key unmoved {out[0]['moved']:.4f}); IMAG_SCALE {IMAG_SCALE}; the night lets the future go")
+
+
+def test_the_rollout_by_its_cache():
+    """world R13 (2026-10-19): the rollout (the waking imagination's, the deliberation's, REM on frames') through the stream's cache gives
+    what the full read of the window at every step gives: the states to 1e-5, the words and the imagined acts the same, at its best
+    guess and drawn (the same generator), inside the window and past it (the window slides: the full read stands)"""
+    from body.core.world import WorldLoop
+    from body.life import Life
+    from body.core import sleep as SL
+    from body.sim.anatomy import SimAnatomy, SIM_CFG, born_table
+    assert int(SIM_CFG.get("rollout_cache", 0)) == 1
+    LR0 = dict(live_lr=0.0, value_lr=0.0, band_lr=0.0, night_lr=0.0, gate_lr=0.0, gate_adam_lr=0.0, vcrit_lr=0.0, actor_lr=0.0, face_lr=0.0,
+               act_inv_lr=0.0)
+    w = G1World(seed=1)
+    cfg = dict(SIM_CFG, **LR0, wake_ticks=10 ** 9, rollout_cache=0)
+    torch.manual_seed(0)
+    anat = SimAnatomy(born_table(), cfg, limits=[float(x) for x in w.tau_max])
+    L = Life.birth(anat, device="cpu", d=32, layers=2, heads=2, window=16, cfg=cfg, seed=0, world=w)
+    run = WorldLoop(L)
+    for _ in range(60):
+        run.step()
+    rows, b0 = L._tape_tail(SL.IMAG_SEED)
+    assert rows is not None
+    T0 = SL.IMAG_SEED
+    for steps, rt in ((8, 0.0), (8, 1.0), (20, 0.0)):                      # (3 + 20 = 23 positions: past the window of 16)
+        g0 = L.gen.get_state()
+        L.cfg["rollout_cache"] = 0; a = L._rollout(rows, b0, T0, steps, rt, 1)
+        L.gen.set_state(g0)
+        L.cfg["rollout_cache"] = 1; b = L._rollout(rows, b0, T0, steps, rt, 1)
+        da = float((torch.stack(a["Cs"]) - torch.stack(b["Cs"])).abs().max())
+        assert da < 1e-5, (steps, rt, da)
+        assert a["syms"] == b["syms"] and a["macts"] == b["macts"], (steps, rt)
+    print(f"world R13: the rollout by its cache = the full read (states within {da:.1e}; words and acts the same) inside the window and past it")
 
 
 def test_vicarious_trial_and_error():
@@ -2034,6 +2086,7 @@ def test_the_held_word():
           f"faded (GOAL_SCALE {GOAL_SCALE}); the switch off, the key unmoved ({out[0]['moved']:.4f})")
 
 
+@_first_lifes_wrists
 def test_the_held_context():
     """world 28 (A128, the brain sprint): the held context, the temporal context model's key. With SIM_CFG ctx_key 1 the frames' key
     carries a leaky integral (CTX_TAU ticks) of the stream's pattern-separated direction beside the direction itself and the heading:
@@ -2366,7 +2419,7 @@ def test_the_born_breath():
     from body.core import physiology as PH
     from body.sim import anatomy as AN
     from body.sim.voice.synth import PA_PER_UNIT
-    assert int(PH.REFLEX.get("breath", 0)) == 0 and int(AN.SIM_CFG.get("breath", 0)) == 1      # the physiology's default off, the G1 on
+    assert int(PH.REFLEX.get("breath", 0)) == 0 and int(AN.SIM_CFG.get("breath", 0)) == 2      # the physiology's default off, the G1's steady (A238)
     E, I, amp = int(AN.SIM_CFG.get("breath_expire", PH.REFLEX["breath_expire"])), int(AN.SIM_CFG.get("breath_inspire", PH.REFLEX["breath_inspire"])), float(AN.SIM_CFG.get("breath_amp", PH.REFLEX["breath_amp"]))
     n_art = len(AN.TRACT); lungs, glottis = AN.TRACT.index("lungs"), AN.TRACT.index("glottis")
     w = G1World(seed=1)
@@ -2393,7 +2446,7 @@ def test_the_born_breath():
     from body.sim.anatomy import SimAnatomy, SIM_CFG, born_table
     w2 = G1World(seed=1)
     LR0 = dict(live_lr=0.0, value_lr=0.0, band_lr=0.0, night_lr=0.0, gate_lr=0.0, gate_adam_lr=0.0, vcrit_lr=0.0, actor_lr=0.0, face_lr=0.0, act_inv_lr=0.0)
-    cfg = dict(SIM_CFG, **LR0, wake_ticks=10 ** 9)
+    cfg = dict(SIM_CFG, **LR0, wake_ticks=10 ** 9, breath=1)                           # the first life's breath, in cycles
     torch.manual_seed(0)
     L = Life.birth(SimAnatomy(born_table(), cfg, limits=[float(x) for x in w2.tau_max]), device="cpu", d=32, layers=1, heads=2, window=16, cfg=cfg, seed=0, world=w2)
     run = WorldLoop(L); xs2 = []; cry2 = 0
@@ -2402,6 +2455,23 @@ def test_the_born_breath():
     cn = L.motor[0]["cord_n"]
     assert cn.get("breath", 0) >= 2 * (E + I) and cn.get("cry", 0) == 0, cn
     assert max(xs2) - min(xs2) > 0.1, (min(xs2), max(xs2))
+    # A238 (the second life): no reservoir, never drawn down. A238b: the voice's power on demand, the lungs driven on a tick the voice acts
+    # and drawn back on a tick it rests (no rhythm of their own, no limit)
+    w4 = G1World(seed=1)
+    cfg4 = dict(SIM_CFG, **LR0, wake_ticks=10 ** 9)
+    torch.manual_seed(0)
+    L4 = Life.birth(SimAnatomy(born_table(), cfg4, limits=[float(x) for x in w4.tau_max]), device="cpu", d=32, layers=1, heads=2, window=16, cfg=cfg4, seed=0, world=w4)
+    run4 = WorldLoop(L4); acted4 = []
+    for _ in range(3 * (E + I)):
+        run4.step()
+        assert w4.tract.vol == 1.0
+        now4 = L4.motor[0]["now"]
+        if now4["cord"] is not None and not now4["cry"]:
+            acted4.append((bool(now4["acted"]), float(now4["cord"][lungs])))
+    cn4 = L4.motor[0]["cord_n"]
+    assert cn4.get("breath", 0) >= 3 * (E + I) - 2 and cn4.get("cry", 0) == 0, cn4
+    assert all((s_ > 0) == a_ for a_, s_ in acted4), acted4                             # driven when it acts, drawn back when it rests
+    assert any(a_ for a_, _ in acted4) and not all(a_ for a_, _ in acted4), acted4      # (both seen)
     # A179 (2026-10-02): the newborn's expiratory braking. The world: the cord's breath with the glottis stepped breath_brake a tick through the
     # expiration and back on the inspiration narrows the glottis (its position rising over the expiration, open again after the inspiration),
     # sounds (over 1 mPa: the breath's noise and a soft phonation on the expiration's last ticks), under the cry's level, and is not a cry
@@ -2595,8 +2665,8 @@ def test_the_traction_response():
 
 def test_the_resting_tone():
     """world A185: the arms' resting tone at the cord. The pure function: at the resting posture no step; a joint far from its rest
-    takes TONE_STEP toward it and a joint near it TONE_GAIN x its distance (a soft spring that saturates, never past the rest); a
-    joint with no declared rest (the wrists) takes none; a limb with none returns None. In a born world: over resting ticks (no act
+    takes TONE_STEP toward it and a joint near it TONE_GAIN x its distance (a soft spring that saturates, never past the rest); the
+    wrists take it too under A185b (the first life's A185: no declared rest, none); a limb with none returns None. In a born world: over resting ticks (no act
     of its own) each arm's declared joints close on their resting angles and the hands come into the left eye's image, where with the
     switch off the arms stay where the birth's settling left them, out of its image; an own small step against the tone still moves
     the joint its own way (the target the servo receives is the measured angle + the own step + the tone's, half a small step back)"""
@@ -2609,7 +2679,8 @@ def test_the_resting_tone():
     far = list(rest); ip = joints.index("left_shoulder_pitch_joint"); ie = joints.index("left_elbow_joint"); iw = joints.index("left_wrist_pitch_joint")
     far[ip] += 1.0; far[ie] -= 0.01; far[iw] += 1.0
     st = R.tone("arm_l", far)
-    assert abs(st[ip] + R.TONE_STEP) < 1e-12 and abs(st[ie] - R.TONE_GAIN * 0.01) < 1e-12 and st[iw] == 0.0, st
+    assert abs(st[ip] + R.TONE_STEP) < 1e-12 and abs(st[ie] - R.TONE_GAIN * 0.01) < 1e-12, st
+    assert (abs(st[iw] + R.TONE_STEP) < 1e-12) if R.TONE_WRISTS else st[iw] == 0.0, st   # A185b: the wrists in the tone (the first life: none)
     assert R.tone("leg_l", [0.0] * len(dict(G.EFFECTORS)["leg_l"])) is None
     assert 0.0 < R.TONE_STEP <= W.STEP_SMALL and 0.0 < R.TONE_GAIN <= 1.0
     def hands_in_view(w):
@@ -2903,6 +2974,104 @@ def test_the_command_walks_record():
     assert list(w._loco_blocked()) == [0.0] * 10
 
 
+def test_the_walk_hand_shows_and_leaves_to_try():
+    """E1 (the second life's pretraining): in the first command block of every SHOW_EVERY the hand pushes the walk command toward her
+    in the command's own settings (a turn toward her bearing; forward only when facing her), summed with the brain's own act and
+    shown the next frame as the cord's push was (loco_cmd_push); the next block is the child's to try (no push); the hand's state goes
+    through the tick's capture; off, nothing"""
+    import math as _m
+    from body.sim import demo as DM
+    from body.sim import ghost as GH
+    assert DM.DEMO_WALK and DM.SHOW_EVERY == 2
+    w = G1World(seed=1)
+    g = w.ghost; w.frame()
+    g.on_(w, command=True, walk=True)
+    w._come_called = lambda: False                                            # E1b: before her call, nothing pushed
+    w.apply({})
+    assert w.walk_hand.blocks == 1 and w.walk_hand.show and w.walk_hand.last is None, w.walk_hand.state()
+    w._come_called = lambda: True                                             # her call made: the hand walks it to her
+    her = np.asarray(w.parent.base["at"][:2], float); xy = np.asarray(w.d.xpos[w.pelvis_id][:2], float)
+    R = w.d.xmat[w.pelvis_id].reshape(3, 3); b = _m.atan2(her[1] - xy[1], her[0] - xy[0]) - _m.atan2(R[1, 0], R[0, 0])
+    b = (b + _m.pi) % (2 * _m.pi) - _m.pi
+    w.apply({})
+    assert w.walk_hand.blocks == 1 and w.walk_hand.show and w.walk_hand.last is not None, w.walk_hand.state()
+    dv, dw = w.walk_hand.last
+    assert dw != 0.0 and (dw > 0) == (b > 0), (b, dw)                         # a turn toward her bearing
+    assert dw in W.LOCO_SETTINGS[1] and dv in W.LOCO_SETTINGS[0]
+    if abs(b) >= DM.FACE_RAD:
+        assert dv <= 0.0, (b, dv)                                            # not facing her: no step forward
+    push = np.asarray(w.frame().obs["loco_cmd_push"], float)
+    assert np.allclose(push, [dv, dw], atol=1e-12), (push, dv, dw)            # shown as the cord's push was (A228b)
+    st = w.walk_hand.state(); w2 = G1World(seed=1); w2._restore(w2._from_fast(w._capture(fast=True)))
+    assert w2.walk_hand.state() == st
+    g.off_(w, at_once=True); w.apply({}); w.apply({})                         # a gap: the next command block is the child's to try
+    g.on_(w, command=True, walk=True); w.frame(); w.apply({})
+    assert w.walk_hand.blocks == 2 and not w.walk_hand.show and w.walk_hand.last is None
+    assert np.allclose(np.asarray(w.frame().obs["loco_cmd_push"], float), 0.0)
+    DM.DEMO_WALK = False
+    try:
+        w3 = G1World(seed=1); w3.frame(); w3.ghost.on_(w3, command=True, walk=True); w3.apply({})
+        assert w3.walk_hand.blocks == 0 and w3.walk_hand.last is None
+    finally:
+        DM.DEMO_WALK = True
+    print(f"E1: her bearing {b:+.2f} rad, the hand's step {dv:+.3f} m/s, {dw:+.3f} rad/s in the first block; none in the second")
+
+
+def test_the_reach_hand_shows_and_leaves_to_try():
+    """E2 (the second life's pretraining): a small toy within an arm's reach that no one holds is reached for by the nearer arm, from
+    PRE_M above it: the hand steps the shoulder's and the elbow's joints in the arm's own settings (on the cord's road, the tone's
+    recoil on them overcome) and opens the hand on the way, only on ticks the arm (and, for the opening, the hand) rests; the grasp
+    centre comes nearer the toy; the hand's state goes through the tick's capture; the next reach is the child's to try; a big toy
+    is not reached for; off, nothing"""
+    from body.sim import demo as DM
+    from body.core.world import Acts
+    assert DM.DEMO_REACH and DM.SHOW_EVERY == 2 and DM.REACH_JOINTS == 4
+    w = G1World(seed=1)
+    w.frame()
+    sh = w._shoulder_xyz("arm_r")
+    toy = "ball"
+    w.toy_within_reach(toy, [float(sh[0]) + 0.05, float(sh[1]) - 0.25])
+    w.frame()
+    rh = w.reach_hand; rh.next_t = int(w.tick)
+    w.apply({})
+    assert rh.reaches == 1 and rh.show and rh.phase == "pre" and rh.arm == "arm_r" and rh.toy == toy, rh.state()
+    tp = np.asarray(w.d.xpos[w.parent.toys[toy]]); d0 = float(np.linalg.norm(np.asarray(w.grasp_centre(1)) - (tp + [0, 0, DM.PRE_M])))
+    pushed = 0
+    for _ in range(12):
+        w.frame(); w.apply({}); pushed += int(rh.last is not None)
+        if rh.phase is None:
+            break
+        assert rh.last is None or (rh.last[0] == "arm_r" and all(x in (0.0,) + W.SETTINGS[1:2] + W.SETTINGS[3:5] + W.SETTINGS[0:1] for x in rh.last[1])
+                                   and not any(rh.last[1][DM.REACH_JOINTS:])), rh.last
+    tp = np.asarray(w.d.xpos[w.parent.toys[toy]])
+    d1 = float(np.linalg.norm(np.asarray(w.grasp_centre(1)) - (tp + [0, 0, DM.PRE_M if rh.phase == "pre" else 0.0])))
+    assert pushed >= 5 and d1 < d0, (pushed, d0, d1)                          # it pushed, and the hand came nearer
+    st = rh.state(); w2 = G1World(seed=1); w2._restore(w2._from_fast(w._capture(fast=True)))
+    assert w2.reach_hand.state() == st
+    if rh.phase is not None:                                                  # the arm's own act: the arm is the child's this tick
+        a = Acts({"arm_r": W.act_flat([3] + [2] * 6)}); w.frame(); w.apply(a)
+        assert rh.last is None or rh.last[0] != "arm_r" or not any(rh.last[1]), rh.last
+    rh._end(int(w.tick)); rh.next_t = int(w.tick)
+    w.frame(); w.apply({})
+    assert rh.reaches == 2 and not rh.show and rh.phase is None and rh.last is None   # the child's to try
+    from body.sim import extras as X
+    w3 = G1World(seed=1, extra=X.EXTRAS["book_box_bucket"]()); w3.frame(); s3 = w3._shoulder_xyz("arm_r")
+    w3.toy_within_reach("book", [float(s3[0]) + 0.05, float(s3[1]) - 0.25]); w3.frame()
+    for k_ in list(w3.parent.toys):
+        if k_ != "book":
+            w3.toy_within_reach(k_, [float(s3[0]) + 2.0, float(s3[1]) + 2.0])
+    w3.reach_hand.next_t = int(w3.tick); w3.apply({})
+    assert w3.reach_hand.phase is None and w3.reach_hand.reaches == 0             # a toy too big for the hand: not reached for
+    DM.DEMO_REACH = False
+    try:
+        w4 = G1World(seed=1); w4.frame(); w4.toy_within_reach(toy, [float(sh[0]) + 0.05, float(sh[1]) - 0.25]); w4.frame()
+        w4.reach_hand.next_t = int(w4.tick); w4.apply({})
+        assert w4.reach_hand.reaches == 0
+    finally:
+        DM.DEMO_REACH = True
+    print(f"E2: the hand's grasp centre {d0:.3f} -> {d1:.3f} m from its goal in {pushed} pushed ticks; the next reach tried")
+
+
 def test_the_forward_step_by_its_own_share():
     """C370: the world sums the born approach's forward step with the brain's command by the forward step's own share (ghost.go_share)
     and its turn by the guide's (ghost.reflex_share)"""
@@ -2926,6 +3095,15 @@ def test_the_legs_take_the_calibrated_turn():
     import pickle
     import torch
     from body.sim import ghost as GH
+    from body.sim import demo as DM
+    was = DM.DEMO_WALK; DM.DEMO_WALK = False                                 # the brain's command alone (E1's hand off)
+    try:
+        _the_calibrated_turn(GH, pickle)
+    finally:
+        DM.DEMO_WALK = was
+
+
+def _the_calibrated_turn(GH, pickle):
     w = G1World(seed=1)
     g = w.ghost
     assert w.loco_turn(0.1) == 0.1 and w._loco_err is None
@@ -2974,15 +3152,16 @@ def test_the_born_approach():
     from body.core.cord import CordMixin
     from body.core.physiology import REFLEX
     from body.sim.anatomy import SimAnatomy, SIM_CFG, born_table, GAZE_AT
-    assert int(SIM_CFG["approach"]) == 1 and int(REFLEX["approach"]) == 0
-    anat = SimAnatomy(born_table(), dict(SIM_CFG))
+    assert int(SIM_CFG["approach"]) == 0 and int(REFLEX["approach"]) == 0     # A239: the second life is born without it; the first life's law:
+    CFG1 = dict(SIM_CFG, approach=1)
+    anat = SimAnatomy(born_table(), dict(CFG1))
     loco = next(e for e in anat.motors if e.name == "loco"); gaze = next(e for e in anat.motors if e.name == "gaze")
     assert loco.approach == {"go": 0, "turn": 1, "cues": ("named", "face", "sound"), "eye": ("body", GAZE_AT), "gyro": ("imu_torso", 5)} and loco.orient == {1: ("yaw", -1)} and loco.n_in == 2
     k, mx, go, zone, cd = (float(REFLEX[n_]) for n_ in ("approach_turn_gain", "approach_turn_max", "approach_go", "approach_zone", "approach_damp"))
 
     class Body(CordMixin):
         def __init__(self, gain=1.0):
-            self.anatomy = anat; self.cfg = dict(SIM_CFG); self.ticks = 0; self._g = gain
+            self.anatomy = anat; self.cfg = dict(CFG1); self.ticks = 0; self._g = gain
         def _orient_gain(self):
             return self._g
     def step(face, eye_yaw=0.0, body=None, e=loco, extra=None, rate=0.0):

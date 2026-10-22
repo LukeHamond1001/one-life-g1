@@ -297,6 +297,8 @@ class VoiceEffector(Effector):
     field: Optional[str] = "xo"
     n_in: int = 0
     intrinsic: bool = True
+    own_words: bool = False             # D1j: the mouth's own-word forecast (word_pred), read in the choice; a body's switch (the sim's
+                                        # cfg own_words), never the language body's
 
     def gate_inputs(self, frame, life, state=None):
         u = frame.obs.get(life.anatomy.words.name)                  # the world's symbol this tick (a frame that names none: the rest)
@@ -338,7 +340,7 @@ class Cerebellar:
       modulated both ways, saturating at silence and at twice the tonic rate). For the humanoid, 7.5 lists the 29 joints of the arms,
       the legs and the waist, each its angle, velocity, estimated torque and the servo's current target (the efference copy of the
       tick's act), then both inertial units, then the hands' touch: about 150 numbers. MEASURED IN R6c (the test limb over a life day,
-      tools/cereb_day.py; body/tests/test_cerebellum.py cereb 10): with each joint's estimated torque among them (the torque the motor
+      tools/measure/cereb_day.py; body/tests/test_cerebellum.py cereb 10): with each joint's estimated torque among them (the torque the motor
       applies, which carries the servo's correction and the cerebellum's own torque back into its input) the pure law's readout drifted
       and carried the limb into oscillation at its torque limit within a life day; under the leak (CEREB's cereb_leak) it holds all day,
       as the angles, velocities and targets alone do (1.83 and 1.83 N m at the shoulder, off 4.80). The loop through the organ's own

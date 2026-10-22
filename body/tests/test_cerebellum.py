@@ -2,7 +2,7 @@
 (the organ tests run these too). The organ is body/core/cerebellum.py; the world's sub-tick hook is body/core/world.py's `World.below`.
 
 What must hold: the language body has none of it (no organ, no attribute, no key, no hook; the eight pinned digests are the guard's,
-tools/pins/digests.txt); a body whose switch is on has it built last from its own generator, every other organ born as without it; the
+tools/measure/pins/digests.txt); a body whose switch is on has it built last from its own generator, every other organ born as without it; the
 law is leaky least mean squares on the granule code, bounded by the joint's limit this tick, exact against numpy; with no teacher it
 adds no torque of its own (a newborn's stays exactly zero, a learned one fades); it learns a limb's load (a weight added to a hand: the
 servo's corrective torque falls over time with it on, not off); the flocculus learns the VOR's gain from retinal slip under a magnifying
@@ -18,7 +18,7 @@ relaxes to the measured angle with a time constant of 3 ticks), the cerebellum's
 SimWorld interface says. It is an instrument of these tests, not the G1's world. Its mossy numbers are the joints' state and the
 efference copy (each joint's angle, velocity and servo target: MOSSY_KINDS "state"); SIM_DESIGN.md 7.5's list adds each joint's
 estimated torque ("design"), with which the loop went unstable on this limb within a life day under the pure law and holds all day
-under the leak (cereb 10; tools/cereb_day.py). A table under the hand (`ArmWorld.table`) and a weakness (`ArmWorld.weaken`) serve
+under the leak (cereb 10; tools/measure/cereb_day.py). A table under the hand (`ArmWorld.table`) and a weakness (`ArmWorld.weaken`) serve
 cereb 12."""
 import math
 import os
@@ -79,7 +79,7 @@ ARM_VEL = 10.0                                      # the test limb's declared v
 # half-range. "state", which these tests declare, is the joints' state and the efference copy: each joint's angle, velocity and the
 # servo's target. "design" is SIM_DESIGN.md 7.5's list for the humanoid, which adds each joint's estimated torque: the torque the motor
 # applies, which carries the servo's correction and the cerebellum's own torque back into its input; with it the loop went unstable on
-# this limb within a life day under the pure law, and holds all day under the leak (cereb 10; tools/cereb_day.py measures each kind over
+# this limb within a life day under the pure law, and holds all day under the leak (cereb 10; tools/measure/cereb_day.py measures each kind over
 # a whole day). The others are that instrument's
 MOSSY_KINDS = {"state": ("angle", "velocity", "target"), "design": ("angle", "velocity", "torque", "target"), "efference": ("target", "step"),
                "efference+angle": ("target", "step", "angle"), "efference+velocity": ("target", "step", "velocity"),
@@ -353,7 +353,7 @@ def test_absent_for_language():
     table none (CEREB is a table of its own, absent unless given); its anatomy declares no cerebellar interface (the class's None, no
     attribute); its organs build no cerebellum and its save holds no key of one; its world has no hook (the class's None) and a call
     below the tick answers nothing; born, lived and reloaded, the life never runs the cerebellum's attach (it is replaced here by one that
-    fails); the mixin holds no class attribute. (The eight pinned digests are the guard's: tools/pins/digests.txt.)"""
+    fails); the mixin holds no class attribute. (The eight pinned digests are the guard's: tools/measure/pins/digests.txt.)"""
     from body.core.cerebellum import CerebellumMixin
     assert not set(CEREB) & (set(PHYSIOLOGY) | set(MOTOR) | set(SWITCHES)) and CEREB["cereb"] == 0
     assert all(callable(v) or k.startswith("__") for k, v in vars(CerebellumMixin).items()), "the mixin holds a class attribute"
@@ -877,7 +877,7 @@ def test_the_estimated_torque_in_the_mossy_input():
     the end, the weights bounded. The contrast, asserted so the test can see it: under the pure law R6c was first built with (no leak,
     no bound: `_Pure`), 7.5's list carries the limb into oscillation at its torque limit, its corrective torque ending above the off
     level: the unbounded integrator's drift, which the leak bounds (the sigma-modification's purpose: Ioannou and Kokotovic 1983). Over
-    a whole life day, tools/cereb_day.py"""
+    a whole life day, tools/measure/cereb_day.py"""
     out = {}
     for kind, leak in ((None, 0.0), ("state", CEREB["cereb_leak"]), ("design", CEREB["cereb_leak"]), ("design", 0.0)):
         w = ArmWorld(mossy=kind or "state"); o = None

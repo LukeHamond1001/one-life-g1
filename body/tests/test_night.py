@@ -6,7 +6,7 @@ end kept on it (night 2); at nightfall the day is cut into episodes at the frame
 over the day's record, its window ending at its peak tag (or its end), each row's replayed dopamine's credit; the episodes are kept
 across nights, fading as the store fades, the weakest giving way past the cap, the reels compacted to the rows the kept windows read
 (night 3). Each is a switch the language body does not hold: it has none of it (the eight pinned digests are the guard's,
-tools/pins/digests.txt). The stub worlds here are instruments of these tests, not the G1's world."""
+tools/measure/pins/digests.txt). The stub worlds here are instruments of these tests, not the G1's world."""
 import math
 import os
 import sys
@@ -642,7 +642,7 @@ def test_the_heading_drift():
 def test_the_born_config():
     """night 7 (A71, the lead's decision of 2026-09-25 on the PFC-maturation study): THE SIM IS BORN AT THE SERVED VALUES. SIM_CFG's slow
     bands kept across the night, striatal fast critic, working memory's slot and long critic with its earned voice each at the served
-    language body's value (tools/pins/served_cfg.pkl), but the three the design sets for the sim (the critics' solves every 256 ticks,
+    language body's value (tools/measure/pins/served_cfg.pkl), but the three the design sets for the sim (the critics' solves every 256 ticks,
     SIM_DESIGN.md 10; the long critic on the fast bands 0-2, 7.2); amyg_pav born on with its earned weight. A G1 born under it has the
     striatal expansion (the language block, every motor effector's per-joint rows and R7a's event lines' block), the working-memory slot
     beside it (the fast critic's evidence 2 x 2,048 wide and its level), the long critic's evidence over bands 0-2 with the tonic traces and the clock
@@ -911,10 +911,57 @@ def test_the_night_reads_a_blocked_setting_as_rest():
           f"lessons over its windows read them at every position ({nb} of {npos} blocked) (A233)")
 
 
+def test_the_words_no_lesson():
+    """night 13 (D1y, 2026-10-20): THE WORDS NO LESSON WHERE LABELLED -1. A DAgger run's voice is silenced (its silence is not the
+    expert's, who says 'mama' on reaching her), its words labelled -1 (tools/harness/demo_test.py --dagger). The window's positions of the
+    labelled ticks hold the label and they alone (the latest); the window's tensors serve it ('@lbl:words': -1 there, -2 elsewhere);
+    the tape's rows hold it ('lb:words'); the night's batch serves the episodes' rows as taped. The day's own-word lesson over a window
+    labelled throughout is zero (unlabelled, it is not), and the night's over windows labelled throughout is zero (unlabelled, not)"""
+    L = _g1(_cfg(own_words=1, own_words_split=1), _events_world(), window=32)
+    run = WorldLoop(L)
+    for k in range(80):
+        L._label_acts = {"words": -1} if k >= 50 else None
+        run.step()
+    L._label_acts = None
+    win = list(L.win); mk = [("lbl:words" in w) for w in win]
+    assert any(mk) and not all(mk) and mk == sorted(mk), mk
+    obs, whos, bundles, reads = L._window_tensors()
+    assert int((obs["@lbl:words"] == -1).sum()) == sum(mk) and int((obs["@lbl:words"] == -2).sum()) == len(win) - sum(mk)
+    rows = L._tape_rows(L._tape_n)
+    n_lab = int((rows["lb:words"] == -1).sum())
+    assert "lb:words" in rows and n_lab >= sum(mk) and n_lab < int(rows["lb:words"].shape[0]), (n_lab, sum(mk))
+    # the day's lesson: labelled throughout, zero; unlabelled, not
+    for w in L.win:
+        w["lbl:words"] = -1
+    o1 = L._wake_lesson()
+    for w in L.win:
+        w.pop("lbl:words", None)
+    o0 = L._wake_lesson()
+    assert o1["own_words"][0] == 0.0 and o0["own_words"][0] > 0.0, (o1["own_words"], o0["own_words"])
+    # the night's batch and lesson
+    rep = L.night()
+    assert not rep.get("error"), rep.get("error")
+    eps = L._episodes; batch = eps[:4]
+    obs_n = L._frames_batch(batch)[0]
+    rs_ = [L._episode_rows(ep) for ep in batch]
+    if any("lb:words" in r_ for r_ in rs_):
+        lens = [int(r_["xo"].shape[0]) for r_ in rs_]
+        assert all(torch.equal(obs_n["@lbl:words"][b, :lens[b]], rs_[b]["lb:words"]) for b in range(len(batch)) if "lb:words" in rs_[b])
+    for r_ in L._reels:
+        r_["lb:words"] = torch.full((int(r_["xo"].shape[0]),), -1, dtype=torch.long)
+    p1 = L._frames_lesson(batch)[1]["parts"]["own_words"]
+    for r_ in L._reels:
+        r_["lb:words"] = torch.full((int(r_["xo"].shape[0]),), -2, dtype=torch.long)
+    p0 = L._frames_lesson(batch)[1]["parts"]["own_words"]
+    assert p1 == 0.0 and p0 > 0.0, (p1, p0)
+    print(f"night 13: the words labelled -1 in {sum(mk)} of {len(win)} window positions and {n_lab} taped rows; the day's own-word lesson",
+          f"{o1['own_words'][0]} labelled throughout ({o0['own_words'][0]} not), the night's {p1} ({p0:.4f} not) (D1y)")
+
+
 NIGHT_TESTS = [test_night_inert_for_language, test_the_tape, test_the_episodes, test_the_night_over_frames, test_the_live_dark_night,
                test_the_heading_drift, test_the_born_config, test_value_sweep, test_the_night_rests_the_slow_states,
                test_the_night_replays_the_move_less_the_push, test_the_night_skips_the_moves_the_world_made,
-               test_the_night_reads_a_blocked_setting_as_rest]
+               test_the_night_reads_a_blocked_setting_as_rest, test_the_words_no_lesson]
 
 
 if __name__ == "__main__":

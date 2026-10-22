@@ -153,6 +153,21 @@ def test_rest_is_silent_and_breath():
     assert not np.any(y) and tr.vol == 1.0, "the rest posture made a sound"
     a = posture(lungs=1.0, glottis=0.7, velum=0.0, jaw=0.8, tongue_front=0.0, tongue_height=0.0, lips=0.9, rounding=0.2)
     tr.x, tr.target = a.copy(), a.copy()
+    rms = [np.sqrt(np.mean(tr.tick(np.full(10, 2)) ** 2)) for _ in range(40)]
+    assert tr.vol == 1.0 and min(rms[10:]) > 0.3 * max(rms), "A238: a held vowel ran out of breath"
+    assert tr.proprio()[-1] == 1.0
+    print("4a A238 (the second life): a loud vowel held 40 ticks keeps its voice; the breath-left sense stays at 1")
+    was = T.BREATH_LIMIT
+    T.BREATH_LIMIT = True                                                 # the first life's law, kept for its replays
+    try:
+        _the_first_lifes_breath(a)
+    finally:
+        T.BREATH_LIMIT = was
+
+
+def _the_first_lifes_breath(a):
+    tr = T.Tract(1)
+    tr.x, tr.target = a.copy(), a.copy()
     vols, rms = [], []
     for _ in range(40):
         rms.append(np.sqrt(np.mean(tr.tick(np.full(10, 2)) ** 2)))
@@ -490,7 +505,7 @@ def test_words_registers_and_level():
 
 
 def f0_word(x):
-    """an instrument (tools/sim_voice_check.py's): a word's F0 median over its voiced frames, frames more than a factor 1.6 from
+    """an instrument (tools/measure/sim_voice_check.py's): a word's F0 median over its voiced frames, frames more than a factor 1.6 from
     the word's median dropped (a stop's burst can read as a periodic run near 520 Hz)."""
     v = f0_track(x)
     v = v[v > 0]

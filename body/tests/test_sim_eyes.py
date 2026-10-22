@@ -32,7 +32,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "tools"))
+sys.path.insert(0, os.path.join(ROOT, "tools", "measure"))
 sys.path.insert(0, os.path.join(ROOT, "body", "sim"))
 from body.sim import eyes as E  # noqa: E402
 from body.sim import world as W  # noqa: E402
@@ -508,7 +508,7 @@ def test_her_face_of_human_proportions():
     """eyes 12: HER FACE OF HUMAN PROPORTIONS, MEASURED ON THE DRAWN GEOMETRY (the owner's decision, made for him; the W1 verifier's
     fourth round: the third round's face declared the norms and did not build them: its eye opening 22.0 mm wide against 30.7, its
     inner eye corners 41.6 mm apart against 31.8, its head 168 mm wide; this test would have failed it on every one). Everything is
-    read off what is drawn, by rays and by the drawn meshes' vertices (tools/sim_face_measure.py): the canthi as the drawn lid margins'
+    read off what is drawn, by rays and by the drawn meshes' vertices (tools/measure/sim_face_measure.py): the canthi as the drawn lid margins'
     corners (the sheet's rim on the opening's outline, where calipers go: within 0.4 mm) and as seen (the eye's contents seen from the
     front, the sides and above and below: their extreme points along the canthal line, within 1.5 mm, the corners' last half
     millimetre being too narrow to see into), the fissure's height at the pupil, the pupils, the iris, the mouth
@@ -533,7 +533,7 @@ def test_her_face_of_human_proportions():
 
 def test_her_face_photometry():
     """eyes 13: HER FACE'S PHOTOMETRY (the owner's decision; Russell, Kramer and Jones 2017, table 2: young women, no cosmetics): her
-    face photographed as the source's faces were (tools/sim_face_photometry.py: from the front under a studio's frontal lamp, exposed
+    face photographed as the source's faces were (tools/measure/sim_face_photometry.py: from the front under a studio's frontal lamp, exposed
     so her cheek reads L* 65, everything she carries in: her geometry's shading, her sheet's shade of the room's indirect light, the
     eye's parts'), each feature's CIE L* contrast against the skin around it is within 0.005 of a real face's: the eyes (the eye
     with the band of skin around its lashes) 0.152, the brows 0.126, the lips 0.092; no face material glows (her eyes' highlight is
@@ -719,7 +719,7 @@ def test_her_look():
         worst[nm] = (lo_, hi_)
         assert lo_ >= F.BROW_MIN_LIFT - 1e-5 and hi_ <= bar, (nm, lo_, hi_)       # never sunk; at rest and in the smile
         # within 0.6 mm of the skin, in the frown or a full brow raise or lowering within 1.2 (a rigid strip over a curve)
-    # the lids against her skin and her eye (tools/sim_face_measure.py lids): in nine lid states, rays at the left eye from the front
+    # the lids against her skin and her eye (tools/measure/sim_face_measure.py lids): in nine lid states, rays at the left eye from the front
     # and from 35 deg to either side on a 0.5 mm grid: no lid or lash stands out of her skin (more than half a portrait pixel along
     # the globe's radius, away from the opening's rim; the lashes within their thickness of it); in the blinks, at five gazes, no
     # ray from the front meets the globe, the iris or the pupil, and from 35 deg the eye shows over less than 2 mm^2 a gaze (the

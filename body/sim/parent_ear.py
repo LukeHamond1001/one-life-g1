@@ -47,7 +47,7 @@ words she has (the vocabulary grows; the templates were all there from the start
 
 COST. The expected words and the bank are scored at the utterance's end; the rest of her words only when a word is accepted (the
 exact test), so a rejection costs the expected words and the bank alone. An utterance longer than twice her longest template can
-match no template (the slope constraint), so it is refused without scoring (the same answer). tools/sim_parent_ear.py measures the
+match no template (the slope constraint), so it is refused without scoring (the same answer). tools/measure/sim_parent_ear.py measures the
 cost per utterance and per tick at the babble's rate.
 
 The first prototype (the voice study's recog.py, then this file until P3) heard through the study's cochlea (filters about 1.6 ERB

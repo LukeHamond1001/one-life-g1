@@ -112,11 +112,11 @@ EYE_GROUPS = np.array([1, 1, 1, 0, 0, 0], dtype=np.uint8)   # the eyes see group
 # its pixels with the template over the ellipse is at least TEMPLATE_R (a quarter of the pixels' variance explained) and the
 # blobs are darker than the face by at least TEMPLATE_CONTRAST (Weber; a newborn's contrast threshold at its best spatial
 # frequencies is of this order or higher: Banks and Salapatek 1978, recalled). None of these was set on the parent's face or
-# on any hit or false alarm; the eye check (tools/sim_eye_check.py, C3) measures them. On her face as built to a real face's
+# on any hit or false alarm; the eye check (tools/measure/sim_eye_check.py, C3) measures them. On her face as built to a real face's
 # proportions and photometry (the W1 verifier's fourth round; body/sim/parent_face.py) the template, unchanged, matches HER FACE
 # (centred on it, at its size) in 1 of 48 fovea readings at 0.3-2 m under the three lights (dusk, 1.25 m, r 0.51, where her face
 # is the smallest size's width) and by chance elsewhere in the window in 5 more (0.3-0.6 m, the window upside down scoring as
-# high), and never in the periphery (tools/sim_face_template.py, body/tests/test_sim_eyes.py eyes 15): a finding for the design
+# high), and never in the periphery (tools/measure/sim_face_template.py, body/tests/test_sim_eyes.py eyes 15): a finding for the design
 # (C3), which the template's own source decides; neither side is fitted to the other.
 TEMPLATE_EYES = ((-0.22, 0.12), (0.22, 0.12))   # the eye blobs' centres, (x / W, y / H)
 TEMPLATE_EYE_D = 0.20                           # their diameter / W
@@ -877,12 +877,18 @@ class Eyes:
             self.timing["code_s"] += time.perf_counter() - t0
             truth = {"images": imgs, "periphery": per, "fovea": fov, "colour_window": cwin, "face_test": face_test(self.m, w.d, w.gaze),
                      "windows": {s: window_corner(s, w.gaze) for s in "LR"}}
+            dino_ = getattr(self, "dino", None)                         # the pretrained eye (body/sim/dino.py; cfg eye_dino): the colour
+            if dino_ is not None:                                       # camera's CLS and the colour window's, once a world tick
+                t1 = time.perf_counter()
+                truth["eye_d"] = dino_.features(imgs["C"], cwin)
+                self.timing["dino_s"] = self.timing.get("dino_s", 0.0) + time.perf_counter() - t1
             self._cache = (key, eye_p, eye_f, face_cue(self.m, w.d, w.gaze), truth)      # A157: the born face cue's stand-in (the truth
         _, eye_p, eye_f, cue, truth = self._cache                                         # last: the page reads it there, sim_page.py)
         return {"eye_p": eye_p.copy(), "eye_f": eye_f.copy(), "face_fovea": np.zeros(1), "face_periph": cue.copy(),
                 "onset_periph": self._onset(truth["periphery"]).copy(), "hand_periph": self._hand(), "salient_periph": self._salient(truth["images"]["C"], cue),
                 "gaze_periph": gaze_cue(self.m, self.world.d, self.world.gaze, getattr(self.world, "parent", None), cue),   # A215
-                "self_cells": self_cells(self.m, self.world.d, self.world.gaze), "her_cells": her_cells(self.m, self.world.d, self.world.gaze), "truth": truth}
+                "self_cells": self_cells(self.m, self.world.d, self.world.gaze), "her_cells": her_cells(self.m, self.world.d, self.world.gaze), "truth": truth,
+                **({"eye_d": truth["eye_d"].copy()} if "eye_d" in truth else {})}
 
     def _salient(self, img, face):
         """A211: the born salience cue once a world tick (salience_cue; its inhibition of return kept in the eyes' state). A213: THE

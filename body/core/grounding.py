@@ -49,7 +49,7 @@ GROUND_FLOOR = 0.02     # the least contrast (opponent units) that counts as a l
 GROUND_MATCH = 0.6      # the least cosine between a word's look and a cell's for the cue or the name (ours)
 GROUND_MARGIN = 0.15    # the best match's lead over the second, for the NAME (ours)
 GROUND_CUE_MARGIN = 0.0    # A217 (2026-10-10): the best match's lead over the second for the CUE: none (the copy: the drum's two cells tied within 0.003). The day-139 copy at 'drum' hearings with the
-                        # drum in its view (p1_tools/look_probe.py): the best periphery cell's cosine to the word's look 0.99 and the second's
+                        # drum in its view (p1_tools/life/probes/look_probe.py): the best periphery cell's cosine to the word's look 0.99 and the second's
                         # 0.99, on hearing after hearing (a toy spans more than one cell of the fifteen, and its colour's direction is shared
                         # by its neighbours), so the cue fired on 19 of 384 such hearings in day 138 and no ask was met. The priority map
                         # takes its most active location, with no absolute lead (Bisley and Goldberg 2010; Treue and Martinez-Trujillo 1999:

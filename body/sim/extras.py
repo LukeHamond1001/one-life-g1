@@ -1,5 +1,5 @@
 """EXTRAS FOR THE ROOM (A115, 2026-09-27; docs/SIM_DESIGN.md C99, A28's novel toys): things added to the world at `g1scene.load_model`'s
-`extra` hook, never to the room file, so a life born in the room can meet them later (tools/sim_migrate_world.py carries a saved
+`extra` hook, never to the room file, so a life born in the room can meet them later (tools/life/sim_migrate_world.py carries a saved
 world across). Each is a function of the MjSpec that adds bodies before the compile.
 
 THE BOOK (the first transfer test): a small board book, a black box 16 x 12 x 2.4 cm of 150 g, lying flat, with a white page edge.
@@ -81,31 +81,32 @@ BUCKET_RGBA = (0.45, 0.55, 0.20, 1.0)            # olive: no colour word of hers
 BUCKET_YAW_DEG = 0.0
 
 
-def add_bucket(xy=(-0.3, -0.45), yaw_deg=BUCKET_YAW_DEG):
+def add_bucket(xy=(-0.3, -0.45), yaw_deg=BUCKET_YAW_DEG, name="bucket", rgba=BUCKET_RGBA):
     """-> extra(spec): the bucket set at xy on the mat (A126, the third novel object and the first hollow one: a toy can be put INTO it in
     the child's view and be gone from its eyes while it stays, the hide game's vessel, A129), with the toys' contacts, its two hold welds
-    and its sound text, as the box has. An open-top box, a bucket: a floor plate and four walls, BUCKET_IN inside, BUCKET_H high"""
+    and its sound text, as the box has. An open-top box, a bucket: a floor plate and four walls, BUCKET_IN inside, BUCKET_H high.
+    name, rgba: P1's claim two (hide-later) sets a second ('bucket2', another colour) in the room when its rung opens"""
     def extra(spec):
-        b = spec.worldbody.add_body(name="toy_bucket", pos=[float(xy[0]), float(xy[1]), 0.012 + BUCKET_WALL + 0.001])
+        b = spec.worldbody.add_body(name=f"toy_{name}", pos=[float(xy[0]), float(xy[1]), 0.012 + BUCKET_WALL + 0.001])
         q = np.zeros(4); mujoco.mju_axisAngle2Quat(q, np.array([0.0, 0.0, 1.0]), np.radians(float(yaw_deg)))
         b.quat = q.tolist()
-        b.add_freejoint(name="toy_bucket")
+        b.add_freejoint(name=f"toy_{name}")
         out = BUCKET_IN + BUCKET_WALL
-        parts = [("bucket", [out, out, BUCKET_WALL], [0.0, 0.0, 0.0])]                                     # the floor plate (the body's origin)
+        parts = [(name, [out, out, BUCKET_WALL], [0.0, 0.0, 0.0])]                                          # the floor plate (the body's origin)
         for i, (sx, sy, px, py) in enumerate(((BUCKET_WALL, out, out - BUCKET_WALL, 0.0), (BUCKET_WALL, out, -(out - BUCKET_WALL), 0.0),
                                               (out, BUCKET_WALL, 0.0, out - BUCKET_WALL), (out, BUCKET_WALL, 0.0, -(out - BUCKET_WALL)))):
-            parts.append((f"bucket_wall{i}", [sx, sy, BUCKET_H / 2.0], [px, py, BUCKET_WALL + BUCKET_H / 2.0]))
-        for name, size, pos in parts:
-            g = b.add_geom(name=name, type=mujoco.mjtGeom.mjGEOM_BOX, size=size, pos=pos, mass=BUCKET_MASS / len(parts), rgba=list(BUCKET_RGBA))
+            parts.append((f"{name}_wall{i}", [sx, sy, BUCKET_H / 2.0], [px, py, BUCKET_WALL + BUCKET_H / 2.0]))
+        for gname, size, pos in parts:
+            g = b.add_geom(name=gname, type=mujoco.mjtGeom.mjGEOM_BOX, size=size, pos=pos, mass=BUCKET_MASS / len(parts), rgba=list(rgba))
             g.contype = 4; g.conaffinity = 15; g.priority = WORLD_PRIORITY                          # make_g1room.TOY
             g.friction = [1.0, 0.01, 0.001]                                                          # the block's
             g.solref = [0.015, 1.0]; g.solimp = [0.9, 0.95, 0.001, 0.5, 2.0]
         for hs in ("L", "R"):
             w = spec.add_equality()
-            w.type = mujoco.mjtEq.mjEQ_WELD; w.objtype = mujoco.mjtObj.mjOBJ_BODY; w.name = f"hold_{hs}_bucket"
-            w.name1 = f"parent_hand_{hs}"; w.name2 = "toy_bucket"
+            w.type = mujoco.mjtEq.mjEQ_WELD; w.objtype = mujoco.mjtObj.mjOBJ_BODY; w.name = f"hold_{hs}_{name}"
+            w.name1 = f"parent_hand_{hs}"; w.name2 = f"toy_{name}"
             w.active = False; w.solref = [0.006, 1.0]
-        spec.add_text(name="sound_bucket", data="a hollow plastic knock when it lands or is struck")
+        spec.add_text(name=f"sound_{name}", data="a hollow plastic knock when it lands or is struck")
     return extra
 
 
@@ -129,5 +130,189 @@ def add_book_box_bucket(xy=(-0.3, -0.45), yaw_deg=BUCKET_YAW_DEG):
     return extra
 
 
-EXTRAS = {"book": add_book, "box": add_box, "book_box": add_book_box, "bucket": add_bucket, "book_box_bucket": add_book_box_bucket}   # the runner's --extra names
-NEW_TOY = {"book": "book", "box": "box", "book_box": "box", "bucket": "bucket", "book_box_bucket": "bucket"}   # the toy each extra brings in (the migration tool's report)
+BUCKET2_XY = (1.55, 1.05)                        # P1 claim two: the second bucket's place (the first's on the mat at (-0.3, -0.45): 2.3 m apart)
+BUCKET2_RGBA = (0.80, 0.42, 0.22, 1.0)           # terracotta: the second of two of a kind, told apart by its place and its colour
+
+
+def add_book_box_buckets(xy=(-0.3, -0.45), yaw_deg=BUCKET_YAW_DEG):
+    """-> extra(spec): P1 claim two's room: the book, the box, the bucket at xy and a second bucket (BUCKET2_XY, BUCKET2_RGBA): two
+    places a toy can be hidden in the child's view (hide-later's chance 50%)"""
+    three, second = add_book_box_bucket(xy=xy, yaw_deg=yaw_deg), add_bucket(xy=BUCKET2_XY, name="bucket2", rgba=BUCKET2_RGBA)
+
+    def extra(spec):
+        three(spec); second(spec)
+    return extra
+
+
+EXTRAS = {"book": add_book, "box": add_box, "book_box": add_book_box, "bucket": add_bucket, "book_box_bucket": add_book_box_bucket,
+          "book_box_buckets": add_book_box_buckets}   # the runner's --extra names
+NEW_TOY = {"book": "book", "box": "box", "book_box": "box", "bucket": "bucket", "book_box_bucket": "bucket", "book_box_buckets": "bucket2"}   # the toy each extra brings in (the migration tool's report)
+
+
+# ================================================================== THE SCANNED OBJECTS (docs/archive/DATA_PIPELINE.md 3; the owner's yes 2026-10-21)
+GSO_DIR = "/Users/lukehamond/Projects/project/data/objects/gso"   # tools/harness/gso_fetch.py: <name>/meshes/model.obj, materials/textures/texture.png
+GSO_MAX_M = 0.10                              # m: a thing longer than this on any side is scaled to it (a child's room: toys, not furniture)
+GSO_DENSITY = 250.0                           # kg/m^3 on the convex hull (a toy's fill: the duck 60 g, the ball 120 g)
+GSO_SOUNDS = {"toys": "a light plastic knock when it lands or is struck", "cups": "a ceramic clink when it strikes something",
+              "shoes": "a soft thud when it lands", "goods": "a dull knock when it lands or is struck"}
+
+
+def gso_manifest(folder=GSO_DIR):
+    """the fetched objects (manifest.json), those whose files are there"""
+    import json
+    import os
+    try:
+        ms = json.load(open(os.path.join(folder, "manifest.json")))
+    except OSError:
+        return []
+    return [m for m in ms if m.get("extent_m") and os.path.exists(os.path.join(folder, m["name"], "meshes", "model.obj"))]
+
+
+def gso_sample(seed, n, folder=GSO_DIR, manifest=None):
+    """n of the fetched objects for a recording's seed (the same seed, the same objects), placed on the mat and the floor clear of the
+    room's own toys and of the child's birth place -> [(manifest entry, scale, (x, y, yaw_deg))]"""
+    ms = manifest if manifest is not None else gso_manifest(folder)
+    if not ms or n <= 0:
+        return []
+    rng = np.random.RandomState(int(seed) * 7919 + 17)
+    pick = [ms[int(i)] for i in rng.permutation(len(ms))[:int(n)]]
+    taken = [(0.45, -1.12), (-0.26, -0.02), (0.50, 0.04), (-0.58, -0.12), (0.08, -0.97), (1.02, -0.45), (-1.08, -0.38), (-0.98, -1.28),
+             (1.62, 0.32), (0.98, -1.34), (0.0, -0.60), (0.3, -0.4), (-0.3, -0.45)]              # make_g1room.TOYS, the book, the box, the bucket
+    out = []
+    for m in pick:
+        ext = max(float(x) for x in m["extent_m"]); s = min(1.0, GSO_MAX_M / ext) if ext > 0 else 1.0
+        for _ in range(200):
+            x, y = float(rng.uniform(-1.25, 1.75)), float(rng.uniform(-1.55, 0.45))
+            if (x + 0.05) ** 2 + (y + 0.62) ** 2 < 0.75 ** 2:                           # the child lying at birth (make_g1room)
+                continue
+            if all((x - a) ** 2 + (y - b) ** 2 >= 0.28 ** 2 for a, b in taken):
+                break
+        taken.append((x, y))
+        out.append((m, s, (x, y, float(rng.uniform(-180.0, 180.0)))))
+    return out
+
+
+def add_gso(seed, n, folder=GSO_DIR, manifest=None):
+    """-> extra(spec): n scanned objects for this seed as toys of the room: each a mesh geom with its scanned texture (scaled to GSO_MAX_M
+    on its longest side where larger, its mass by GSO_DENSITY on its hull), a free joint, the toys' contact class, her hands' welds and a
+    sound text, named toy_<word>_<k> (the word its name is called by: a birth word joins the name tasks; a later word arrives in the
+    scaffold as its letters). The placed names are kept on extra.placed for the generator (its reach list)"""
+    import os
+    sample = gso_sample(seed, n, folder, manifest)
+
+    def extra(spec):
+        base = 0.012                                                              # the mat (make_g1room.MAT_T); the floor's toys sit a hair lower
+        for k, (m, s, (x, y, yaw)) in enumerate(sample):
+            nm = m["name"]; word = str(m.get("word") or "thing"); tname = f"{word}_{k + 1}"
+            d = os.path.join(folder, nm)
+            mesh = spec.add_mesh(); mesh.name = f"gso_{k}"; mesh.file = os.path.join(d, "meshes", "model.obj"); mesh.scale = [s, s, s]
+            tp = os.path.join(d, "materials", "textures", "texture.png"); matname = None
+            if os.path.exists(tp):
+                tex = spec.add_texture(); tex.name = f"gso_{k}_tex"; tex.type = mujoco.mjtTexture.mjTEXTURE_2D; tex.file = tp
+                mat = spec.add_material(); mat.name = f"gso_{k}_mat"; mat.textures[int(mujoco.mjtTextureRole.mjTEXROLE_RGB)] = tex.name
+                matname = mat.name
+            zmin = float((m.get("min_m") or [0, 0, 0])[2]) * s
+            on_mat = abs(x - 0.0) < 1.40 and abs(y + 0.60) < 1.00
+            b = spec.worldbody.add_body(name=f"toy_{tname}", pos=[x, y, (base if on_mat else 0.0) - zmin + 0.002])
+            q = np.zeros(4); mujoco.mju_axisAngle2Quat(q, np.array([0.0, 0.0, 1.0]), np.radians(yaw)); b.quat = q.tolist()
+            b.add_freejoint(name=f"toy_{tname}")
+            g = b.add_geom(name=f"gso_{k}_geom", type=mujoco.mjtGeom.mjGEOM_MESH, meshname=mesh.name)
+            if matname:
+                g.material = matname
+            g.density = GSO_DENSITY
+            g.contype = 4; g.conaffinity = 15; g.priority = WORLD_PRIORITY         # make_g1room.TOY
+            g.friction = [1.0, 0.01, 0.001]; g.solref = [0.015, 1.0]; g.solimp = [0.9, 0.95, 0.001, 0.5, 2.0]
+            for hs in ("L", "R"):
+                w = spec.add_equality(); w.type = mujoco.mjtEq.mjEQ_WELD; w.objtype = mujoco.mjtObj.mjOBJ_BODY
+                w.name = f"hold_{hs}_{tname}"; w.name1 = f"parent_hand_{hs}"; w.name2 = f"toy_{tname}"; w.active = False; w.solref = [0.006, 1.0]
+            spec.add_text(name=f"sound_{tname}", data=GSO_SOUNDS.get(str(m.get("kind")), GSO_SOUNDS["goods"]))
+    extra.placed = [(f"{m.get('word') or 'thing'}_{k + 1}", float(max(m['extent_m']) * s)) for k, (m, s, _) in enumerate(sample)]
+    return extra
+
+
+# ================================================================== THE SCREEN (the owner's end target, 2026-10-21 16:20: 'an iPad of it
+# doing something from a new angle, then it does it'; docs/PREREGISTRATION_LIVE.md 4d)
+SCREEN_W, SCREEN_H = 192, 144                 # the panel's texture (texels); the eyes see it at their own resolution
+SCREEN_HALF = (0.12, 0.09, 0.004)             # m: a tablet, 24 x 18 cm, 8 mm thick (ours)
+SCREEN_MASS = 0.25                            # kg
+
+
+def add_screen(xy=(0.0, -0.25), yaw_deg=0.0):
+    """-> extra(spec): THE SCREEN, a tablet lying flat on the mat (its face up), a toy of the room (named toy_screen: she can hold it
+    up and show it as she shows a toy, by the welds every toy has; world.show_screen holds it before the child's eyes, face toward
+    them), whose face is a 2D texture 'screen' the ScreenPlayer rewrites every tick a clip plays (a flat dark when none does). The
+    frame on it is a film of the room from the room camera (tools/harness/demo_film.py): the child itself doing the task, seen from where it is not"""
+    def extra(spec):
+        tex = spec.add_texture(); tex.name = "screen"; tex.type = mujoco.mjtTexture.mjTEXTURE_2D
+        tex.builtin = mujoco.mjtBuiltin.mjBUILTIN_FLAT; tex.width = SCREEN_W; tex.height = SCREEN_H; tex.rgb1 = [0.02, 0.02, 0.02]
+        mat = spec.add_material(); mat.name = "screen"; mat.textures[int(mujoco.mjtTextureRole.mjTEXROLE_RGB)] = "screen"
+        mat.emission = 0.9; mat.specular = 0.1; mat.shininess = 0.2
+        b = spec.worldbody.add_body(name="toy_screen", pos=[float(xy[0]), float(xy[1]), 0.012 + SCREEN_HALF[2] + 0.001])
+        q = np.zeros(4); mujoco.mju_axisAngle2Quat(q, np.array([0.0, 0.0, 1.0]), np.radians(float(yaw_deg))); b.quat = q.tolist()
+        b.add_freejoint(name="toy_screen")
+        g = b.add_geom(name="screen", type=mujoco.mjtGeom.mjGEOM_BOX, size=list(SCREEN_HALF), mass=SCREEN_MASS, rgba=[0.1, 0.1, 0.1, 1.0])
+        g.contype = 4; g.conaffinity = 15; g.priority = WORLD_PRIORITY; g.friction = [1.0, 0.01, 0.001]        # make_g1room.TOY; the block's
+        g.solref = [0.015, 1.0]; g.solimp = [0.9, 0.95, 0.001, 0.5, 2.0]
+        f = b.add_geom(name="screen_face", type=mujoco.mjtGeom.mjGEOM_BOX, pos=[0.0, 0.0, SCREEN_HALF[2] + 0.0005],
+                       size=[SCREEN_HALF[0] - 0.008, SCREEN_HALF[1] - 0.008, 0.0005], material="screen")
+        f.contype = 0; f.conaffinity = 0; f.density = 0.0                                   # seen only (make_g1room.VIS0)
+        for hs in ("L", "R"):
+            w = spec.add_equality(); w.type = mujoco.mjtEq.mjEQ_WELD; w.objtype = mujoco.mjtObj.mjOBJ_BODY
+            w.name = f"hold_{hs}_screen"; w.name1 = f"parent_hand_{hs}"; w.name2 = "toy_screen"; w.active = False; w.solref = [0.006, 1.0]
+        spec.add_text(name="sound_screen", data="a flat tap when it is struck")
+    return extra
+
+
+class ScreenPlayer:
+    """the clip on the screen: frames [n, SCREEN_H, SCREEN_W, 3] uint8 played one a tick from `play`, each written into the model's
+    texture and uploaded to every render context given to `tick` (the eyes') and to those on `extra` (the film's, registered by
+    whoever owns them; each upload needs its own GL context current, the caller's care); dark when the clip ends or none plays.
+    The world calls tick before its eyes render (body/sim/world.py frame)"""
+
+    def __init__(self, m):
+        self.m = m
+        self.tid = m.texture("screen").id
+        self.adr = int(m.tex_adr[self.tid]); self.w, self.h, self.nc = int(m.tex_width[self.tid]), int(m.tex_height[self.tid]), int(m.tex_nchannel[self.tid])
+        self.frames = None; self.k = 0; self.playing = False; self.extra = []; self._dark = True; self.n_played = 0
+
+    def play(self, frames):
+        self.frames = np.ascontiguousarray(frames, dtype=np.uint8); self.k = 0; self.playing = bool(len(self.frames))
+
+    def stop(self):
+        self.playing = False; self.frames = None; self.k = 0
+
+    def write(self, img):
+        """the image into the model's texture (no upload)"""
+        if img.shape[0] != self.h or img.shape[1] != self.w:
+            raise ValueError(f"a screen frame of {img.shape[:2]} for a panel of {(self.h, self.w)}")
+        self.m.tex_data[self.adr:self.adr + self.w * self.h * self.nc] = np.ascontiguousarray(img[:, :, :self.nc]).reshape(-1)
+
+    def upload(self, con):
+        if con is not None:
+            mujoco.mjr_uploadTexture(self.m, con, self.tid)
+
+    def tick(self, contexts):
+        """the frame of this tick (or dark) into the texture, uploaded to the contexts; -> True while the clip plays"""
+        if self.playing and self.frames is not None and self.k < len(self.frames):
+            img = self.frames[self.k]; self.k += 1; self._dark = False; self.n_played += 1
+        else:
+            if self.playing:
+                self.stop()
+            if self._dark:
+                return False                                                # (dark already: nothing to upload)
+            img = np.full((self.h, self.w, 3), 5, np.uint8); self._dark = True
+        self.write(img)
+        for c in contexts:
+            self.upload(c)
+        return self.playing
+
+
+def clip_frames(path, h=SCREEN_H, w=SCREEN_W, start_s=0.0, dur_s=None, fps=None):
+    """a film's frames (tools/harness/demo_film.py's film.mp4, or any video) resized to the panel through ffmpeg, from start_s for dur_s
+    seconds, at fps a second when given (the sim's tick is 6 a second) -> [n, h, w, 3] uint8"""
+    import subprocess
+    cmd = ["ffmpeg", "-loglevel", "error", "-ss", str(float(start_s)), "-i", str(path)] + (["-t", str(float(dur_s))] if dur_s else []) + \
+          ["-vf", f"scale={w}:{h}" + (f",fps={float(fps)}" if fps else ""), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    raw = subprocess.run(cmd, capture_output=True).stdout
+    n = len(raw) // (w * h * 3)
+    return np.frombuffer(raw[:n * w * h * 3], np.uint8).reshape(n, h, w, 3).copy() if n else np.zeros((0, h, w, 3), np.uint8)

@@ -77,7 +77,7 @@ LINK = STATIC                            # arm links touch everything solid, the
                                          # upper arm and forearm are parent and child bodies, so MuJoCo never pairs them)
 DECOR = 'contype="0" conaffinity="0" density="0"'   # seen, never touched, no mass
 ROOM = DECOR + ' group="2"'   # the room (walls, window, floor's look, print, sideboard): seen by every camera and eye (group 2 is
-                              # drawn by default); its own group only so a portrait (tools/sim_look.py faces) can hide it
+                              # drawn by default); its own group only so a portrait (tools/life/sim_look.py faces) can hide it
 
 
 def f(*v):

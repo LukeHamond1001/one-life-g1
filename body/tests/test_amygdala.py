@@ -403,6 +403,33 @@ def test_amyg_the_nights_side():
     assert float(out["harm"][1].abs().max()) > 0.0 and not torch.allclose(out["harm"][1], -out["one"][1], atol=1e-7) \
         and out["harm"][0] <= 1.0 + 1e-6 and out["harm"][2] == out["day"][2] and out["harm"][2] > 0.0, (out["harm"][0], out["harm"][2], out["day"][2])
     # A150/A153: at weight -1 act_pred is taught against by the cosine's hinge (bounded by 1 a position, its gradient not the day's reversed), the forward half untouched
+    # D1p: a guided position (the D1 trainer's) is taught at night as by day, whatever the replayed credit: net harm's lesson the day's to the bit
+    obs_g = dict(obs); obs_g["@gdd:" + Lt.anatomy.motors[0].name] = torch.ones(len(Lt.win), dtype=torch.bool)
+    gout = {}
+    for tag_, wpos in (("day", None), ("harm", torch.full((len(Lt.win),), act_pred_night_weight(-2.0)))):
+        C = Lt.m.stream(Lt.m.inputs(Lt.anatomy, obs_g, whos, bundles))
+        for p_ in Lt.m.parameters():
+            p_.grad = None
+        loss, rep, lb = Lt._timing_loss(1, C, obs_g, wpos=wpos)
+        (loss + (lb if lb is not None else 0.0)).backward()
+        gout[tag_] = (float(loss.detach()), Lt.m.timing[Lt.anatomy.motors[0].name].pred.weight.grad.clone())
+    assert gout["harm"][0] == gout["day"][0] and torch.equal(gout["harm"][1], gout["day"][1]) and float(gout["day"][1].abs().max()) > 0.0
+    # D1y: the act to learn apart from the act done. A label of -2 everywhere is the act done (the lesson as without labels, to the bit);
+    # labels L beside acts done E teach as acts L would (the target replaced); -1 everywhere leaves no act lesson (the forward half alone)
+    nm_ = Lt.anatomy.motors[0].name; E_ = obs[nm_].clone(); T_ = int(E_.shape[0])
+    tab_ = Lt.m.get_submodule(Lt.anatomy.motors[0].organ); n_set = int(tab_.n) if hasattr(tab_, "n") else int(E_.max()) + 2
+    g_ = torch.Generator().manual_seed(5); L_ = torch.randint(0, max(2, n_set), (T_,), generator=g_)
+    C0_ = Lt.m.stream(Lt.m.inputs(Lt.anatomy, obs, whos, bundles)).detach()   # (one stream for every variant: the inputs hold the act done)
+    def tl_(o_):
+        lt_, rp_, lb2_ = Lt._timing_loss(1, C0_, o_)
+        return float(lt_.detach()), rp_
+    base_ = tl_(dict(obs))[0]
+    same_ = tl_(dict(obs, **{"@lbl:" + nm_: torch.full((T_,), -2, dtype=torch.long)}))[0]
+    lab_ = tl_(dict(obs, **{"@lbl:" + nm_: L_}))[0]
+    asif_ = tl_(dict(obs, **{nm_: L_}))[0]
+    none_, rpn_ = tl_(dict(obs, **{"@lbl:" + nm_: torch.full((T_,), -1, dtype=torch.long)}))
+    assert same_ == base_ and abs(lab_ - asif_) < 1e-6 and lab_ != base_, (same_, base_, lab_, asif_)
+    assert abs(none_ - float(rpn_.get("fwd", 0.0))) < 1e-4, (none_, rpn_.get("fwd"))   # (the report's forward half rounded to 4 places)
     print(f"amyg 7: tag* reaches back (0.52 of a smile 10 ticks before it, 0.28 20 before, none 64 before); {len(eps)} episodes' entries by",
           f"the law over the bias-corrected mean; the tagged first ({firsts}: every T_e >= 1 once, highest first, at most half) and the rest by",
           f"entry, each of 6 episodes within 3 sigma over {N_} seeded nights; amyg 8: act_pred at night, a window of net harm (G -2, weight -1)",
@@ -579,9 +606,9 @@ def test_amyg_the_save_round_trip():
 
 def test_amyg_the_sim_twice():
     """amyg 12 (7.4 item 12): the G1 (SimAnatomy, SIM_CFG with the amygdala on) in a stub of its world lives 300 ticks twice from its
-    birth: the same life in every section of the whole state. The `sim` profile of the determinism check (tools/sim_profile.py: a tiny G1
+    birth: the same life in every section of the whole state. The `sim` profile of the determinism check (tools/measure/sim_profile.py: a tiny G1
     under SIM_CFG, the amygdala on, in a stub of its world through a day and R8's whole night) is pinned with the amygdala on in
-    tools/pins/digests.txt since R8d, and the guard checks it threaded and one-thread; the digest here is written down, not pinned"""
+    tools/measure/pins/digests.txt since R8d, and the guard checks it threaded and one-thread; the digest here is written down, not pinned"""
     from body.sim.anatomy import SIM_CFG, SimAnatomy, born_table
     from body.tests.test_anatomy import _whole
     from body.tests.test_frames import _g1_events_world

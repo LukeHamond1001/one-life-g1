@@ -12,7 +12,7 @@ every tensor a buffer saved with the body; it stays on the host, as the robot ru
   declared middle and half-range of its number, saturating at silence and at twice the tonic rate. MEASURED IN R6c: with each joint's
   estimated torque among them (the motor's torque, which carries the servo's correction and the cerebellum's own torque back into its
   input) the pure law's readout drifted and carried the test limb into oscillation at its torque limit within a life day; under the
-  leak it holds all day, as with the angles, velocities and targets alone (tools/cereb_day.py; cereb 10). The organ reads whatever is
+  leak it holds all day, as with the angles, velocities and targets alone (tools/measure/cereb_day.py; cereb 10). The organ reads whatever is
   declared; which numbers the humanoid declares is the lead's call (untested at the G1's scope: W4).
 - THE GRANULE LAYER, born and fixed: `cereb_granule` units, each summing `cereb_fan_in` distinct fibres (drawn at birth) through born
   weights (normal, signed: fibres that rise and fibres that fall with their number, as the vestibular nuclei's two types), and the

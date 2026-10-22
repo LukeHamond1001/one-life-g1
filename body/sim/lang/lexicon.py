@@ -10,7 +10,7 @@ its sound starts, then a space; Words.end() queues END on the tick the line's so
 playback.py, calls both as each word starts to sound, so a line cut at a word's end labels exactly what was said, and withdraws
 a word broken off by the talk-over stop's cap);
 Words.tick() hands out one symbol a tick, in the words' order, each once it is due (so a token can be a tick late behind a busy
-channel, and a word after a spelled one waits for its letters; measured in tools/sim_voice_check.py), and REST when nothing is
+channel, and a word after a spelled one waits for its letters; measured in tools/measure/sim_voice_check.py), and REST when nothing is
 due. Symbols arrive only while the parent is audible (the caller says so each tick, by audible() below: a symbol due while the
 parent is not audible is dropped, never delivered late).
 

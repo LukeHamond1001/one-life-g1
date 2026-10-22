@@ -59,6 +59,7 @@ load_state() carry all of it, the clip of a line under way included, so a replay
 import math
 
 import mujoco
+import re
 import numpy as np
 from body.sim import parent_consts as PK
 
@@ -223,6 +224,13 @@ def come_events(cc, b_abs, moved, dist):
         return ev, True
     return ev, False
 
+def _stem(toy_id):
+    """a toy's word from its id: a scanned object (body/sim/extras.add_gso: cup_7, car_2) is seen as what it is, 'cup', 'car' (2026-10-21
+    17:30: her percept named it cup_7 and her line check refused the form, so no take or naming of a scanned object ever composed);
+    the room's own toys are their word already (ball, bucket2 unchanged)"""
+    return re.sub(r"_\d+$", "", toy_id)
+
+
 class ParentLane:
     """her lane over a G1World (module doc). voice: body/sim/voice/synth.VoiceCache (or anything with its clip()); None: her
     lines are timed at 3 ticks a word and make no sound and no symbol (the conduct's instrument timing). ear: her ear
@@ -238,6 +246,7 @@ class ParentLane:
         self.words = LX.Words()
         self.utt = None                                   # her line under way (playback.Utterance)
         self.sib_utt = None                               # D2 step 4: the sibling's word under way (playback.Utterance), its last (state, toy)
+        self.sib_queue = []                               # E3: the sibling's lines owed in a talk with her, [(text, toy)], said in turn
         self.sib_last = None
         self.voice_done = None                            # the tick a cut line's sound stopped, for the conduct's next tick
         self.word_now = AN_REST
@@ -434,11 +443,13 @@ class ParentLane:
         reaches = rd.reaches(grasp, [(tt, pos[tt]) for tt in visible], holds)
         her = {tt for tt in (pm.holding or {}).values() if tt is not None}
         in_bucket = set()                                                  # A129: the toys lying inside the bucket (A126), by its own frame
-        bucket_b = self.toy_body.get("bucket")
-        if bucket_b is not None:
+        for cname_ in sorted(TP.OPEN_CONTAINERS):                          # (P1 claim two: a second bucket in its room; a toy in either is
+            bucket_b = self.toy_body.get(cname_)                           # seen "in the bucket", the word she has for both)
+            if bucket_b is None:
+                continue
             Rt = d.xmat[bucket_b].reshape(3, 3); ct = d.xpos[bucket_b]
             for tt in self.toys:
-                if tt != "bucket":
+                if tt not in TP.OPEN_CONTAINERS:
                     loc = Rt.T @ (pos[tt] - ct)
                     if abs(loc[0]) < X.BUCKET_IN and abs(loc[1]) < X.BUCKET_IN and X.BUCKET_WALL < loc[2] < X.BUCKET_WALL + X.BUCKET_H + 0.02:
                         in_bucket.add(tt)
@@ -461,7 +472,7 @@ class ParentLane:
             seen.append((tt, on, reach))
         near = PC.Reader.near(head, things, on=on_pairs)
         cols = self.conduct.world["objects"]
-        seen_t = tuple(PC.Seen(id=tt, name=tt, colour=(cols.get(tt) or [""])[0], on=on, child_sees=tt in before,
+        seen_t = tuple(PC.Seen(id=tt, name=_stem(tt), colour=(cols.get(tt) or [""])[0], on=on, child_sees=tt in before,
                                child_can_reach=bool(reach) and tt not in her, near=near.get(tt)) for tt, on, reach in seen)
         events = self._events(world, t, pos, holds, her, ch, in_view, grasp, touch, reaches)
         raw = world.tract_raw
@@ -635,7 +646,7 @@ class ParentLane:
             self.crawl_spell = None; self.crawl_best = 0
         # C284 (2026-10-05): SHE SEES IT STAND AND STEP. Nothing in her face paid for standing or for a step: the events her eyes
         # judged ended at sitting and crawling, so 91 days of its acts were shaped lying down, and on its feet its own trunk and leg
-        # acts tip it over within a second (p1_tools/balprobe.py) with no smile to shape them still. "stood": its pelvis
+        # acts tip it over within a second (p1_tools/life/probes/balprobe.py) with no smile to shape them still. "stood": its pelvis
         # STOOD_PELVIS_M up with its trunk upright, held STOOD_HOLD, once in STOOD_GAP, and at each doubling; "stepped": standing, its
         # pelvis carried STEP_M over the floor, once in STEP_GAP, and at each doubling of the stand's whole way; in her hands or alone
         std_ = post == "sitting" and float(ch.pelvis[2]) >= STOOD_PELVIS_M
@@ -857,8 +868,9 @@ class ParentLane:
             # use for word learning: Baldwin 1991): her eyes go to the line's thing for NAME_GLANCE_TICKS as the line begins, then back
             refs_ = list(getattr(out.line, "refs", None) or ())
             pm_ = getattr(world, "parent", None)
-            if refs_ and pm_ is not None and refs_[0] in getattr(pm_, "toys", {}) and refs_[0] not in (p.child_holds or ()):
-                pm_.glance(refs_[0], ticks=PK.NAME_GLANCE_TICKS)
+            if refs_ and pm_ is not None and refs_[0] in getattr(pm_, "toys", {}) and refs_[0] not in (p.child_holds or ()) \
+                    and not getattr(self, "glance_off", False):            # (P1 claim two: her ask after a hide keeps her eyes on the child:
+                pm_.glance(refs_[0], ticks=PK.NAME_GLANCE_TICKS)            # a glance to the right bucket would answer it; off unless set)
             if out.clip is not None:
                 if self.utt is not None and not self.utt.done:
                     self.utt.cut(words)                     # (the conduct says a line only when her voice is free)
@@ -892,6 +904,17 @@ class ParentLane:
                     self.sib_said = (t, toy_, st_)
                 except Exception as e_:                                # the voice down: the figure stays quiet this time
                     print(f"D2 sibling voice: {type(e_).__name__}: {str(e_)[:80]}", flush=True)
+            elif self.sib_queue and self.sib_utt is None and self.conduct.voice is not None:
+                # E3 (2026-10-19, the owner's word: 'for talking ... have it talk to teacher back and forth'): THE SIBLING'S TURN IN A TALK
+                # WITH HER. Its line (the day plan's: a question or a name about a toy in view) said in its child voice from its head, its
+                # words on the words channel as hers are while it is audible; she answers in her turn (the day plan's request)
+                text_, toy_q = self.sib_queue.pop(0)
+                try:
+                    clip_ = self.conduct.voice.clip(str(text_), "question" if str(text_).endswith("?") else "plain", prosody=SIB_PROSODY)
+                    self.sib_utt = Utterance(clip_, t)
+                    self.sib_said = (t, toy_q, "talk", str(text_))
+                except Exception as e_:
+                    print(f"E3 sibling voice: {type(e_).__name__}: {str(e_)[:80]}", flush=True)
         if self.sib_utt is not None:
             if self.sib_utt.start + self.sib_utt.pos // TICK == t:
                 sw_ = None
@@ -993,6 +1016,7 @@ class ParentLane:
         if self.sib_utt is not None and not self.sib_utt.done:          # D2 step 4: the sibling's word ends where it is too
             self.sib_utt.cut(self.words if self.conduct.scaffold else None)
         self.sib_utt = None
+        self.sib_queue = []                                            # E3: a talk's owed line is not said overnight
         self.words.queue = []
         self.conduct.night()
         self.feel.set_engagement(0.0)
@@ -1036,6 +1060,7 @@ class ParentLane:
         return dict(conduct=self.conduct.state(), feel=feel, words=dict(queue=[[q.tick, q.order, q.sym, q.word] for q in self.words.queue],
                     order=self.words.order, dropped=self.words.dropped, withdrawn=self.words.withdrawn),
                     utt=utt, sib_utt=sib_utt, sib_last=(None if self.sib_last is None else list(self.sib_last)),
+                    sib_queue=[[str(a_), b_] for a_, b_ in self.sib_queue],
                     voice_done=self.voice_done, word_now=self.word_now, face_seen=self.face_seen.copy(),
                     reading=self.reading, reading_t=self.reading_t, test_prev=self.test_prev, fp=_pl(self.fp),
                     toy_z=dict(self.toy_z), falling=sorted(self.falling), child_had=list(self.child_had), held_run=dict(self.held_run),
@@ -1096,6 +1121,7 @@ class ParentLane:
             self.utt = Utterance.restore(clip, pl)
         self.sib_utt = None                                            # D2 step 4 (a save from before it holds no such keys)
         self.sib_last = None if s.get("sib_last") is None else tuple(s["sib_last"])
+        self.sib_queue = [(str(a_), b_) for a_, b_ in s.get("sib_queue", [])]   # E3 (a save before it: none owed)
         if s.get("sib_utt") is not None:
             c = s["sib_utt"]["clip"]
             clip = V.Clip(c["key"], c["text"], c["register"], np.asarray(c["pcm"], np.int16).copy(),

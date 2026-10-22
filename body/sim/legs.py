@@ -7,7 +7,7 @@ given, the twelve leg joints' angles and speeds, its own last output, its own st
 the twelve leg servos' targets and the waist's three. The waist is the layer's in a walk because the gait it learns from walks with
 the trunk upright (Unitree's policy was trained with the waist locked): on this body, where the waist's servos are soft and the
 brain's acts move it, the gait alone fell every 4 to 6 s on the copies with no hold on the trunk, and walked 75 s without a fall
-with the waist held upright (2026-10-13, p1_tools/walk_probe.py walkA/B/E). It is born untrained (weights from its own seed) and learns only inside the life.
+with the waist held upright (2026-10-13, p1_tools/life/probes/walk_probe.py walkA/B/E). It is born untrained (weights from its own seed) and learns only inside the life.
 
 How it learns. In a walk block (the ghost's `walk` mode) the room's gait circuit (Unitree's pretrained policy, W7b) walks the body
 and its leg targets are the teacher's push. Every 20 ms the layer's own output is compared with the teacher's on the state the body is

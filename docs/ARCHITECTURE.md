@@ -8,8 +8,8 @@ ever reset.
 
 A tick is about 150 ms of the body's time. In a tick:
 
-1. **The senses arrive.** Vision (a sharp centre and a coarse periphery rendered from the robot's head), hearing (two ears, her voice as sound),
-   touch and force at the skin zones, the joints' angles and velocities, balance (an IMU), and the words channel: when she speaks,
+1. **The senses arrive.** Vision (a fovea and a periphery rendered from the robot's head), hearing (two ears, her voice as sound),
+   touch and force at the skin zones, the joints' angles and velocities, the vestibular sense, and the words channel: when she speaks,
    the symbol she says (a word she has, or a letter of a word it does not have yet) enters as a token. The child's own output symbol
    enters the same stream marked as its own.
 2. **The predictive model steps.** A small transformer over the stream of symbols and sense frames forecasts the next moment. Its
@@ -17,7 +17,7 @@ A tick is about 150 ms of the body's time. In a tick:
 3. **The memory writes.** A key-value store writes the moment under the stream's state before it, with a strength of
    surprise × (1 + |reward prediction error|): surprising and rewarded moments are written harder and replayed more at night. Recall
    returns the nearest stored moments into the stream and into the policy's input.
-4. **The reward is read.** r = her approval (read from her face by a born face reader: a smile up, a frown down) + its own pain (a force past a threshold
+4. **The reward is read.** r = her face (a smile up, a frown down, read by a born face reader) + its own pain (a force past a threshold
    on a skin zone) + two intrinsic terms described below.
 5. **The critics learn.** A ladder of value heads at several time scales, linear on fixed features of the stream state:
    fast heads by discounted temporal-difference learning, slow heads by average-reward temporal-difference learning. The error of one
@@ -25,18 +25,9 @@ A tick is about 150 ms of the body's time. In a tick:
    recursive least squares.
 6. **The policy chooses.** For each effector (gaze, voice, arms, hands, trunk, legs' command) a softmax over its candidate acts on the
    stream state, with an eligibility trace. It learns by policy gradient: weights += α × (reward prediction error) × eligibility, with
-   each row's norm bounded and a normalisation rule holding each actor's drive near unit scale. Beside every policy but the gaze's an
-   **inverse model** learns, from what the body actually did, which act would have produced the move. Only moves the world carried out
-   teach it: a setting the actuator could not carry out, or a joint nothing pushed, is read as rest. When the body is moved without its
-   own act (her hand guiding its arm, the guide's push on its walk), the move is a **demonstration**: the inverse model's reading of the
-   act behind it becomes a lesson for the forecast of its own acts. A policy's proposal is only as decisive as its inverse model has
-   proved reliable, joint by joint, and, where it is shown demonstrations, as often as its readings agreed with them.
+   each row's norm bounded and a synaptic-scaling rule holding each actor's drive near unit scale.
 7. **The acts go out.** Reflexes below the brain (declared and listed) shape them: an orienting turn toward a face or a voice, the first
-   approach, a grasp on contact, balance. The walk: the brain sends a speed and a heading to a **leg layer** of the body's own (a
-   small network run every 20 ms, below the brain), which learned to step from Unitree's gait controller; the controller's share of
-   the push falls while the layer agrees with it and the commanded turn is followed, and comes back to catch a fall. The limbs'
-   forward models calibrate the turn the brain sends (a gain and an offset learned from the turn made against the turn commanded).
-   Twice a day, on an empty practice floor beside its rooms, the layer practises at the room's pace.
+   approach, a grasp on contact, balance. Walking is Unitree's own gait controller; the brain sends it speed and heading.
 
 ## The intrinsic rewards
 
@@ -46,7 +37,7 @@ A tick is about 150 ms of the body's time. In a tick:
   its own acts' consequences fell below its personal best). Lying still earns nothing; moving without becoming more predictable
   earns nothing.
 
-Both are fractions of a smile. Her approval remains the master signal.
+Both are fractions of a smile. Her face remains the master signal.
 
 ## Events, working memory and imagination
 
@@ -59,8 +50,8 @@ says is held as part of the recall key (private speech as a memory cue).
 
 After 24,000 waking ticks the body sleeps. Nights write no new experience. The day's episodes are drawn with probability proportional
 to their mean surprise × (1 + |reward prediction error|) over the running mean, and replayed: the predictive model is trained on the
-replayed sequences (sequence replay), the stored frames are replayed and re-imagined (dreams), and the policies are credited by the
-replayed reward prediction errors with plain steps. The night runs the physics too, so the forward models of the limbs
+replayed sequences (slow-wave replay), the stored frames are replayed and re-imagined (dreams), and the policies are credited by the
+replayed reward prediction errors with plain steps. The night runs the physics too, so the cerebellum's forward models of the limbs
 keep learning from the body's twitches. Every night of the life has run with every part of this on; there are no ablations.
 
 ## The learning rules, compactly
@@ -78,20 +69,33 @@ night           P(episode) ∝ mean(s · (1 + |δ|)) / running mean
 
 ## What is borrowed, declared and fixed
 
-- Unitree's gait controller as the leg layer's teacher and safety catch: its actions are the layer's lessons, and its share of the
-  push at the legs falls while the layer agrees and comes back for a fall. The brain's speed-and-heading command (the command port)
-  drives the layer.
-- The guide: in her come lesson, a forward and a turning help on the walk command, each with its own share that falls as the child
-  comes and turns toward her on its own. Its shares are in the record every day.
+- Unitree's gait controller under the brain's speed-and-heading command (the command port).
 - The born reflexes: orienting to a face or a voice, the first approach, the grasp reflex, balance, and a face reader that turns her
   expression into a signed signal.
 - Every constant is sourced in `docs/SIM_DESIGN.md` or marked as ours there.
 - One seed, one room, one teacher program (a planner that speaks, shows, hands over, lifts, calls, and smiles or frowns at what it
   sees), simulation only.
 
-## Names: the code and the ledger → this page
+## The switches
 
-The code and the ledger still use older, borrowed names for the parts; this page uses the plain ones. A rename in the code is planned.
+The body reads a few constants as switches (`body/core/physiology.py` SWITCHES, and the keys `body/life.py` lists as INLINE_KEYS). The ones
+that name how a life is run now:
+
+| switch | what it selects | where it came from |
+|---|---|---|
+| `efference_stream` | 0: the copy of the act taken is not fed back on the stream (the copy road closed); 1: the life's original | R1, 2026-10-21 (docs/archive/PREREGISTRATION_P3.md) |
+| `face_form` | how the value organ reads her face: `foresee` forecasts the felt reward | P3 |
+| `lever` | 1: the teacher's lever is a reward source the body feels (`body/sim/anatomy.py` LeverReward) | the living program (docs/PREREGISTRATION_LIVE.md) |
+| `teach_own` | the teacher's correction read on its own acts every tick (the living test's `--teach`) | L1, 2026-10-21 |
+| `eye_dino` | the pretrained eye's channel (DINOv2-small) beside its own | D3a |
+| `own_words`, `own_words_split`, `own_words_lr`, `own_words_balance` | its own words' channel and lesson | D1j, D1o, D1r |
+| `orient_earned`, `place_channels`, `cue_line`, `fwd_scale` | the orienting reward earned, the place channels, the cue line, the forward model's scale | D4b, D4c, D4a, D1s |
+
+A switch that failed its pre-registered test is removed, not left off: R3 (`actor_guided`, the guided acts' credit) went on
+2026-10-21 (`docs/SIM_DESIGN.md`, 'R3 removed'). The watch (W1: `Life.watch_read`, the marks `@wch:`) has no switch; it runs when the
+harness says the body is watching.
+
+## Names: the code and the ledger → this page
 
 | in the code and the ledger | here |
 |---|---|
@@ -104,17 +108,13 @@ The code and the ledger still use older, borrowed names for the parts; this page
 | cerebellum | the limbs' forward models |
 | NREM, REM, dreams | slow-wave replay, frame replay, re-imagination |
 | the cord, reflexes | the controllers below the brain |
-| her face, the smile | her approval: the reward signal |
-| act_inv, the inverse, a demonstration | the inverse model, a move the world made that it learns from |
-| the ghost | the gait controller's harness (its share, the falls it catches) |
-| the leg layer (W9) | the body's own stepping network below the brain |
+| her face, the smile | the reward signal |
 
 ## Where it lives
 
 - `body/core/cortex.py` the predictive model and the store's writes · `body/core/critics.py` the critics · `body/core/actor.py` the
   policy's rule · `body/core/frames.py` events and recall · `body/core/sleep.py`, `body/core/night.py` the night · `body/core/amygdala.py`
-  the value forecast · `body/core/cerebellum.py` the limbs' models · `body/core/cord.py` the reflexes · `body/core/mouth.py` the
-  acts and their inverse · `body/core/timing.py` the inverse's lessons · `body/sim/legs.py` the leg layer · `body/core/physiology.py` every
+  the value forecast · `body/core/cerebellum.py` the limbs' models · `body/core/cord.py` the reflexes · `body/core/physiology.py` every
   constant, with its source.
 - `body/sim/` the world: the G1, the room, her body and her teaching (`body/sim/lang/`), its eyes, ears, voice and pain.
-- `tools/sim_life.py` the life; `tools/sim_rulers.py` the rulers; `tools/determinism_check.py` and `tools/pins/` the pins.
+- `tools/life/sim_life.py` the life; `tools/measure/sim_rulers.py` the rulers; `tools/measure/determinism_check.py` and `tools/measure/pins/` the pins.

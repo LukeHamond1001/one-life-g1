@@ -147,6 +147,15 @@ def test_the_teacher_returns_while_the_turn_is_not_followed():
     followed (whatever the layer's agreement), and holds when the layer disagrees with no turn commanded"""
     import body.sim.ghost as GH
     f = GH.walk_share_step
+    assert not GH.GAIT_FADE and f(0.5, True, 1.0, True) == 0.5 and f(1.0, True, 1.0, True) == 1.0   # A239b: in pretraining no fade
+    GH.GAIT_FADE = True                                                            # the first life's law (W9, W9g):
+    try:
+        _the_fade_law(GH, f)
+    finally:
+        GH.GAIT_FADE = False
+
+
+def _the_fade_law(GH, f):
     assert abs(f(0.5, True, 1.0, True) - (0.5 - GH.WALK_FADE)) < 1e-12           # agrees, follows: the fade
     assert f(0.5, True, 0.1, True) == 0.5 and f(0.5, False, 0.1, True) == 0.5     # does not turn: the hand holds (W9g (3): it no longer returns, the expert's legs turned worse)
     assert f(0.5, False, 1.0, True) == 0.5 and f(0.5, False, 0.1, False) == 0.5    # disagrees, follows (or no turn asked): holds

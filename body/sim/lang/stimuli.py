@@ -8,7 +8,7 @@ PHRASE a form (splice):
   pre   the carrier before it: one recording (the form's carrier word's sentence, or for the name "hi."), its samples before the
         test word's onset tick
   own   the test word: its own sentence's samples from its onset tick through its last loud tick and one silent tick after it,
-        the word said at its own rate (the engine's own per-word rate, whose steps tools/sim_voice_check.py --trial measures)
+        the word said at its own rate (the engine's own per-word rate, whose steps tools/measure/sim_voice_check.py --trial measures)
         and pitch (its contour matched), and at its own level (gain): every test word of the form at one loudest 10 ms, the
         form's TARGET, set under the carrier's and the tag's loudest moments by TRIAL_CEILING_DB at the clip and
         TRIAL_CEILING_EAR_DB at the child's own ears (the level ceiling)
@@ -22,7 +22,7 @@ ears, to their own float rounding, under 1e-6 dB). Band by band at its ears they
 the cochlea's bands, so in most of them her start and stop fall inside the slot and differ as the words' spectra do (P3's
 fourteenth verifier; docs/SIM_DESIGN.md C69b), which the trial's measure since the lead's decision A60b, the proportion of
 looking over a fixed window, never times anything from. The recipe is measured before birth and kept in trial_lines.json
-(tools/sim_voice_check.py --trial --write, the ears' ceiling measured there); the conduct holds every trial to it on the
+(tools/measure/sim_voice_check.py --trial --write, the ears' ceiling measured there); the conduct holds every trial to it on the
 rendered audio (timeline(), same()): a set whose timelines differ in any way, or a sentence whose slot is not under its
 ceiling at the clip, is not used for a trial (the probe is dropped and logged).
 
@@ -51,7 +51,7 @@ from inside the slot hears the word said: docs/SIM_DESIGN.md 4.8, C68, C69.
                 lengths, never share one
   same(timelines) -> None, or why not
   STIMULI, shape(form, word) -> ((word, rate, pitch), None) or (None, why): the table's recipe for a test word (or one of the
-      "where" form's never-told foils, its "foils": A60b's level-2 control, tools/sim_voice_check.py --trial-foils)
+      "where" form's never-told foils, its "foils": A60b's level-2 control, tools/measure/sim_voice_check.py --trial-foils)
   parts(form, word) -> the recordings a sentence is built of and where (pre, own, tag, at, own_from, n_own, gain), or None
   headroom(pcm, at, tag_at) -> the level ceiling's least margin at the clip, dB
   splice(pre_clip, own_clip, tag_clip, at, own_from, n_own, gain_db, text) -> the sentence on its carrier phrase
@@ -96,7 +96,7 @@ def shape(key, word):
     engine's default rate) and pitch (percent over the line's), the voice's shape (synth.line_ssml)."""
     f = STIMULI.get(key)
     if f is None:
-        return None, f"no stimuli built for the form {key!r} ({K.TRIAL_FILE}: tools/sim_voice_check.py --trial)"
+        return None, f"no stimuli built for the form {key!r} ({K.TRIAL_FILE}: tools/measure/sim_voice_check.py --trial)"
     w = f["words"].get(word) or f.get("foils", {}).get(word)          # (a never-told foil of the form: A60b's level 2)
     if w is None:
         why = f.get("unmatched", {}).get(word) or f.get("foils_unmatched", {}).get(word, "not measured")

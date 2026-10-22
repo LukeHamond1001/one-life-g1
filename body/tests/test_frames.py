@@ -5,7 +5,7 @@ What must hold: the anatomy's born event lines are read from each frame by their
 its limb's chain), the G1's 13 in the design's order, and enter the striatal expansion through a block of their own appended after the
 effectors' (every row before born as it was), kept through the night's emptying, REM's imagination and a save (frames 1, R7a). Each is a
 switch or a declaration the language body does not hold: it has none of it (the eight pinned digests are the guard's,
-tools/pins/digests.txt). The stub worlds here are instruments of these tests, not the G1's world."""
+tools/measure/pins/digests.txt). The stub worlds here are instruments of these tests, not the G1's world."""
 import math
 import os
 import pickle

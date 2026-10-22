@@ -28,7 +28,7 @@ HOW SHE IS BUILT
                    lies just behind her skin wherever it ever passes under it (so it never shows through), and the blink carries
                    the upper lid until its margin is past the lower's along the whole fissure (a rigid lid cannot bend to the
                    lower's shape: it goes on behind the lower lid). The upper lash line rides the upper lid's margin and stops on
-                   the lower lid in a blink. Measured in nine lid states by tools/sim_face_measure.py lids (eyes 17).
+                   the lower lid in a blink. Measured in nine lid states by tools/measure/sim_face_measure.py lids (eyes 17).
   THE BROWS        thin shapes lying on the skin (never standing off it), their lower margin at Gao's heights over the lid
                    margin and the canthi, their top 25 mm over the pupil [M]; AU1, AU2 and AU4 move them on the skin.
   THE LIPS         the vermilion as overlapping thin shapes on the skin of her mouth, the mouth 50.2 wide, the upper vermilion
@@ -1198,7 +1198,7 @@ def _brows(sd, bi, bo, bl, sm):
 LIP_UP_N, LIP_LO_N = 20, 16     # the lips' segments (ours)
 LIP_R = (.0060, .0064)          # the upper and lower lips' tube radius (ours: the upper stands 1.9 mm, the lower 2.1 mm off the skin)
 LIP_DRAWN = (0.925, 0.98)       # the tube's chord for each lip over the skin's curve, so that the DRAWN vermilion is [F]'s height
-                                # (measured on the drawn lips: tools/sim_face_measure.py, eyes 12)
+                                # (measured on the drawn lips: tools/measure/sim_face_measure.py, eyes 12)
 MOUTH_CURVE = .0075             # the corners' lift at a full smile (the old face's; the born reading reads it)
 
 

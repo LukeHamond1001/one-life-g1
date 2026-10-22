@@ -47,7 +47,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "tools"))
+sys.path.insert(0, os.path.join(ROOT, "tools", "measure"))
 sys.path.insert(0, os.path.join(ROOT, "body", "sim"))
 from body.sim import world as W  # noqa: E402
 from body.sim import parent_motion as PM  # noqa: E402
@@ -856,7 +856,7 @@ def test_exact_replay_across_a_solve():
 def test_the_catch_pushes_at_once():
     """parent 18 (the W2 verifier's sixth finding; C6): from hovering, 2 ticks after the trunk passes 35 deg her hands' springs pull
     at once toward where the trunk sat most upright (never merely holding where her hands met it), up to her brief caps, and
-    the fall is written down with its depth and its end (C6's count: tools/sim_parent_motion.py catch)"""
+    the fall is written down with its depth and its end (C6's count: tools/measure/sim_parent_motion.py catch)"""
     w = W.G1World(seed=1)
     T.place_g1(w, "sit")
     pm = w.parent

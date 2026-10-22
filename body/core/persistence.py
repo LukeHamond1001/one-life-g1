@@ -46,6 +46,7 @@ from .anatomy import anatomy_for
 from .cerebellum import cerebellum_spec
 from .amygdala import amygdala_spec
 from .frames import recall_spec
+from .cord import cueline_spec
 from .physiology import PHYSIOLOGY
 
 # THE DAY (A70; the module's doc): what of the life's attributes the day does not hold, being held elsewhere or not the life's state: the
@@ -146,7 +147,10 @@ class PersistenceMixin:
                         cerebellum=cerebellum_spec(anatomy, c),                     # and the cerebellum when its switch is on (step R6c; from the save)
                         events=anatomy.events,                                      # and the event lines' striatal line when declared (step R7a)
                         amygdala=amygdala_spec(anatomy, c),                         # and the amygdala when its switch is on (step R7d; from the save)
-                        recall=recall_spec(anatomy, c))                             # and recall's maps when its switch is on (step R7f; from the save)
+                        recall=recall_spec(anatomy, c),                             # and recall's maps when its switch is on (step R7f; from the save)
+                        cueline=cueline_spec(anatomy, c),                           # and the cue line's maps when its switch is on (D4a; born at
+                        effout=int(c.get("efference_stream", 1)) == 0)              # (R1: the efference to the forward half alone)
+                                                                                    # zero beside an older save's organs, strict=False below)
         # A BODY IS BORN WITH ITS SWITCHES (SIM_DESIGN.md A20; the R6c verifier's fourth finding): a save whose organs hold a cerebellum
         # loads only with the switch on, and one whose organs hold none only with it off, every one of the organ's entries from the save
         # (none born fresh at a load, none dropped); the language body's save holds none and its constants no switch, so nothing changes
@@ -568,5 +572,7 @@ class PersistenceMixin:
                         cerebellum=cerebellum_spec(anatomy, cfg),   # organs built last (steps R4, R5; their tables from the body's seed), then the
                         events=anatomy.events,                      # cerebellum when its switch is on (step R6c), the event lines' striatal line (R7a),
                         amygdala=amygdala_spec(anatomy, cfg),       # the amygdala when its switch is on (R7d, the last), recall's maps (R7f);
-                        recall=recall_spec(anatomy, cfg))           # the diary declares none of them
+                        recall=recall_spec(anatomy, cfg),           # the diary declares none of them
+                        cueline=cueline_spec(anatomy, cfg),         # (D4a: the cue line's maps when its switch is on)
+                        effout=int(cfg.get("efference_stream", 1)) == 0)   # (R1: the efference copy to the forward half alone)
         return cls(organs, anatomy, cfg=cfg, device=device, seed=seed, save_path=save_path, world=world)

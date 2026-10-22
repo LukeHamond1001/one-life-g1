@@ -56,7 +56,7 @@ THE CONSTANTS (disclosed; section 10's "voices" row):
                     voices is at enhanced or premium quality
   registers         REGISTERS below: pitch and rate as the design's 4.4 table and the parent spec's D3 table (ours; Fernald 1989's
                     infant-directed contours); calling +6 dB is a level, applied here, not by the engine. Measured over the 331
-                    birth template lines, every ending (tools/sim_voice_check.py): plain 3.56 words a second over the spoken
+                    birth template lines, every ending (tools/measure/sim_voice_check.py): plain 3.56 words a second over the spoken
                     span, F0 203 Hz; approval 239 Hz; comfort 3.08 words a second, 184 Hz; calling 219 Hz at +6 dB
   new word          the parent introduces a new word utterance-finally, on an exaggerated pitch peak (Fernald and Mazzie 1991:
                     mothers put the focused new word on the utterance's pitch peak, in final position, in speech to infants and
@@ -64,7 +64,7 @@ THE CONSTANTS (disclosed; section 10's "voices" row):
                     lengthening in infant-directed speech), on every line she uses for it: the new_word register (rate 0.15; D3's
                     0.2 ran over C25 once the word stopped saying "period") with the new word emphasized, request() refusing a
                     new-word line without it. Measured over the 331 birth lines in it, the line's last word taken as the new word
-                    (tools/sim_voice_check.py): on ".", "?" and "!" lines alike the word is 1.14-1.15 times as long as in the same
+                    (tools/measure/sim_voice_check.py): on ".", "?" and "!" lines alike the word is 1.14-1.15 times as long as in the same
                     line unemphasized (1.12 at the least) and 1.32-1.33 times the plain line's; its F0 1.29-1.30 times both (1.22
                     at the least); 2.93, 2.90 and 2.51 words a second pooled over the ".", "?" and "!" lines, 2.91 over all,
                     and 2.40-2.83 over the design's variation set for a new word ("a X." / "the X!" / "you see the X?") (C25: at
@@ -74,7 +74,7 @@ THE CONSTANTS (disclosed; section 10's "voices" row):
   level             SPEECH_PA: the plain register's speech at 1 m in front of the mouth, 62 dB SPL (0.0252 Pa RMS over the sounding
                     10 ms frames): ANSI S3.5-1997's "normal" vocal effort at 1 m (62.35 dB), recalled from memory, not checked
                     against the standard. SYNTH_RMS is the engine's own RMS over those frames, 0.159 over the 331 birth template
-                    lines of the all-out study (tools/sim_voice_check.py; test_sim_voice.py re-measures it on its lines)
+                    lines of the all-out study (tools/measure/sim_voice_check.py; test_sim_voice.py re-measures it on its lines)
   sample rate       16 kHz (the ears' rate, section 3.4); the engine's own 22,050 Hz resampled with scipy's polyphase filter
   word end          a word ends at its last 10 ms frame above -40 dB of the clip's loudest frame, and at the latest where the
                     next word starts
@@ -123,6 +123,16 @@ ENGINE_RATE = 0.5                          # the engine's default utterance rate
 WORD_END_DB = -40.0
 CACHE_LIMIT = 300 * 2 ** 20
 NICE = 10
+
+
+def _nice_child(n):
+    """the server's own lower priority, where it can be had: a parent already at the bottom (niceness 20) cannot be lowered further,
+    macOS refuses os.nice there (even os.nice(0)), and an exception in a preexec_fn fails the Popen and the test with it (2026-10-20
+    17:39 two expert-ceiling runs; 2026-10-21 05:15 an instrument launched at nice 15 over the shell's 5)"""
+    try:
+        os.nice(n)
+    except OSError:
+        pass
 DOWN_S = 60.0                              # the decision log's rule: a voice server down this long pauses the life at that tick
 
 
@@ -177,7 +187,7 @@ class SynthServer:
             return
         nice = self.nice
         self.proc = subprocess.Popen(self.cmd or [str(self.binary())], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0,
-                                     preexec_fn=(lambda: os.nice(nice)) if nice else None)
+                                     preexec_fn=(lambda: _nice_child(nice)) if nice else None)
         self._buf = b""
         self.starts += 1
 
@@ -389,7 +399,7 @@ def line_ssml(text, pitch, rate, emphasis=None, shape=None):
     one: +30% inside the line's raises the word's F0 by 1.30). A plain line in SSML is the same clip, bit for bit, as the
     utterance with that pitch and rate (measured on the three test lines).
     shape: (word, rate, pitch), a formal trial's test word said at its own rate (percent of the engine's default rate, the
-    engine's own per-word rate: its steps, tools/sim_voice_check.py --trial) and pitch (percent over the line's), so every
+    engine's own per-word rate: its steps, tools/measure/sim_voice_check.py --trial) and pitch (percent over the line's), so every
     sentence a trial's draw could give runs on one timeline in her voice (docs/SIM_DESIGN.md 4.8, P3's twelfth round; its
     values from body/sim/lang/trial_lines.json); on the emphasized word it takes the place of EMPHASIS's values, on another
     word (a combination's colour) it is that word's own prosody. None: the SSML is as it was, bit for bit."""
@@ -416,7 +426,7 @@ def line_ssml(text, pitch, rate, emphasis=None, shape=None):
 def request(text, register="plain", emphasis=None, voice=PARENT_VOICE, prosody=None, shape=None):
     """-> (the key, the request, the register's level in dB). A new word's line must name its new word as emphasis: the parent
     introduces a new word on its pitch peak and lengthened, on every line she uses for it (". ? !" alike; the design's 4.4 and
-    C25, measured by ending in tools/sim_voice_check.py). prosody: (pitch, rate) in place of a register's, at the plain level,
+    C25, measured by ending in tools/measure/sim_voice_check.py). prosody: (pitch, rate) in place of a register's, at the plain level,
     for the parent's ear's templates only (body/sim/parent_ear.py: other voices, the old child pitch; lang/consts.EAR_VOICES);
     never a line she says, whose register is always one of REGISTERS. shape: a formal trial's test word's own rate and pitch
     (line_ssml)."""

@@ -60,7 +60,7 @@ def _born(tok, cfg):
 
 
 def _served_cfg():
-    """the served save's constants as the determinism check's pins froze them (tools/pins/served_cfg.pkl), the physiology's keys"""
+    """the served save's constants as the determinism check's pins froze them (tools/measure/pins/served_cfg.pkl), the physiology's keys"""
     p = os.path.join(ROOT, "tools", "pins", "served_cfg.pkl")
     if not os.path.exists(p):
         return None
@@ -102,7 +102,7 @@ def test_language_anatomy_equals_the_tokenizers_fields():
              ("the toy tokenizer, rest as the end", _toy_tok(), dict(rest_token="<rest>", end_token="<end>", display_token="c"))]
     sc = _served_cfg()
     if sc is not None:
-        cases.append(("the served constants (tools/pins/served_cfg.pkl)", TOK, sc))
+        cases.append(("the served constants (tools/measure/pins/served_cfg.pkl)", TOK, sc))
     for label, tok, cfg in cases:
         life = _born(tok, cfg)
         _same(LanguageAnatomy(tok, cfg), life, label)
@@ -1560,7 +1560,7 @@ def _sleep_now_before_r9(self):
 
 
 def _canon(g, x, path):
-    """every value fed to the hash with its type and shape (as tools/determinism_check.py's --full); an unknown kind stops the test"""
+    """every value fed to the hash with its type and shape (as tools/measure/determinism_check.py's --full); an unknown kind stops the test"""
     if torch.is_tensor(x):
         t = x.detach().cpu().contiguous(); g.update(f"T{t.dtype}{tuple(t.shape)}".encode()); g.update(t.numpy().tobytes())
     elif isinstance(x, dict):

@@ -305,6 +305,8 @@ MOTOR = dict(
     # counts decaying over this many own acts (since 2026-09-24; before, the critics' estimator's samples, one per setting of each
     # joint of an act, so the memory in acts was this over the joints' settings); zero until 64 acts
     act_inv_tau=8192,
+    act_inv_std_at=0,                # A229z (2026-10-19): act_inv's input statistics read once over its first this many own-act pairs and
+                                     # held (model.py inv_read_scale); 0 off (the born 0 and 1, as A229y left them). The second life: SIM_CFG
     act_inv_std_tau=0,               # A229n (2026-10-17): the horizon (own-act pairs) of act_inv's input statistics (model.py inv_standardize);
                                      # A229y (the same night): 0, the statistics held where they stand (no re-fold): A229x's, read from a
                                      # first batch of one pair, pinned the voice's inverse (timing _inv_pinned_reborn); a robust reading owed
@@ -591,6 +593,8 @@ FRAMES = dict(
     imagine_vte=0,                # A182 (2026-10-03): vicarious trial and error (sleep.py _vte_think): at each waking imagining a second future
                                   # from the same moment, the amygdala's forecast weighing the two, the body leaning toward the better one's
                                   # first acts (timing._timing_propose's _vte_term); needs the amygdala and rem_limbs; off at birth
+    rollout_cache=0,              # R13 (2026-10-19): the rollout (sleep.py _rollout: REM on frames, the waking imagination, the deliberation)
+                                  # through the stream's cache while its window grows (the sim's 1); 0 the full read every step
     competence=0,                 # A181 (2026-10-03): the competence drive, body/sim/anatomy.Competence: at each event's end (frames) the body's
                                   # own acts' consequences becoming foreseeable pays COMPETENCE_GAIN x the event's effort x the progress of the
                                   # own-act forecast's skill against the naive forecast (frames._ferr_own_progress; A184); a switch of the

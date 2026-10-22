@@ -47,6 +47,15 @@ LOWER_Z = 0.30                               # m: the pelvis at the lowering's e
 FADE = 1.0 / 2000.0                          # the strength's fall a tick on which the body bears its own weight (ours: a block of bearing takes it to 0)
 RISE = 0.002                                 # the strength's rise a tick on which the ghost carries more than HANG of its weight (ours: 500 ticks hanging bring it back)
 HANG, BEARS = 0.6, 0.3                       # the share of its weight carried that counts as hanging; under which it bears its own (ours)
+GAIT_CATCH = False                           # A239 (2026-10-19, the owner's word: the scaffolds off; the experiences supply what they forced):
+                                             # a fall and a walk out of the rooms no longer give the gait's teacher EDGE_UP back; its share falls
+                                             # as the leg layer agrees (W9's teaching kept), and the room still lifts a fallen body. True: W7c's
+GAIT_FADE = False                            # A239b (2026-10-19, before dawn 1): in pretraining Unitree's gait walks: its share does not fade as the
+                                             # leg layer agrees (W9's fade). Day 0 of the second life, its first command block: the share fell
+                                             # 1.0 to 0.0 in 3,000 ticks on a newborn's layer that agreed in the gait's own states, and with the
+                                             # catch retired (A239) the layer then walked alone and fell 10 times in 1,900 ticks, the pain and
+                                             # the stress with them. The layer still learns from every gait action (W9's lessons); the fade
+                                             # returns, with a measure of the layer's own walking, when pretraining ends. True: W9's fade
 EDGE_UP, EDGE_START = 0.10, 0.20             # W7c (2026-10-09, 20:50, the owner's word: as fast as possible): PRACTICE AT THE EDGE. A fall raises the
                                              # strength by EDGE_UP over where it fell, not back to 1, and a block begins EDGE_START over the last fall's
                                              # strength: day 136's blocks cycled 1 to 0.2 and fell there (0.23, 0.26, 0.21), most of each block spent
@@ -82,8 +91,7 @@ G = 9.81
 # is the policy's own command (EXPERT_V forward, a turn toward the heading) and the torso hold hangs slack EXPERT_DROP under the
 # standing height (the policy stands with its knees at 0.3 rad), catching only a sink. The policy's numbers are Unitree's; ours: the
 # command, the drop, the cap
-POLICY_PATH = __import__('os').environ.get('GHOST_POLICY', __import__('os').path.normpath(__import__('os').path.join(
-    __import__('os').path.dirname(__import__('os').path.abspath(__file__)), '..', '..', 'data', 'expert', 'unitree_g1', 'motion.pt')))   # tools/get_gait.sh fetches it
+POLICY_PATH = __import__('os').environ.get('GHOST_POLICY', '/Users/lukehamond/Projects/project/data/expert/unitree_g1/motion.pt')
 EXPERT_KP = (100., 100., 100., 150., 40., 40., 100., 100., 100., 150., 40., 40.)   # Unitree's g1.yaml
 EXPERT_KD = (2., 2., 2., 4., 2., 2., 2., 2., 2., 4., 2., 2.)
 EXPERT_DEFAULT = (-0.1, 0.0, 0.0, 0.3, -0.2, 0.0, -0.1, 0.0, 0.0, 0.3, -0.2, 0.0)
@@ -144,7 +152,7 @@ GUIDE_OFF_RAD, GUIDE_AGREE, GUIDE_MIN_N = 0.3, 0.6, 50
 # W9g (2026-10-16): THE TEACHER RETURNS WHILE THE COMMAND IS NOT FOLLOWED. W9 let the teacher's share fall while the layer agreed with
 # the teacher's targets (legs.err under ERR_OK), and gave it back only for a fall. The layer's targets can agree in the mean square and
 # still not turn: on the dawn-165 copy the layer followed a steady turn command at 0.34 of it, on the day-175 copy at 0.08 (the expert
-# 0.23; p1_tools/turn_force_probe.py), its running error under ERR_OK throughout, so the hand never came back and the layer never saw the
+# 0.23; p1_tools/life/probes/turn_force_probe.py), its running error under ERR_OK throughout, so the hand never came back and the layer never saw the
 # teacher turn. The body's following of the command is read in the outcome: the yaw rate achieved along the commanded sign over the
 # commanded turn, both as exponential means over TRACK_TAU ticks on the ticks a turn is commanded (|cmd_w| above TRACK_MIN); while the
 # ratio is under TRACK_OK the share rises by TRACK_RISE a tick, and the fade needs the ratio at or above it. The layer learns from the
@@ -175,6 +183,8 @@ def walk_share_step(s, agrees, ratio, commanded):
     the expert turns in place at 0.13 to 0.23 of the command): a hand that comes back must do the thing better than the body alone, and
     this one did not. The share now falls while the layer agrees and the turn is followed, and holds otherwise; the turn followed
     stays as a reading (the block's end line)"""
+    if not GAIT_FADE:                                                   # A239b: the generator's gait keeps the legs in pretraining
+        return float(s)
     if commanded and ratio < TRACK_OK:
         return float(s)
     if agrees:
@@ -281,8 +291,7 @@ class Ghost:
             if os.path.exists(POLICY_PATH):
                 self.expert = torch.jit.load(POLICY_PATH).eval()
             else:
-                self.use_expert = False                              # said aloud: without Unitree's policy the gait is off
-                print(f"gait: Unitree's walking policy not found at {POLICY_PATH}; the gait is off (sh tools/get_gait.sh fetches it)", flush=True)
+                self.use_expert = False
         return self.expert
 
     def obeys_command(self):
@@ -327,6 +336,8 @@ class Ghost:
         self.err_bins = [0] * (len(ERR_BINS) + 1)                          # C361: the block's errors begin afresh
         if self.command and walk:
             self.s = float(self.walk_level)                             # W9b: on its own legs as far as the walks have taught them
+        if walk and not GAIT_FADE:
+            self.s = 1.0                                                # A239b: the generator's gait walks it in pretraining
         self.z_from = float(d.xipos[self.b][2]); self.z_to = self.z_stand; self.lead = np.asarray(d.xipos[self.b][:2], float).copy()
         self.pxy = np.asarray(d.xpos[self.pelvis][:2], float).copy(); self.metres = 0.0; self.win = []
         self.fz_sum = 0.0; self.n = 0
@@ -531,7 +542,7 @@ class Ghost:
                 except Exception as e_i5:
                     _I5("ghost.py:tick_end:502", e_i5)
                     pass
-                self.last[:] = 0.0; self.last_p[:] = 0.0; self.left_room += 1; self.ticks = 0; self.s = min(1.0, self.s + EDGE_UP)
+                self.last[:] = 0.0; self.last_p[:] = 0.0; self.left_room += 1; self.ticks = 0; self.s = min(1.0, self.s + EDGE_UP) if GAIT_CATCH else self.s
                 self.z_from = float(d.xipos[self.b][2]); self.z_to = self.z_stand; self.lead = np.asarray(d.xipos[self.b][:2], float).copy(); self.turning = False
                 print(f"the ghost's walk left the rooms at ({x_:.1f}, {y_:.1f}) at tick {w.tick}: carried to its mat (W7b)", flush=True)
                 self.win = []; self.pxy = np.asarray(d.xpos[self.pelvis][:2], float).copy()
@@ -546,7 +557,7 @@ class Ghost:
             if fallen:                                                      # the catch: the harness takes it again. The first catch
                 if not self.command:
                     self.edge = float(self.s)
-                self.s = min(1.0, self.s + EDGE_UP); self.ticks = 0; self.falls += 1; self.alone = 0   # W7c
+                self.s = min(1.0, self.s + EDGE_UP) if GAIT_CATCH else self.s; self.ticks = 0; self.falls += 1; self.alone = 0   # W7c; A239
                 if self.walk and getattr(w, "legs", None) is not None:
                     w.legs.forget()                                         # (W9: its short memory starts afresh with the new stand): the edge kept, a tenth more help. (16:05) the catch restarted the lift from the fallen pose and hauled a
                 lay = getattr(w, "carry_to_mat", None)                   # child on its front up by the chest, head down (the copy: pain 13

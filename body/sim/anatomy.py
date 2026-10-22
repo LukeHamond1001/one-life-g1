@@ -150,7 +150,14 @@ BREATH_AT = TRACT_AT + 20                                                 # 241
 BODY_SIZE = TRACT_AT + 21                                                 # 242
 TOUCH_SIZE = 2 * len(ZONES) + 2 * len(BODY_JOINTS) + 2 * 6                # 130
 SIZES = dict(face=2, ears=1725, eye_p=172, eye_f=1536, body=BODY_SIZE, touch=TOUCH_SIZE, vestibular=24,
-             loco_cmd=2)                # A224 (2026-10-16): the walk command's own drive felt, [commanded speed, commanded turn] (body/sim/ghost.py cmd_v,
+             loco_cmd=2)
+# D4c (2026-10-20, P1's probes): THE PLACE OBSERVATIONS, as the frame carries them (the born orienting cues' [fired, yaw, pitch] from
+# the fovea's centre, the heard word's look found by the grounding organ among them, the face in the fovea, the sound's side, where her
+# body and its own hands are in its view), apart from SIZES as the pretrained eye's are: declared channels only under place_channels
+PLACE_CHANNELS = (("named_periph", 3), ("gaze_periph", 3), ("salient_periph", 3), ("hand_periph", 3), ("face_periph", 3), ("sound_side", 2),
+                  ("onset_periph", 3), ("face_fovea", 1), ("her_cells", 79), ("self_cells", 16))
+EYE_D_SIZE = 768                        # D3a: the pretrained eye's channel (body/sim/dino.py), apart from SIZES: the born channels' table
+                                        # is iterated by the stub worlds and tests, and a body without the eye declares none                # A224 (2026-10-16): the walk command's own drive felt, [commanded speed, commanded turn] (body/sim/ghost.py cmd_v,
                                         # cmd_w): the corollary discharge of the brainstem's locomotor command, the sense the walk command's inverse reads
 # each limb's flexion joints and their flexion senses, measured on the G1 (the withdrawal's: sim-world's body/tests/test_sim_world.py,
 # world 8; 3.7): a leg's hip pitch -1, knee +1, ankle pitch -1; an arm's shoulder pitch -1 and elbow -1. The spinal pattern generator
@@ -246,6 +253,19 @@ class JointPain(RewardSource):
     def felt(self, frame, life):
         p_ = frame.obs.get("pain")
         return -1.0 if p_ is not None and any(float(x) > 0.0 for x in p_) else None
+
+
+class LeverReward(RewardSource):
+    """THE LEVER (the owner's word 2026-10-21 13:3x: 'a lever in the pocket to control giving dopamine'; docs/PREREGISTRATION_LIVE.md):
+    a press by whoever teaches, felt the tick it is given: the frame's truth 'lever' (the world's `press_lever`: the generator's judge at
+    a task met, a living test's at its tasks, a person's button on the robot), its sign the press's (+ or -), clipped like a press;
+    silent at 0. It never enters the senses (a reward is not a sight; the opponent's eye sees no lever): the road is dopamine's, the
+    amygdala's heads for its two signs, the critics, the actors. Her face stays a sense and source 0; the face organ learns to foresee
+    the lever from her face as it foresees the felt reward, so a smile becomes the lever's secondary. Off (lever 0): no source"""
+
+    def felt(self, frame, life):
+        v_ = float((getattr(frame, "truth", None) or {}).get("lever", 0.0) or 0.0)
+        return v_ if v_ != 0.0 else None
 
 
 class Novelty(RewardSource):
@@ -464,13 +484,26 @@ class SimAnatomy(LanguageAnatomy):
                            reserved=self.reserved, partner=True)
         chans = [words] + [Channel(n, "vector", SIZES[n], organ=f"encs.{n}", forecast=True)
                            for n in ("face", "ears", "eye_p", "eye_f", "body", "touch", "vestibular", "loco_cmd")]   # A224: loco_cmd last (the born codes before it unchanged)
+        if (int(cfg.get("eye_dino", 0)) if cfg is not None else 0):
+            # D3a (2026-10-20, the owner's yes): THE PRETRAINED EYE's channel (body/sim/dino.py: DINOv2-small, frozen, the colour camera's
+            # CLS and the colour window's), last, so every born code before it is as it was; a body without it declares none
+            chans.append(Channel("eye_d", "vector", EYE_D_SIZE, organ="encs.eye_d", forecast=True))
+        if (int(cfg.get("place_channels", 0)) if cfg is not None else 0):
+            # D4c (2026-10-20): THE PLACE OBSERVATIONS AS CHANNELS OF THE CORTEX (the colliculus's and the parietal maps reach the cortex:
+            # the pulvinar's road; a robot's perception stack emits such bearings). Read until now by the born reflexes alone (the
+            # orienting bias, the saccade, the approach; A225's line into the striatum): the stream could hold no 'where' it never
+            # received, and claim two asks for a side remembered after the toy is out of view. Last, so every born code before them is
+            # as it was; each forecast as any channel is, so the stream must carry it to foresee it
+            for n_, k_ in PLACE_CHANNELS:
+                chans.append(Channel(n_, "vector", k_, organ=f"encs.{n_}", forecast=True))
         lim = list(limits) if limits is not None else None
 
         def idx(js):
             return [PER_JOINT * _joint_index(j) + k for j in js for k in range(PER_JOINT)]
         tract = Tract("voice", [5] * len(TRACT), rest_id=(5 ** len(TRACT) - 1) // 2, sense="ears", inverse=True, fwd_gate=True, n_in=3,
                       intrinsic=True, cry={"posture": dict(CRY_POSTURE), "lungs": 0, "glottis": 1, "breath": ("body", BREATH_AT), "pain": "pain"})   # (A179: the glottis, for the breath's braking)
-        voice = VoiceEffector("words", [self.vocab], rest_id=self.sil, end_id=self.space_id, reserved=self.bans, intrinsic=False)
+        voice = VoiceEffector("words", [self.vocab], rest_id=self.sil, end_id=self.space_id, reserved=self.bans, intrinsic=False,
+                              own_words=bool(int(cfg.get("own_words", 0) if cfg else 0)))   # D1j (off unless the body's cfg turns it on)
         gaze = Gaze("gaze", [5, 5, 5], rest_id=62, sense="body", sense_idx=list(range(GAZE_AT, GAZE_AT + 6)), fwd_gate=True,
                     orient={0: ("yaw", 1), 1: ("pitch", 1)}, orient_gate=True, vor=[0, 1], n_in=3,
                     inverse=True)                                       # A98 (C82): an inverse model of its own windows' motion, so its
@@ -502,6 +535,8 @@ class SimAnatomy(LanguageAnatomy):
             rewards.append(Novelty("novelty", clip=NOVELTY_GAIN, signs=(1.0,)))        # A127: the new pays (+), a switch of the body
         if int((cfg or {}).get("competence", SIM_CFG.get("competence", 0))):
             rewards.append(Competence("competence", clip=COMPETENCE_GAIN, signs=(1.0,)))   # A181: mastery of its own doing pays (+), a switch of
+        if int(cfg.get("lever", SIM_CFG.get("lever", 0)) if cfg else SIM_CFG.get("lever", 0)):   # (the read spelled cfg.get: I2 reads it)
+            rewards.append(LeverReward("lever", clip=1.0, signs=(1.0, -1.0)))          # the lever pays (+/-), a switch of the body (lever=1)
         loco = Loco("loco", [5, 5], rest_id=12, sense="loco_cmd", sense_idx=[0, 1], fwd_gate=False, n_in=2, inverse=True,   # W8 (the last: a loaded life's window grows at the end).
                     # A224 (2026-10-16): its consequence sense is its own drive, the command [speed, turn] the ghost integrates (the corollary discharge),
                     # not the pelvis's felt turn rate (W9e): on that the inverse learned nothing in nine days (kappa 0.00 / -0.01: an act's step of 0.006
@@ -613,12 +648,14 @@ SIM_CFG = dict(
     gate_int=0.5, gate_int_form="error", gate_vigor=0.0,
     # R6h's motor effectors (MOTOR): movement units, act_inv batched every 8 ticks with the kappa correction, fatigue per effector
     unit_margin=math.log(4.0), act_inv_every=8, act_inv_chance=1, own_fatigue=1,
+    act_inv_std_at=2048,   # A229z (2026-10-19): act_inv's input read at its data's scale over its first 2,048 own-act pairs, then held
+    rollout_cache=1,       # R13 (2026-10-19): the rollout through the stream's cache while its window grows (body/core/sleep.py _rollout)
     gate_ceiling=1, gate_scaling=1,   # A183: the motor gates' ceiling (rest sampled as activity is: p <= 1 - gate_floor) and their synaptic
                                       # scaling (a logit past logit(1 - gate_floor) scaled back at the tag's reach); on from its landing
     # the born patterns and biases (REFLEX): the spinal pattern generators (their shape and cycles REFLEX's, C54: a movement of 2 ticks'
     # flexion and 3 ticks' extension, the extension returning the flexion's excursion, then a pause, each cycle drawn from the seed,
     # 3.56 +- 1.93 s held to 1.0-8.5 s), the born cry, orienting, the VOR
-    spg=1, cry=1, breath=1, orient=1, vor=1, orient_saccade=1, approach=1,   # A216: the born approach (the locomotor command's step toward her face)   # A173: the born breath (the tract's tidal cycle below the gate)
+    spg=1, cry=1, breath=2, orient=1, vor=1, orient_saccade=1, approach=0,   # A238: breath=2, the air supplied steadily (no drawing back, no running dry: the voice can sound whenever its glottis closes; A173's day-64 silence kept away), the reservoir unlimited; A239: approach=0, the born approach (the guide) retired;   # A216: the born approach (the locomotor command's step toward her face)   # A173: the born breath (the tract's tidal cycle below the gate)
     breath_brake=0.30,   # A179: the newborn's expiratory braking, the glottis narrowed this much of its range a tick through the expiration
                          # (the tract's position follows its target with its own lag: the glottis reaches 0.55 of its range by the fifth tick,
                          # just under the cry's 0.6, where its aerodynamics give a soft voicing on the expiration's last ticks, 5 to 7 mPa at
@@ -674,7 +711,7 @@ SIM_CFG = dict(
     # tag reaching back over the day's record, kept across nights up to the episodes' cap
     night_frames=1,
     # THE NIGHT'S PASSES OVER FRAMES (R8b; PHYSIOLOGY's night_* and rem_*: "the core's night passes run as before", 5.4): the served
-    # language body's own (legacy/language_body/ops/BASE_FLAGS.txt and its save's constants, tools/pins/served_cfg.pkl): the dreams in lockstep batches of 16,
+    # language body's own (legacy/language_body/ops/BASE_FLAGS.txt and its save's constants, tools/measure/pins/served_cfg.pkl): the dreams in lockstep batches of 16,
     # 6 rounds, a dream for each memory the day added, never fewer than 1,024 or more than 2,048; the night's Adam at 1e-5 (the waking
     # rate), warmed over 8 steps, its second moment at 0.99; REM's words drawn at temperature 1 (its 6 rounds of 8 dreams of 8 free steps
     # are PHYSIOLOGY's, the served body's too; the served REM form, "imagine", reads the striatal critic, which the sim does not hold at
@@ -692,7 +729,7 @@ SIM_CFG = dict(
     twitch=1,
     # A71, THE BORN CONFIG AT THE SERVED VALUES (the lead's decision of 2026-09-25 on the PFC-maturation study, docs/audit/pfc_maturation.md:
     # the prefrontal parts mature by use, not by calendar; born whole at full strength, their say grown through readouts born small and
-    # reliability-weighted voices). Each value is the served language body's (tools/pins/served_cfg.pkl, its save's constants), where the
+    # reliability-weighted voices). Each value is the served language body's (tools/measure/pins/served_cfg.pkl, its save's constants), where the
     # tests had added them by hand, unless said:
     # - THE SLOW BANDS KEPT ACROSS THE NIGHT (night_keep_bands 1): zeroed nightly, band 7 reached only about 72% of its settled level by the
     #   day's end and bands 6-7 became a clock of time since waking (the study, section 3);

@@ -482,6 +482,17 @@ class NightMixin:
             return
         self._home_dev = self.dev; self.m.to(nd); self.dev = nd
         self.bands, self.bag_w, self.bag_o = self.bands.to(nd), self.bag_w.to(nd), self.bag_o.to(nd)
+        self._opt_states_to(nd)                                       # (the optimizers the night steps with their moments: act_inv's Adam)
+
+    def _opt_states_to(self, dev):
+        """the persistent optimizers' state tensors moved with their parameters (each moment where its parameter now lives; the step
+        counts stay on the host, as torch's optimizers keep them)"""
+        for v_ in list(vars(self).values()):
+            if isinstance(v_, torch.optim.Optimizer):
+                for st_ in v_.state.values():
+                    for k_, t_ in list(st_.items()):
+                        if k_ != "step" and torch.is_tensor(t_) and t_.device != torch.device(dev):
+                            st_[k_] = t_.to(dev)
 
     def _night_home(self):
         home = getattr(self, "_home_dev", None)
@@ -489,6 +500,7 @@ class NightMixin:
             return
         self.m.to(home); self.dev = home; self._home_dev = None
         self.bands, self.bag_w, self.bag_o = self.bands.to(home), self.bag_w.to(home), self.bag_o.to(home)
+        self._opt_states_to(home)
         if torch.backends.mps.is_available():
             torch.mps.empty_cache()
 

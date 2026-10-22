@@ -91,6 +91,7 @@ import time
 from pathlib import Path
 
 import mujoco
+from body.sim import demo as DM  # noqa: E402  (E1: the experience generator's hands)
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
@@ -706,6 +707,8 @@ class G1World(SimWorld):
         self.sounds = SND.Sounds(self)                                      # the room's sounds from its physics (W5)
         self.heat = np.zeros(len(JOINTS))                                   # each motor's temperature above the room's (degC)
         self.tract = Tract(seed=self.seed)                                   # the voice effector's physics (4.9)
+        self.walk_hand = DM.WalkHand(LOCO_SETTINGS)                          # E1: the experience generator's walk (body/sim/demo.py)
+        self.reach_hand = DM.ReachHand(SETTINGS)                              # E2: the experience generator's reach (body/sim/demo.py)
         self.ears = EA.Ears()                                                # two cochleas at the head's ear sites (P2)
         self.lane = None                                                     # the parent's lane (her voice, the words, her face)
         self.words_out = None                                                # the child's words' output this tick (to her ear)
@@ -865,11 +868,19 @@ class G1World(SimWorld):
                        eye_p=np.zeros(AN.SIZES["eye_p"]), eye_f=np.zeros(AN.SIZES["eye_f"]), onset_periph=np.zeros(3),
                        face_periph=np.zeros(3), face_fovea=np.zeros(1), hand_periph=np.zeros(3), salient_periph=np.zeros(3), gaze_periph=np.zeros(3), self_cells=np.zeros(16), her_cells=np.zeros(79))   # (A208: the born hand cue; A202s: its own hands in view)
         truth = self._truth()
+        if getattr(self, "lever_on", False):                              # THE LEVER (anatomy.LeverReward): this tick's press, then none
+            truth["lever"] = float(getattr(self, "lever_now", 0.0)); self.lever_now = 0.0
+        if getattr(self, "screen", None) is not None:                   # THE SCREEN (extras.ScreenPlayer): this tick's frame on the panel
+            self.screen.tick([getattr(self.eyes, "con", None)])          # before the eyes render it
         if self.eyes is not None and not self.night:                    # the eyes (W3r: the D435's three views at the anatomy's sizes,
             seen = self.eyes.see()                                      # body/sim/eyes.py; A38, A42)
             for k in ("eye_p", "eye_f", "face_fovea", "face_periph", "onset_periph", "hand_periph", "salient_periph", "gaze_periph", "self_cells", "her_cells"):
                 obs[k] = seen.get(k, np.zeros(3))
+            if "eye_d" in seen:
+                obs["eye_d"] = seen["eye_d"]                            # the pretrained eye (body/sim/dino.py), where one is attached
             truth["eyes"] = seen["truth"]
+        if self.eyes is not None and getattr(self.eyes, "dino", None) is not None and "eye_d" not in obs:
+            obs["eye_d"] = np.zeros(768)                                # (its eyes off, the night: nothing seen)
         return Frame(self.tick, obs, face, truth)
 
     def _efference(self, acts):
@@ -1089,6 +1100,18 @@ class G1World(SimWorld):
                     c_ = cord.get(limb)
                     cord[limb] = t_ if c_ is None else tuple(float(a_) + float(b_) for a_, b_ in zip(c_, t_))
                 spinal[limb] = ev_[limb] if limb not in spinal else spinal[limb] + "+" + ev_[limb]
+        if DM.DEMO_REACH and self.spinal:                                  # E2: the data's reach (pretraining; the second life): on a tick
+            try:                                                          # the arm rests, its steps added to the cord's (a move at rest)
+                for eff_, st_r in (self.reach_hand.step(self, int(self.tick), acts) or {}).items():
+                    c_ = cord.get(eff_)                                   # the arm's joints held by the hand (the resting tone's
+                    if c_ is None:                                        # recoil on them overcome, as a hand on an arm overcomes
+                        cord[eff_] = tuple(st_r)                          # it); the hand's opening added to its patterns
+                    elif eff_.startswith("arm"):
+                        cord[eff_] = tuple(float(b_) if j_ < DM.REACH_JOINTS else float(a_) for j_, (a_, b_) in enumerate(zip(c_, st_r)))
+                    else:
+                        cord[eff_] = tuple(float(a_) + float(b_) for a_, b_ in zip(c_, st_r))
+            except Exception as e_i5:
+                _I5("world.py:apply:E2", e_i5)
         own = self._efference(acts)                                     # the efference copy (the own acts, after the grasp's sum)
         steps = {}                                                      # every act read before anything moves (a bad act moves nothing)
         for name, js in G.EFFECTORS:
@@ -1130,6 +1153,18 @@ class G1World(SimWorld):
             k_ = (float(getattr(self.ghost, "go_share", self.ghost.reflex_share)), float(self.ghost.reflex_share))   # forward step by its
             push_ = [k_[j_] * float(b_) for j_, b_ in enumerate(cl_)]                                              # own, the turn by the
             lstep = [float(a_) + p_ for a_, p_ in zip(lstep, push_)]                                                # guide's)
+        if DM.DEMO_WALK and self.ghost.on and self.ghost.command and self.parent is not None:   # E1: the data's walk to her (pretraining;
+            try:                                                          # the second life): summed and sensed as the cord's push was
+                her_ = np.asarray(self.parent.base["at"][:2], float); xy_ = np.asarray(self.d.xpos[self.pelvis_id][:2], float)
+                Rp_ = self.d.xmat[self.pelvis_id].reshape(3, 3)
+                hs_ = self.walk_hand.step(xy_, math.atan2(Rp_[1, 0], Rp_[0, 0]), her_, float(self.ghost.cmd_v), float(self.ghost.cmd_w), int(self.tick), own=lstep,
+                                           yaw_rate=float((Rp_ @ np.asarray(self.d.qvel[3:6], float))[2]),   # (the free joint's turn is the body's frame's)
+                                           called=self._come_called())
+                if hs_ is not None:
+                    push_ = [float(p_) + h_ for p_, h_ in zip(push_, hs_)]
+                    lstep = [float(a_) + h_ for a_, h_ in zip(lstep, hs_)]
+            except Exception as e_i5:
+                _I5("world.py:apply:E1", e_i5)
         self._loco_push = push_                                           # A228b: what the cord added to the command this tick (the next
         self.ghost.command_step(*lstep)                                   # frame's loco_cmd_push)
         lok0_ = self._loco_ok(); ly0_ = self._pelvis_yaw() if lok0_ else None   # A227: the tick's start, for the turn's error at its end
@@ -1395,6 +1430,8 @@ class G1World(SimWorld):
         near_ = lambda xy: float(np.hypot(float(xy[0]) - self.DOOR_XY[0], float(xy[1]) - self.DOOR_XY[1]))
         op = bool(self.door_open) or near_(self.d.qpos[:2]) < 0.5 \
             or (getattr(self, "parent", None) is not None and near_(self.parent.base["at"]) < self.DOOR_NEAR_M)
+        if getattr(self, "door_shut", False) and not self.door_open:
+            op = False                                                      # D2ah: a demo world's door stays shut (its second room unseen)
         pos, quat = self._door_swung if op else self._door_closed
         self.m.geom_pos[self._door] = pos; self.m.geom_quat[self._door] = quat
         return op
@@ -1830,6 +1867,45 @@ class G1World(SimWorld):
         hand and +y on the right in the link's frame, as the parent reads it: parent_motion.Child)"""
         return self.d.xmat[self.palm_body[h]].reshape(3, 3) @ np.array([0.0, -1.0 if h == 0 else 1.0, 0.0])
 
+    def closing(self, hand):
+        """E2: the hand's closing joints and the sign of their closing step (reflexes.CLOSING)"""
+        return R.CLOSING[hand]
+
+    def joints_of(self, name):
+        """an effector's joints in its act's order"""
+        return dict(G.EFFECTORS)[name]
+
+    def _come_called(self):
+        """E1b: whether she has called the child to her in the come lesson: her call's window open (the lane's come_call), or her call
+        from the spot she keeps made within the last COME_GAP and a window (the day plan's come state)"""
+        ln_ = getattr(self, "lane", None)
+        if ln_ is None:
+            return False
+        if getattr(ln_, "come_call", None) is not None:
+            return True
+        st_ = getattr(getattr(ln_, "plan", None), "come", None)
+        if not st_ or st_.get("spot") is None or st_.get("called") is None or st_.get("at") is None:
+            return False
+        return int(st_["called"]) >= int(st_["at"]) and int(self.tick) - int(st_["called"]) <= 320
+
+    def effector_rest(self, name):
+        """an effector's rest act (every joint at setting 2)"""
+        return EFFECTOR_REST[name]
+
+    def _shoulder_xyz(self, arm):
+        """E2: the arm's shoulder (its first joint's body) in the world"""
+        j_ = self.m.joint(G.EFFECTORS[[n_ for n_, _ in G.EFFECTORS].index(arm)][1][0]).id
+        return np.asarray(self.d.xpos[int(self.m.jnt_bodyid[j_])], float)
+
+    def arm_dls(self, arm, point, err, lam, n=7):
+        """E2: the move of the arm's first n joints (from the shoulder) that brings a point fixed on its hand (the palm link's) by err
+        (m): damped least squares on the point's Jacobian over those joints"""
+        h_ = 0 if arm == "arm_l" else 1
+        jp_ = np.zeros((3, self.m.nv))
+        mujoco.mj_jac(self.m, self.d, jp_, None, np.asarray(point, float), int(self.palm_body[h_]))
+        J_ = jp_[:, self.dof[self.eff_slices[arm]][:n]]
+        return J_.T @ np.linalg.solve(J_ @ J_.T + (lam ** 2) * np.eye(3), np.asarray(err, float))
+
     def grasp_centre(self, h):
         """where a toy held in a hand's grasp sits (A171): HAND_DEPTH_M out from the middle of the palm's face along its normal"""
         g = self.palm_geom[h]
@@ -1962,6 +2038,11 @@ class G1World(SimWorld):
                         "F_last": F[0].copy(), "imu_torso": np.concatenate([imu[0, 0:3], imu[0, 3:6]]),
                         "ears": np.zeros(AN.SIZES["ears"]), "sound_side": np.zeros(2)}
 
+    def press_lever(self, x=1.0):
+        """THE LEVER pressed for the next frame (+1 or -1; the generator's judge at a task met, a living test's, a person's button):
+        felt by anatomy.LeverReward where the body has the switch; `lever_on` marks a world whose frames carry it (0 when unpressed)"""
+        self.lever_on = True; self.lever_now = float(x)
+
     def _truth(self):
         """world truth for the parent and the instruments (never the body)"""
         m, d = self.m, self.d
@@ -2022,6 +2103,8 @@ class G1World(SimWorld):
                               "vest": [float(self._vest_pitch), float(getattr(self, "_vest_roll", 0.0)), bool(self._vest_on),   # R9 (2026-10-16): the canals' lean,
                                        float(getattr(self, "_sup_lp", 0.0)), float(getattr(self, "_tone_w", 1.0))],   # the hold felt and the tone's share (C287)
                               "ghost": self.ghost.state(),                                   # W7
+                              "walk_hand": self.walk_hand.state(),                           # E1: shown or tried, its count
+                              "reach_hand": self.reach_hand.state(),                         # E2: the reach under way, shown or tried
                               "lane": None if self.lane is None else self.lane.state()}),
                 "warnings": np.array([int(d.warning[i].number) for i in range(int(mujoco.mjtWarning.mjNWARNING))]),
                 "legs": (self.legs.snapshot() if self.ghost.walk else None) if fast else self.legs.state()}   # W9 (a tick's snapshot only while it learns)
@@ -2082,6 +2165,10 @@ class G1World(SimWorld):
         self._loco_err = None if not lc_ or lc_[1] is None else [float(x) for x in lc_[1]]
         self._loco_cmd = None if not lc_ or lc_[2] is None else [float(x) for x in lc_[2]]
         self._loco_push = [float(x) for x in s5.get("loco_push", (0.0, 0.0))]   # A228b (an older save: none shown)
+        if s5.get("walk_hand") is not None:                                # E1 (a save before it: no block seen)
+            self.walk_hand.load_state(s5["walk_hand"])
+        if s5.get("reach_hand") is not None:                               # E2 (a save before it: no reach seen)
+            self.reach_hand.load_state(s5["reach_hand"])
         self._driven = tuple(str(x) for x in s5.get("driven", ()))   # A230 (an older save: none)
         vs_, vt_ = s5.get("vor_slip"), s5.get("vor_turn")               # (A174; older saves or an empty pair: none)
         self._vor_slip = None if not vs_ else np.asarray(vs_, float).copy()

@@ -12,7 +12,7 @@ below the gate, each by its rule (motors 6 and 7); a vector channel's born code 
 orienting bias, its gate input and the VOR's constants (motor 9); the G1's anatomy numbers its effectors as the design does and its
 performance error lands on the tract's gate alone (motor 11); a motor body saved anywhere (inside a day, at a night's boundary) goes on
 as the life that went on, bit for bit, its day saved whole (motor 12, A70). Each is a switch or a declaration the language body does
-not hold: it has none of it (the eight pinned digests are the guard's, tools/pins/digests.txt). The stub worlds here are instruments
+not hold: it has none of it (the eight pinned digests are the guard's, tools/measure/pins/digests.txt). The stub worlds here are instruments
 of these tests, not the G1's world."""
 import collections
 import math
@@ -1854,6 +1854,74 @@ def test_act_inv_statistics_held_and_a_pinned_inverse_born_again():
     print(f"A229y: the statistics held through {int(L.motor[0]['inv_n'])} pairs taught; an unpinned inverse reloaded to the bit; a pinned one",
           f"(bias 1e6) born again at the load (its units beyond 20 on {100 * frac:.0f}% of inputs of one scale), statistics born, moments",
           "let go, reliability zero")
+
+
+def test_act_inv_reads_its_scale_once_and_holds_it():
+    """motor (A229z, 2026-10-19): ACT_INV'S INPUT READ AT ITS DATA'S SCALE, ONCE, THEN HELD. (1) The read: over its first n_at own-act
+    pairs the statistics stay born (0 and 1); at the n_at-th they are the pairs' own mean and scale, the function unchanged to the
+    float (the exact re-fold from the born statistics); more pairs leave them where they stand. (2) Off at 0, and never over statistics
+    A229n or A229x moved. (3) In a life (act_inv_std_at in its constants) the batched lessons read them once and hold them. (4) What
+    it is for: a walk-command-like inverse (levels 0 to 0.5, steps 0.006 and 0.018 decaying 0.97 a tick), taught on Adam's pace,
+    reads the steps within 3,000 pairs after the read and not on the raw pair. Fails without A229z"""
+    import torch.nn.functional as F_
+    from body.model import MotorTiming
+    torch.manual_seed(1)
+    n_ = 6000; steps_ = torch.tensor([-0.018, -0.006, 0.0, 0.006, 0.018]); dig_ = torch.randint(0, 5, (n_, 2))
+    v_ = torch.zeros(2); s0_, s1_ = [], []
+    for i_ in range(n_):
+        s0_.append(v_.clone()); v_ = (v_ * 0.97 + steps_[dig_[i_]]).clamp(-0.6, 0.6); v_[0] = v_[0].clamp(0.0, 0.5); s1_.append(v_.clone())
+    S0, S1 = torch.stack(s0_), torch.stack(s1_); X = torch.cat([S0, S1 - S0], -1)
+    tm = MotorTiming([5, 5], 16, 2, True, 64, torch.Generator().manual_seed(0))
+    with torch.no_grad():
+        f0 = torch.cat(tm.inverse_logits(S0[:64], S1[:64]), -1)
+    tm.inv_read_scale(X[:1000], 2048)
+    assert torch.equal(tm.inv_sd, torch.ones_like(tm.inv_sd)) and float(tm.inv_c) == 1000.0
+    tm.inv_read_scale(X[1000:2048], 2048)
+    mu_, sd_ = X[:2048].mean(0), X[:2048].std(0, unbiased=False)
+    assert torch.allclose(tm.inv_mu, mu_, atol=1e-6) and torch.allclose(tm.inv_sd, sd_, rtol=1e-4), (tm.inv_mu, mu_, tm.inv_sd, sd_)
+    with torch.no_grad():
+        f1 = torch.cat(tm.inverse_logits(S0[:64], S1[:64]), -1)
+    assert float((f1 - f0).abs().max()) < 1e-5, float((f1 - f0).abs().max())
+    held_ = tm.inv_sd.clone(); tm.inv_read_scale(X[2048:], 2048)
+    assert torch.equal(held_, tm.inv_sd) and float(tm.inv_c) == 2048.0
+    off_ = MotorTiming([5, 5], 16, 2, True, 64, torch.Generator().manual_seed(0)); off_.inv_read_scale(X, 0)
+    assert torch.equal(off_.inv_sd, torch.ones_like(off_.inv_sd)) and float(off_.inv_c) == 0.0
+    moved_ = MotorTiming([5, 5], 16, 2, True, 64, torch.Generator().manual_seed(0))
+    with torch.no_grad():
+        moved_.inv_sd.fill_(0.5)
+    moved_.inv_read_scale(X, 64)
+    assert torch.equal(moved_.inv_sd, torch.full_like(moved_.inv_sd, 0.5)) and float(moved_.inv_c) == 0.0
+    # (3) in a life
+    cfg = dict(wake_ticks=100000, wake_every=8, gate_every=8, write_floor=1e-30, fast_rls=0, gate_floor=0.6, act_inv_every=8,
+               act_inv_std_at=32)
+    L = _born_limbs(cfg, _limb_world()); tl = L.m.timing["limb"]; run = WorldLoop(L)
+    for _ in range(200):
+        run.step()
+        if float(tl.inv_c) >= 32:
+            break
+    assert float(tl.inv_c) >= 32 and not torch.equal(tl.inv_sd, torch.ones_like(tl.inv_sd)), (float(tl.inv_c), int(L.motor[0]["inv_n"]))
+    held2_ = tl.inv_sd.clone()
+    for _ in range(40):
+        run.step()
+    assert torch.equal(held2_, tl.inv_sd)
+
+    # (4) what it is for
+    def taught(read_at):
+        t_ = MotorTiming([5, 5], 16, 2, True, 64, torch.Generator().manual_seed(0))
+        opt_ = torch.optim.Adam(t_.inv.parameters(), lr=1e-3); hit_ = []
+        for b_ in range(0, n_, 8):
+            a0, a1, d_ = S0[b_:b_ + 8], S1[b_:b_ + 8], dig_[b_:b_ + 8]
+            if b_ >= n_ - 1000:
+                with torch.no_grad():
+                    hit_.append((torch.stack([l_.argmax(-1) for l_ in t_.inverse_logits(a0, a1)], -1) == d_).float().mean(0))
+            t_.inv_read_scale(torch.cat([a0, a1 - a0], -1), read_at)
+            opt_.zero_grad(); lg_ = t_.inverse_logits(a0, a1)
+            sum(F_.cross_entropy(l_, d_[:, j_]) for j_, l_ in enumerate(lg_)).backward(); opt_.step()
+        return torch.stack(hit_).mean(0)
+    raw_, read_ = taught(0), taught(2048)
+    assert float(read_.min()) > 0.8 and float(raw_.min()) < 0.6, (raw_, read_)
+    print(f"A229z: the scale read once at 2,048 pairs (the function unchanged), held after; the walk command's steps read "
+          f"{[round(float(x), 2) for x in read_]} (speed, turn) after 6,000 pairs against {[round(float(x), 2) for x in raw_]} on the raw pair")
 
 
 def test_an_act_the_world_drove_teaches_act_inv_nothing():

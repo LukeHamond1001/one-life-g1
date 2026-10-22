@@ -81,7 +81,7 @@ __all__ = ["collections", "math", "os", "time", "torch", "F", "Organs", "Store",
 # change retired (a save's constants keep them). The unknown-key warning (review 2026-09-06) named the first at every load of the life
 # (actor_cues, actor_sense, actor_norm_tau, shape_bands, stress_slow, read and in force) beside the retired vte_adapt (A192): a warning
 # that names keys in force teaches its reader to ignore it. body/tests/test_cfg_keys.py holds this list to the code's reads
-INLINE_KEYS = frozenset(("actor_cues", "actor_norm_tau", "actor_sense", "forecast_scaling", "shape_bands", "shape_tau", "store_off", "stress_slow"))
+INLINE_KEYS = frozenset(("act_stream_gain", "actor_cues", "cue_line", "eye_dino", "orient_earned", "place_channels", "actor_norm_tau", "actor_sense", "forecast_scaling", "fwd_scale", "guided_rest_detached", "own_words", "own_words_balance", "own_words_lr", "own_words_split", "shape_bands", "speak_std", "shape_tau", "store_off", "stress_slow", "teach_own", "efference_stream", "lever"))   # (D1j: own_words, own_words_lr; D1o: own_words_split; D1r: own_words_balance; D1s: fwd_scale; D4a: cue_line; D4b: orient_earned; D4c: place_channels; L1: teach_own; R1: efference_stream)
 RETIRED_KEYS = {"vte_adapt": "A192"}
 
 
@@ -370,7 +370,13 @@ class Life(LedgerMixin, SensesMixin, MemoryMixin, CortexMixin, MouthMixin, Criti
         # optimizers: the day's (the cortex and its forecasts), the striatum's (the gate), the critic's. A body with later effectors:
         # the day's holds every parameter but act_pred's and the corrections', which step with opt_pred (below; the diary has none)
         gated_ = {id(p_) for e_ in self.anatomy.motors for p_ in self._gated_params(e_)}
+        wp_ = list(self.m.word_pred.parameters()) if hasattr(self.m, "word_pred") else []   # D1j: the own-word forecast's own optimizer (below)
+        wp_ += list(self.m.speak_pred.parameters()) if hasattr(self.m, "speak_pred") else []   # (D1o: its speaking's head with it)
+        gated_ = gated_ | {id(p_) for p_ in wp_}
         self.opt_day = torch.optim.Adam([p_ for p_ in self.m.parameters() if id(p_) not in gated_] if gated_ else self.m.parameters(), lr=float(self.cfg["live_lr"]))
+        if wp_:
+            self.opt_words = torch.optim.Adam(wp_, lr=float(self.cfg.get("own_words_lr", 3e-4)))   # D1j: its rate its own (not saved: its
+                                                                                                  # moments rebuild); no attribute without it
         if int(self.cfg.get("gate_ear", 0)) and self.m.mouth_gate.in_features == self.m.d + 5:
             self.m.widen_gate(2)                                # THE EAR: two inputs, born at zero
         if str(self.cfg.get("gate_opt", "sgd")) == "adam":

@@ -34,7 +34,7 @@ squeezed in a Dex3 hand stopped MuJoCo 3.9 ("FactorizeHessian: rank-deficient sp
 8 of 360 grasp trials blew up to NaN about 0.1 s into the fingers' closing and MuJoCo silently reset them; elliptic with
 multi-point CCD off gave 0 of 360 and a clean babble. IMPRATIO 10 IS CHOSEN BY THE PHYSICS OF THESE CONTACTS AND MUJOCO'S GUIDANCE
 (the owner's decision of 2026-09-24, made for him in the W1 verifier's third round; never by pain rates or by which toys can be
-held; tools/sim_friction.py, see the option's comment): rubber-soled fingertips on plastic toys, toys and the body on a foam mat,
+held; tools/measure/sim_friction.py, see the option's comment): rubber-soled fingertips on plastic toys, toys and the body on a foam mat,
 and motor housings on housings are all contacts that hold without a slide below their sliding force; MuJoCo's soft contacts creep
 there by design, and MuJoCo 3.9's documentation names the remedy (elliptic cones with a large impratio and the Newton solver).
 MuJoCo's auto-reset is off (A18), so a bad state is never silently replaced by the start pose: the world finds it and stops the tick.
@@ -159,7 +159,7 @@ def lights_xml():
     return "\n    ".join(f'<light name="{n}" {a} diffuse="{f(*dif)}" ambient="{f(*(ROOM_INDIRECT * np.array(dif)))}" specular="{f(*spe)}"/>'
                           for n, a, dif, spe in LIGHTS)
 
-# her face's calibrated albedos (tools/sim_face_photometry.py --calibrate; Russell, Kramer and Jones 2017, under a studio's frontal
+# her face's calibrated albedos (tools/measure/sim_face_photometry.py --calibrate; Russell, Kramer and Jones 2017, under a studio's frontal
 # light with her own shading in): the eyes by the iris's lightness (the prototype's brown, its hue kept), the brows and lips as her
 # hair's and the prototype's lip colour over her skin at the found share (the hue kept, the strength found). Not calibrated, ours:
 # the sclera's off-white and the lash line at half her hair's colour over her skin (sparse lashes)
@@ -183,7 +183,7 @@ MAT = dict(
     # theirs in their albedo, baked when written (face_shaded below). The sclera, the brows and the lips are each at the albedo
     # whose CIE L* contrast against the skin around it is a young woman's under a studio's frontal light, her own shading in
     # (Russell, Kramer and Jones 2017, table 2, no cosmetics: the eyes 0.152, the brows 0.126, the lips 0.092), found by
-    # tools/sim_face_photometry.py --calibrate (the sclera's grey; the brows as her hair's colour over her skin; the lips as the
+    # tools/measure/sim_face_photometry.py --calibrate (the sclera's grey; the brows as her hair's colour over her skin; the lips as the
     # prototype's lip colour over her skin: each keeps its hue, only its strength is found) and checked by body/tests/
     # test_sim_eyes.py eyes 13. No drawn highlight on the eyes (the W1 verifier's specks): the corneas' own specular gives the
     # room's lamps' reflections, dark at night.
@@ -495,10 +495,10 @@ TOYS = dict(
 
 
 # Each toy's size relative to the all-out maker's (made for the 12-month-old's mitten): every toy at its own size. The G1 study
-# (m_grasp_g1.py, now tools/sim_grasp.py: a stock Dex3 hand at its stock gains, a hand-over into the palm 6 tries and a top grasp
+# (m_grasp_g1.py, now tools/measure/sim_grasp.py: a stock Dex3 hand at its stock gains, a hand-over into the palm 6 tries and a top grasp
 # from a surface 3, per toy) found at impratio 1 the ball, duck, bear and drum held at no scale from 0.6 to 1.0 and the cup only at
 # 0.8, so the cup was made 0.8. That was the soft contacts' creep. With impratio chosen by physics (10, the option's comment;
-# tools/sim_grasp.py on the built room, 2026-09-24, none unstable): at 1 the ball 0 of 9, the block 9, the duck 0, the cup at 0.8
+# tools/measure/sim_grasp.py on the built room, 2026-09-24, none unstable): at 1 the ball 0 of 9, the block 9, the duck 0, the cup at 0.8
 # 5 and at its own size 0, the rattle 5, the car 5, the bear 0, the stacker 3, the drum 0, the ring 6 of 6 hand-overs; at 10 the
 # ball 9, the block 9, the duck 7, the cup at 0.8 9 and at its own size 9, the rattle 6 of 6 hand-overs (0 of 3 top grasps), the
 # car 8, the bear 2, the stacker 9, the drum 0, the ring 6 of 6 hand-overs. (Stock gains closing to the range's end; the grasp
@@ -867,7 +867,7 @@ def face_shaded(mat):
     share = kin.face.ao_share(ROOM_INDIRECT)
     ao = {"eye": float(rig["ao_eye"]), "lid": float(rig["ao_lid"]), "caruncle": float(rig["ao_caruncle"])}
     parts = {"sclera": "eye", "iris": "eye", "pupil": "eye", "fornix": "eye", "lid": "lid", "caruncle": "caruncle"}   # the lash line's
-    # colour is calibrated as seen (tools/sim_face_photometry.py), its shade in
+    # colour is calibrated as seen (tools/measure/sim_face_photometry.py), its shade in
     out = {k: dict(v) for k, v in mat.items()}
     for n, part in parts.items():
         rgba = [float(x) for x in out[n]["rgba"].split()]
@@ -904,7 +904,7 @@ def scene_xml(folder=HERE, layout="a", body="a", door=False):
   <!-- multi-point CCD off: with it on (MuJoCo 3.9's default) 2-4 of 12 hand-overs of the block or the car into a Dex3
        hand blew up about 0.1 s into the fingers' closing (NaN accelerations, an automatic reset); off, none did -->
   <!-- impratio 10: friction's impedance ten times the normal's. CHOSEN BY THE PHYSICS OF THESE CONTACTS (the owner's decision
-       of 2026-09-24, made for him; tools/sim_friction.py, measured 2026-09-24 at 1 and 10, never by pain rates or grasp counts):
+       of 2026-09-24, made for him; tools/measure/sim_friction.py, measured 2026-09-24 at 1 and 10, never by pain rates or grasp counts):
        real rubber, plastic, foam and housings hold without a slide below mu N; MuJoCo's soft contacts creep there "by design"
        (MuJoCo 3.9 docs, Overview, "Softness and slip"), and the docs name the remedy: "using the Newton solver with elliptic
        friction cones and large value of impratio is the recommended way of reducing slip" (ibid.; Modeling, "Solver

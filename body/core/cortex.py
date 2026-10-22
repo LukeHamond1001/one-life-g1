@@ -155,12 +155,28 @@ class CortexMixin:
                         bk_ = (st_.get("now") or {}).get("blk")                 # and the push the world shows into it (A228b: an effector
                         if bk_ is not None:                                     # with the born approach)
                             self.win[-1]["blk:" + e_.name] = bk_
+                        if (st_.get("now") or {}).get("guided"):                # D1e: a guided act at this position (never in a life)
+                            self.win[-1]["gdd:" + e_.name] = True
+                            if (st_.get("now") or {}).get("watched"):           # W1: read from the senses by the inverse model
+                                self.win[-1]["wch:" + e_.name] = True
+                            if (st_.get("now") or {}).get("label") is not None:     # D1y: the act to learn apart from the act done (-1: none)
+                                self.win[-1]["lbl:" + e_.name] = int(st_["now"]["label"])
+                        elif (st_.get("now") or {}).get("taught"):              # L1: its own act with the teacher's correction beside it
+                            self.win[-1]["tch:" + e_.name] = True
+                            if (st_.get("now") or {}).get("label") is not None:     # (none: the teacher's act was the act done)
+                                self.win[-1]["lbl:" + e_.name] = int(st_["now"]["label"])
+                    if (getattr(self, "_label_acts", None) or {}).get("words") == -1:   # D1y: its words at this tick no lesson (a DAgger
+                        self.win[-1]["lbl:words"] = -1                                   # run's silenced voice: its silence not the expert's)
                         if e_.inverse and getattr(e_, "approach", None):
                             pu_ = self._sense_push(e_)
                             if pu_ is not None:
                                 self.win[-1]["push:" + e_.name] = pu_.detach().float().cpu()
                     if self._recall_on():
                         self.win[-1]["frec"] = self._frec_now  # step R7f: the recall the tick's proposals read (body/core/frames.py)
+                    if self._cue_line_on():
+                        q_ = getattr(self, "_cue_now", None)   # D4a: the cue line they read (body/core/cord.py; none read this tick: none)
+                        if q_ is not None and q_[0] == self.ticks:
+                            self.win[-1]["cue"] = q_[1].detach().float().cpu()
                 self._pos_open = False
             if who == 0 and not self._pos_open and getattr(self, "_C_last", None) is not None:
                 C = self._C_last                               # the last filled position's stream, and its forecast
@@ -233,6 +249,21 @@ class CortexMixin:
             if any(k_ in w for w in win):
                 obs["@blk:" + e_.name] = torch.tensor([[bool(x_) for x_ in w[k_]] if len(w.get(k_) or ()) == F_ else [False] * F_ for w in win],
                                                       dtype=torch.bool, device=self.dev)
+        for e_ in (self.anatomy.motors if lesson else ()):      # D1e: the positions whose act was guided (the D1 trainer's; a life: none)
+            k_ = "gdd:" + e_.name
+            if any(k_ in w for w in win):
+                obs["@gdd:" + e_.name] = torch.tensor([bool(w.get(k_, False)) for w in win], dtype=torch.bool, device=self.dev)
+            kw_ = "wch:" + e_.name                                     # W1: the positions watched (the inverse model's reading forced)
+            if any(kw_ in w for w in win):
+                obs["@wch:" + e_.name] = torch.tensor([bool(w.get(kw_, False)) for w in win], dtype=torch.bool, device=self.dev)
+            kt_ = "tch:" + e_.name                                     # L1: the positions the teacher corrected (its own acts)
+            if any(kt_ in w for w in win):
+                obs["@tch:" + e_.name] = torch.tensor([bool(w.get(kt_, False)) for w in win], dtype=torch.bool, device=self.dev)
+            kl_ = "lbl:" + e_.name                                     # D1y: the label at each position (-2: the act done; -1: none)
+            if any(kl_ in w for w in win):
+                obs["@lbl:" + e_.name] = torch.tensor([int(w.get(kl_, -2)) for w in win], dtype=torch.long, device=self.dev)
+        if lesson and any("lbl:words" in w for w in win):       # D1y: the positions whose words are no lesson (-1; else -2)
+            obs["@lbl:words"] = torch.tensor([int(w.get("lbl:words", -2)) for w in win], dtype=torch.long, device=self.dev)
         pus_ = [(e_, int(w_)) for _, e_, w_ in self._tape_pushers()] if (lesson and hasattr(self, "_tape_pushers")) else []
         if pus_ and any(("push:" + e_.name) in w for w in win for e_, _ in pus_):
             # A233: the push the world showed into each position, the pushers' in order ('@push' [T, widths], '@pushk' [T] where known), as
@@ -246,6 +277,9 @@ class CortexMixin:
         if self.anatomy.motors and self._recall_on():           # step R7f: each position's recall into action (none: an imagined position's, zeros)
             z_ = torch.zeros(self.m.d, device=self.dev)
             obs["@frec"] = torch.stack([w.get("frec", z_) for w in win])
+        if lesson and self.anatomy.motors and self._cue_line_on():   # D4a: each position's cue line (none read there: zeros)
+            zq_ = torch.zeros(3 * len(self.anatomy.orienting))
+            obs["@cue"] = torch.stack([w.get("cue", zq_) for w in win]).to(self.dev)
         whos = torch.tensor([w["xo"] for w in win], device=self.dev)   # its own symbols, one per tick
         bundles = torch.stack([w["bundle"] for w in win])
         reads = torch.stack([w["read"] for w in win])
@@ -315,6 +349,31 @@ class CortexMixin:
             # the store missed and undid the night: run 13, day 4)
             pred = m.latent_pred(C)
             ll, lc = m.latent_loss(pred, y, w=w)
+            lw_ = None
+            if getattr(self, "opt_words", None) is not None:
+                # D1j: THE OWN-WORD FORECAST'S LESSON: word_pred at each position taught its own symbol at the next (the rest included:
+                # its silences are its own too), the efference copy, weight 1, through the stream as act_pred's own acts are
+                wh_ = whos.to(self.dev).long()
+                yo_ = torch.cat([wh_[1:], wh_[-1:]])
+                wo_ = torch.ones(T, device=self.dev); wo_[-1] = 0.0
+                lwd_ = obs.get("@lbl:words")                       # D1y: a position whose next words are no lesson (-1) teaches none
+                if lwd_ is not None:
+                    wo_ = wo_ * (torch.cat([lwd_[1:], lwd_[-1:]]) != -1).float()
+                if int(self.cfg.get("own_words_split", 0)) and hasattr(m, "speak_pred"):
+                    # D1o: WHAT IT SAYS, taught where it spoke (its silences 99% of the positions taught the rest everywhere: its best
+                    # word the expert's 1 in 11, its chance of speaking 0.023 where the expert spoke and 0.028 where it was silent); WHEN,
+                    # its speaking's head on the stream read detached (it learns from the stream, not the stream from it: D1n's rests
+                    # through the stream moved the word organ's reading of it), by the speaking's log loss at every position
+                    spk_ = (yo_ != int(self.sil)).float()
+                    lw_, lwc_ = m.latent_loss(m.word_pred(C), yo_, w=wo_ * spk_) if bool((spk_ * wo_).any()) else (None, 0.0)
+                    zs_ = m.speak_pred(self._speak_in(C.detach(), learn=True)).squeeze(-1)   # (D1v: read by its running spread)
+                    pw_ = self._speak_balance(spk_, wo_, count=True)              # D1r: the rare speaking weighed as the common rest
+                    zb_ = zs_ if pw_ is None else zs_ + torch.log(pw_)              # (the head kept in the probability's own units)
+                    ls_ = (F.binary_cross_entropy_with_logits(zb_, spk_, reduction="none", pos_weight=pw_) * wo_).sum() / wo_.sum().clamp_min(1.0)
+                    lw_ = ls_ if lw_ is None else lw_ + ls_
+                else:
+                    lw_, lwc_ = m.latent_loss(m.word_pred(C), yo_, w=wo_)
+                ll = ll + lw_
             # THE LATER CHANNELS' FORECASTS (step R4): each later channel that declares a forecast is foreseen by its own head, the
             # channel's code at the next position as the target (held still: the head learns to foresee the code, not the code to
             # meet the head), by the squared error latent_loss uses; the diary's face declares none, so its lesson is as before
@@ -364,17 +423,24 @@ class CortexMixin:
             else:
                 torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0)
             self.opt_day.step()
+            if lw_ is not None:
+                torch.nn.utils.clip_grad_norm_(list(m.word_pred.parameters()), 1.0)
+                self.opt_words.step()                                # D1j: the own-word forecast's step
             if motor_:
                 # act_pred and the corrections: one plain step on the lesson's own gradient, the plasticity scale above divided out
                 # (R6 fix 8, the R6 verifier's eighth look: kept, it made act_pred the one waking parameter stress reached, four times at
                 # the ceiling, and at a hundred times the served rate its bound held every element and the arm diverged), each element bounded
                 self._timing_step((1.0 + self.stress / 10.0) * gate_)
             out = {"latent_cos": round(lc, 3), "forecast_cos": round(fc, 3), "n_world": int(w.sum()), "tick": self.ticks}
+            if lw_ is not None:
+                out["own_words"] = [round(float(lw_.detach()), 4), round(lwc_, 3)]   # D1j: its loss and its cosine
             if motor_:
                 out["motor"] = {k_: dict(v_, w=round(v_["w"], 4), w_own=round(v_["w_own"], 4), w_lab=round(v_["w_lab"], 4),
                                          s_lab=round(v_["s_lab"], 4), rel=round(v_["rel"], 4)) for k_, v_ in mrep.items()}           # the timing parts' lesson (step R6)
         finally:
             self.opt_day.zero_grad(set_to_none=True)
+            if getattr(self, "opt_words", None) is not None:
+                self.opt_words.zero_grad(set_to_none=True)
             if motor_:
                 self.opt_pred.zero_grad(set_to_none=True)
             m.eval()

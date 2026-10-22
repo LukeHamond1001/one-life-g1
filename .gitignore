@@ -34,6 +34,3 @@ ops/demo_replay.py
 ops/demo_video.py
 ops/film_assemble.py
 ops/film_sound.py
-
-# the editor's own notes
-.claude/

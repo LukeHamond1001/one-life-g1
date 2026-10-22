@@ -594,6 +594,37 @@ class MotorTiming(nn.Module):
             b.add_(W @ ((mu_n - mu) / sd)); W.mul_((sd_n / sd).unsqueeze(0))   # (b with the old W and sd, then W)
             self.inv_mu.copy_(mu_n); self.inv_sd.copy_(sd_n)
 
+    def inv_read_scale(self, x, n_at):
+        """A229z (2026-10-19): ACT_INV'S INPUT READ AT ITS DATA'S SCALE, ONCE, THEN HELD (A229y's owed robust reading). Over its first
+        `n_at` own-act pairs the moments of its input [s0, s1 - s0] (`x` [n, 2 sense_n]) are summed (inv_m1, inv_m2, the count inv_c);
+        at the n_at-th pair the mean and the scale are set from them, each dimension's scale floored at INV_SD_FLOOR of the dimensions'
+        RMS scale (A229x (2)), with A229n's exact re-fold of the first layer (the function unchanged to the float, as the born statistics
+        0 and 1 are left), and held from then on: no later re-fold. WHY: A229y held the born statistics (act_inv_std_tau 0), so the
+        second life's walk command, whose step (0.006 to 0.018) is a hundredth of its level, was read on the raw pair and its inverse
+        never learned (kappa 0.01 to 0.02 over its first three days, 5,000 own acts a day, while the arms' rose 0.02 to 0.5): the walks
+        E1 shows were never labelled as the acts they equal. What pinned the voice under A229x was the statistics' movement after Adam
+        had stepped its weights at a scale read too small (the later re-folds multiplied them up to a millionfold); read once from
+        n_at pairs and held, a scale is never multiplied up after. Only from the born statistics (an inverse whose statistics A229n or
+        A229x moved keeps them); n_at <= 0: off (the first life and the language body, as A229y left them)"""
+        if not self.inverse or int(n_at) <= 0:
+            return
+        with torch.no_grad():
+            if float(self.inv_c) >= float(n_at):
+                return                                                          # read and held
+            if bool(self.inv_mu.abs().max() > 0) or bool((self.inv_sd - 1.0).abs().max() > 0):
+                return                                                          # statistics moved by A229n/A229x: kept as they stand
+            x = x.detach().float().reshape(-1, int(self.inv_mu.numel())).to(self.inv_mu.device)
+            self.inv_m1.add_(x.sum(0)); self.inv_m2.add_((x * x).sum(0)); self.inv_c.add_(float(x.shape[0]))
+            if float(self.inv_c) < float(n_at):
+                return
+            c_ = float(self.inv_c)
+            mu_n = self.inv_m1 / c_
+            sd_n = torch.sqrt(torch.clamp(self.inv_m2 / c_ - mu_n * mu_n, min=0.0))
+            sd_n = torch.clamp(torch.maximum(sd_n, float(INV_SD_FLOOR) * torch.sqrt((sd_n * sd_n).mean())), min=1e-8)
+            W, b = self.inv[0].weight, self.inv[0].bias
+            b.add_(W @ mu_n); W.mul_(sd_n.unsqueeze(0))                         # A229n's re-fold from (0, 1): b + W mu', W diag(sd')
+            self.inv_mu.copy_(mu_n); self.inv_sd.copy_(sd_n)
+
 
 class Block(nn.Module):
     def __init__(self, d, heads):
@@ -613,7 +644,7 @@ class Organs(nn.Module):
     """all the learned organs, one module, saved with the body"""
 
     def __init__(self, vocab, d=256, layers=6, heads=4, window=64, clocks=CLOCKS, birth_act=0.25, channels=None, effectors=None, born_seed=0,
-                 cerebellum=None, events=None, amygdala=None, recall=None):
+                 cerebellum=None, events=None, amygdala=None, recall=None, cueline=None, effout=False):
         super().__init__()
         self.vocab, self.d, self.window = int(vocab), int(d), int(window)
         self.clocks = tuple(int(c) for c in clocks)
@@ -798,6 +829,30 @@ class Organs(nn.Module):
                             raise ValueError(f"Organs: the effector {e.name!r} senses its body on {e.sense!r}, a channel the organs were not given")
                         sn = len(e.sense_idx) if e.sense_idx is not None else int(chans[e.sense].size)
                     self.timing[e.name] = MotorTiming(e.factors, d, sn, bool(getattr(e, "inverse", False)), int(getattr(e, "inv_hidden", 64)), g_tim)
+            # D1j (2026-10-19): THE MOUTH'S OWN-WORD FORECAST, act_pred's twin for the voice (word_pred): the stream at a position -> the
+            # forecast of its OWN symbol at the next (the rest included), in the lexicon's space, read by the readout as the words'
+            # forecast is (pred . E_k its probability of saying k). Built when the voice declares own_words (the sim's cfg own_words), from
+            # a generator of its own with the global random stream left where it was, born unsure as act_pred is; no other body builds it
+            from .core.anatomy import voice_index
+            vo_ = (effectors or [None])[voice_index(effectors)] if effectors else None
+            if getattr(vo_, "own_words", False):
+                g_w = torch.Generator().manual_seed(int(born_seed) + 48271813)
+                with torch.random.fork_rng(devices=[]):
+                    self.word_pred = nn.Linear(d, d)
+                    with torch.no_grad():
+                        self.word_pred.weight.copy_(torch.randn(d, d, generator=g_w) * 4e-4); self.word_pred.bias.zero_()
+                    # D1o (2026-10-20): WHEN IT SPEAKS, apart from WHAT (the gate's and act_pred's split, for the voice): the stream at a
+                    # position -> the logit of its speaking at the next, born at zero weight and its bias at the logit of 0.01 (silent
+                    # as a newborn's voice mostly is); used where the voice's lessons split (cfg own_words_split)
+                    self.speak_pred = nn.Linear(d, 1)
+                    with torch.no_grad():
+                        self.speak_pred.weight.zero_(); self.speak_pred.bias.fill_(math.log(0.01 / 0.99))
+                    # D1r: the positions the speaking head has been taught at, and those where it spoke (its lessons' count; the rate of
+                    # speaking it reads its balance from, own_words_balance)
+                    self.register_buffer("speak_n", torch.zeros(2))
+                    # D1v: the stream's running mean and spread per unit the speaking head may read it by (speak_std), and their count
+                    self.register_buffer("speak_mu", torch.zeros(d)); self.register_buffer("speak_var", torch.ones(d))
+                    self.register_buffer("speak_k", torch.zeros(1))
             # THE PATTERN GENERATORS' BORN PHASES (the core refactor's step R6h, docs/SIM_DESIGN.md 3.7, A48; body/core/cord.py): when a motor
             # effector declares a spinal pattern generator, one phase per motor effector (a fraction of the cycle) drawn from a generator of
             # its own seeded by the body's seed, for those whose declaration names none (the arms: no coupling written between them and the
@@ -848,6 +903,29 @@ class Organs(nn.Module):
                     mp = nn.Linear(int(d), int(n_set), bias=False)
                     nn.init.zeros_(mp.weight)
                     self.recall[name] = mp
+        # THE CUE LINE (D4a, 2026-10-20; body/core/cord.py `_cue_line`): `cueline` is what body/core/cord.py `cueline_spec` gives for a
+        # body whose switch is on (the line's width, each motor effector's name and its settings), None otherwise. Each motor effector's
+        # map from the born orienting cues to a score per setting, read back through its acts' rows into its proposal (no bias, born at
+        # zero: at birth it leaves every proposal exactly as it is). It draws no random number, so every organ is born as it is without it
+        if cueline is not None:
+            self.cueline = nn.ModuleDict()
+            for name, n_set in cueline["effectors"]:
+                mp = nn.Linear(int(cueline["n"]), int(n_set), bias=False)
+                nn.init.zeros_(mp.weight)
+                self.cueline[name] = mp
+        # R1 (2026-10-21, the owner's word: pretraining from recordings done right): THE EFFERENCE COPY OUT OF THE STREAM. `effout` (the
+        # switch efference_stream 0): each later effector's own act no longer enters the cortex's input (so the stream that proposes the
+        # next act, the gates and the forecasts read no copy of the act just done: the copy of its own last act, P2 section 8e, had no
+        # road in); the corollary discharge goes to the forward half alone, through a map per effector from the tick's efference (every
+        # effector's acts, as the stream held them) to its sense's forecast, added to its forecast from the stream (no bias, born at zero;
+        # built only when the switch is on, after every other organ; at birth it leaves every forecast as the stream alone gives it)
+        if effout and motor:                                   # (no attribute without the switch: the organs as they were)
+            self.eff_fwd = nn.ModuleDict()
+            for name_, tm_ in self.timing.items():
+                if int(getattr(tm_, "sense_n", 0) or 0) > 0:
+                    mp = nn.Linear(int(d), int(tm_.sense_n), bias=False)
+                    nn.init.zeros_(mp.weight)
+                    self.eff_fwd[name_] = mp
         # THE AMYGDALA (the core refactor's step R7d, docs/SIM_DESIGN.md 7.4, A16; body/core/amygdala.py): `amygdala` is what
         # body/core/amygdala.py `amygdala_spec` gives for a body whose switch is on (its event lines, its heads, its horizon), None otherwise.
         # Built last, after every other organ; it draws no random number (its evidence and weights born at zero), so every organ above is
@@ -904,15 +982,33 @@ class Organs(nn.Module):
             # instrument's fault (a store holding only the cue), not the cortex's.
             own = (xos != self.sil_id).to(u.dtype).unsqueeze(-1)
             u = u + float(self.own_gain) * own * self.E(xos)
+        if getattr(self, "eff_fwd", None) is None:              # (R1: with the switch, the efference copy goes to the forward half alone)
+            for e in anatomy.motors:
+                # A LATER EFFECTOR'S OWN ACT (step R5), its efference copy at the same corollary discharge, after the voice's: `obs` holds
+                # its acts under its name ([T] flat acts, its rest where it did not act); its rest sounds nothing, as the voice's does
+                acts = obs[e.name]
+                own = (acts != int(e.rest_id)).to(u.dtype).unsqueeze(-1)
+                u = u + float(self.own_gain) * own * self.get_submodule(e.organ)(acts)
+        for c in anatomy.channels[k:]:
+            u = u + (codes[c.name] if (codes is not None and c.name in codes) else c.encode(self, obs[c.name]))
+        return self.in_ln(u)
+
+    def efference(self, anatomy, obs, like=None):
+        """THE EFFERENCE COPY of the later effectors' own acts at each position, summed (step R5): each effector's acts under its name in
+        `obs` ([T] or [B, T] flat acts, its rest where it did not act) entering as its act's row at own_gain, its rest as nothing (as the
+        voice's rest sounds nothing). The stream's input term (R1: the forward half's alone under efference_stream 0)"""
+        u = None
         for e in anatomy.motors:
             # A LATER EFFECTOR'S OWN ACT (step R5), its efference copy at the same corollary discharge, after the voice's: `obs` holds its
             # acts under its name ([T] flat acts, its rest where it did not act); its rest sounds nothing, as the voice's does
             acts = obs[e.name]
-            own = (acts != int(e.rest_id)).to(u.dtype).unsqueeze(-1)
-            u = u + float(self.own_gain) * own * self.get_submodule(e.organ)(acts)
-        for c in anatomy.channels[k:]:
-            u = u + (codes[c.name] if (codes is not None and c.name in codes) else c.encode(self, obs[c.name]))
-        return self.in_ln(u)
+            row = self.get_submodule(e.organ)(acts)
+            own = (acts != int(e.rest_id)).to(row.dtype).unsqueeze(-1)
+            t_ = float(self.own_gain) * own * row
+            u = t_ if u is None else u + t_
+        if u is None:
+            return torch.zeros_like(like) if like is not None else 0.0
+        return u
 
     def head(self, anatomy, i):
         """channel i's forecast head (step R4): channel 0's, the words', is latent_pred (the forecast the mouth reads); a later

@@ -91,7 +91,7 @@ two ear sites' positions and every sounding source (its 2,400 samples as pressur
 
 The channel code (the born projection reads it): the two cochleas' 15 x 40 frames and the 21 x 25 delay lines, 1,725 numbers a
 tick (the design's first 1,557 had 17 lags; amended in its 3.4 by P2). On speech at 1.5 m the two parts are of one scale (RMS 0.23-0.25 each: the test and
-tools/sim_voice_check.py measure it). World truth never enters it: Heard.levels (each source's level at each ear this tick,
+tools/measure/sim_voice_check.py measure it). World truth never enters it: Heard.levels (each source's level at each ear this tick,
 dB SPL) and Heard.gains (each source's ray-path spreading to each ear, dB re 1 m, whatever it plays; the head's diffraction is
 in the levels) are for the world's side only (the words channel's "audible", the instruments).
 

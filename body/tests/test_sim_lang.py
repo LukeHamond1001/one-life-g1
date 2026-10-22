@@ -11,7 +11,7 @@ within one day, "understood" by her everyday asks or at a word's own chance, a t
 differs from the ledger). The ear's rules are tested on an
 ear built from the tract's own sounds (no engine needed), in two processes threaded and on one thread; the engine's templates are
 tested for exact rebuilds where swiftc and macOS speech are present. The full ear (11 voices, the babble bank, its margins and
-cost) is built and measured by tools/sim_parent_ear.py.
+cost) is built and measured by tools/measure/sim_parent_ear.py.
 Tests 17-23 are the P3 verifier's findings, each failing on 5ea4c4e at its own assertion: an approximation smiled at out of context
 (17), an ask met unanswered (18), a word the talk-over stopped counted as said (19), a second new word erasing the first (20), the
 acts losing their object (21), the line check blind to what a line claims (22), the small items (23); and a write reaching her
@@ -70,7 +70,7 @@ Test 69 is P3's eleventh verifier's blocking finding (1387a44) and the lead's de
 ended on different ticks in her voice, so a child that knew no word, hitting her 2 ticks after her sound stopped, had one word's
 trials voided and the other's met ("block" understood in every life), and one looking 14 ticks after her sound stopped had one
 word's trials met and the other's none. Now every sentence a trial's draw could give is made on one identical timeline, as infant
-labs match their stimuli (body/sim/lang/stimuli.py, trial_lines.json from tools/sim_voice_check.py --trial: one carrier a form,
+labs match their stimuli (body/sim/lang/stimuli.py, trial_lines.json from tools/measure/sim_voice_check.py --trial: one carrier a form,
 its test word at the engine's own per-word rate and a matched pitch contour), checked on the rendered audio, the words channel
 with it while the scaffold labels her lines; a set that is not one timeline is never used. 69 turns her draw over for children
 timed from 12 anchors of what they hear and see (her voice's start, her sound's stop and her mouth's closing at three levels, her
@@ -111,7 +111,7 @@ the probe, registered apart): a knower of the kind passes both, a knower of its 
 keyed by one band of its ear to the drum fail level 2; no judgment follows a trial. Since the lead's three decisions after
 200e57a it also holds level 2's control to a never-told foil (each new exemplar set down beside two things of two other words,
 its word or a foil of its written syllables said by her stream's fair coin; consts.WORD_FOILS, measured in her voice by
-tools/sim_voice_check.py --trial-foils): a child that knows only the other words, excluding at any word it does not know, maps
+tools/measure/sim_voice_check.py --trial-foils): a child that knows only the other words, excluding at any word it does not know, maps
 and is never understood; a knower of the kind is understood (at 12 trials when its looks at a foil spread over the three, at 24
 when its look goes to one of them); disclosed, what the foil leaves open (exclusion gated on how often a word was heard, a novelty
 cue beside familiar things, closed by things as new as the exemplar); the foils never her words; a probe of two words, with a
@@ -697,7 +697,17 @@ def test_cut_words_not_said():
 
 def test_new_words_in_a_day():
     """finding 4: a second new word in one day erased the first ("rattle" then "ring": only "ring" joined at the night). The
-    requests come a minute apart (NEW_EVERY, A14; test 28 holds the pace)."""
+    requests come a minute apart (NEW_EVERY, A14; test 28 holds the pace). The day's limit tested at 3 (the second life's is 6, C376)"""
+    assert K.NEW_PER_DAY == 6
+    was = K.NEW_PER_DAY
+    K.NEW_PER_DAY = 3
+    try:
+        _new_words_in_a_day()
+    finally:
+        K.NEW_PER_DAY = was
+
+
+def _new_words_in_a_day():
     toys = TOYS + seen(("rattle", "rattle", "purple", "mat", True), ("ring", "ring", "green", "mat", True),
                        ("stacker", "stacker", "orange", "mat", True), ("book", "book", "white", "mat", True))
     con = C.Conduct(seed=5)
@@ -948,7 +958,7 @@ def say(word, pitch, n=4, seed=11):
 
 
 def babble(seed, ticks):
-    """the voice study's babbler (as tools/sim_parent_ear.py): a unit of 1-8 ticks with probability 1 / 14.5 a tick, each
+    """the voice study's babbler (as tools/measure/sim_parent_ear.py): a unit of 1-8 ticks with probability 1 / 14.5 a tick, each
     articulator's step drawn and held through it."""
     rng = np.random.default_rng(seed)
     tr = T.Tract(seed)
@@ -1387,7 +1397,7 @@ def test_cost():
     rest_ms = (time.perf_counter() - t1) * 1e3 / max(1, min(500, len(rest)))
     assert rest_ms < 0.5, f"a silent tick costs {rest_ms:.3f} ms"
     print(f"14 the transcriber over {len(stream)} babble ticks ({tx.n_utts} turns): {wall / len(stream):.3f} ms a tick with this "
-          f"small ear (tools/sim_parent_ear.py measures the full one); a silent tick {rest_ms * 1e3:.0f} us")
+          f"small ear (tools/measure/sim_parent_ear.py measures the full one); a silent tick {rest_ms * 1e3:.0f} us")
 
 
 def test_ear_exact_across_threads():
@@ -2300,7 +2310,7 @@ def test_gaze_leak_closed():
 def test_new_word_on_its_peak():
     """finding 2 (A34): she introduced new words in frames that put an earlier word on the line's pitch peak (17 of the 210
     introduction lines measured by the verifier with the tool's own f0_word). The line check now refuses a new word's line
-    unless it was measured on its peak (body/sim/lang/peak_lines.json, tools/sim_voice_check.py --peak)."""
+    unless it was measured on its peak (body/sim/lang/peak_lines.json, tools/measure/sim_voice_check.py --peak)."""
     found = [("look. eyes.", "eyes"), ("see? eyes!", "eyes"), ("look. open.", "open"), ("it is red.", "red"),
              ("the block is red!", "red"), ("it is yellow.", "yellow"), ("the block is yellow!", "yellow"),
              ("it is little.", "little"), ("it is all.", "all"), ("it is out.", "out"), ("it is off.", "off"),
@@ -2628,9 +2638,14 @@ def test_imperfect_parent_and_talk_over():
     act = np.array([4, 4, 2, 4, 2, 2, 2, 4, 2, 0])
 
     def talk(stage, nonstop=False):
-        tract = T.Tract(1)
-        on = (lambda t: t % 10 < 8) if nonstop else (lambda t: 6 <= t < 9)
-        snd = {t: tract.tick(act if on(t) else None) for t in range(80)}
+        was_ = T.BREATH_LIMIT
+        T.BREATH_LIMIT = True                         # (her talk-over law under the first life's breath: A238's unlimited air holds a
+        try:                                          #  phonation the child does not end itself, and 'never stops' is then every tick)
+            tract = T.Tract(1)
+            on = (lambda t: t % 10 < 8) if nonstop else (lambda t: 6 <= t < 9)
+            snd = {t: tract.tick(act if on(t) else None) for t in range(80)}
+        finally:
+            T.BREATH_LIMIT = was_
         con = _perfect(seed=2, transcriber=Transcriber(None), stage=stage)
         if nonstop:
             con.nonstop_since, con.sound_hist = 0, [True] * K.NONSTOP[1]
@@ -7422,6 +7437,32 @@ def test_the_unseen_label_is_a_show():
     _run_to(con3, 3, t0=200)
     assert [tuple(a[1:3]) for a in con3.acts_open if a[1] == "show"] == [("show", "duck")], (con3.acts_open, con3.fast.refused[-3:])
     print(f"lang 73: a label of the block the child cannot see became her show of it {said}; a label of the duck it looks at stayed one {said2}; the duck in view but not looked at: a show (C304)")
+
+
+def test_a_thing_she_cannot_name_is_let_be():
+    """lang (C378, 2026-10-19): the child's eyes on the bucket, its name not hers: her follow-in composes its set once, every line
+    refused ('not her word'), and lets the bucket be for SET_PER_OBJECT ticks (no set of it composed again before), where before C378
+    she composed one on every tick (the second life's day 3: 'a bucket. a bucket.' refused 374 times in 1,770 ticks); a toy she can
+    name is still named when the child looks at it"""
+    con = _pair_con()
+    room_ = TOYS + seen(("bucket", "bucket", "red", "mat", True))         # (the test's room with the bucket in its view)
+    _run_to(con, 200, seen_=room_)
+    tg = lambda t, c: "bucket"
+    n0 = len(con.fast.refused)
+    _run_to(con, 1, t0=200, target=tg, seen_=room_)
+    first = [r for r in con.fast.refused[n0:] if "bucket" in str(r[1])]
+    assert first and all("not her word" in str(r[2]) or "unseen" in str(r[2]) for r in first), con.fast.refused[n0:]
+    assert con.fast.last_set.get("bucket") == 200, con.fast.last_set
+    n1 = len(con.fast.refused)
+    _run_to(con, 40, t0=201, target=tg, seen_=room_)
+    again = [r for r in con.fast.refused[n1:] if "bucket" in str(r[1])]
+    assert not again, again[:3]
+    con2 = _pair_con()
+    _run_to(con2, 200)
+    said = [getattr(s.line, 'text', s.line) for t, s in _run_to(con2, 12, t0=200, target=lambda t, c: "duck") if s.line is not None]
+    assert any("duck" in str(x) for x in said), said
+    print(f"lang (C378): the bucket looked at, its name not hers: {len(first)} lines refused once, none again in 40 ticks; the duck "
+          f"looked at: {said[:2]}")
 
 
 def test_one_show_at_a_time():

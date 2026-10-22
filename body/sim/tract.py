@@ -47,7 +47,7 @@ THE CALIBRATION (the study's; all ours, anatomy; disclosed):
     relative phonetic powers put /s/ about -16 dB and /sh/ -9 dB re /a/)
   - the breath reservoir: 400 cm^3 usable (about 2.5 s of speech), a full breath in 0.8 s at rest
   - the muscles: critically damped, natural periods TAU_MS (a step 95% done in 57-120 ms)
-Its cost (this Mac, shared with other jobs; tools/sim_voice_check.py, 2026-09-24): a sounding tick 1.7-3.2 ms (a held vowel, a
+Its cost (this Mac, shared with other jobs; tools/measure/sim_voice_check.py, 2026-09-24): a sounding tick 1.7-3.2 ms (a held vowel, a
 glide, a hiss; best of repeats at load averages 3.4-5.5), up to 7.4 ms under heavier load; at rest 0.1-0.2 ms.
 """
 import numpy as np
@@ -101,6 +101,9 @@ RE_C = 1800.0                # critical Reynolds number (Flanagan)
 K_NOISE = 7.5e-6             # turbulence source strength (calibrated: t_calib2.py)
 K_ASP = 8.5e-9               # glottal turbulence as a flow, per unit of the same law (calibrated: t_calib2.py)
 V_CAP = 400.0                # usable breath, cm^3 (about 2.5 s of speech)
+BREATH_LIMIT = False         # A238 (2026-10-19, the owner's word: 'breath ... get rid of it'; never added back): the reservoir does not
+                             # empty: the voice has its full pressure whenever it pushes, as a robot's speaker does. The breath-left
+                             # sense stays in the body channel at 1 (every size the same as the first life's). True: the first life's law
 REFILL_S = 0.8               # a full breath in at rest, seconds
 # the sources' peak amplitudes in speech (a steady /a/, /h/, hiss) at 4 sd of the noise: the silence gate's reference
 SRC_REF = (160.0, 8.5e-9 * (8000.0 ** 2 - RE_C ** 2) * 4, 7.5e-6 * (6000.0 ** 2 - RE_C ** 2) * 4)
@@ -363,7 +366,9 @@ class Tract:
         ad = aero(X, areas, port, np.full(NF, self.vol))
         dt = HOP / SR
         for k in range(NF):
-            if X[k, 0] < 0.05:
+            if not BREATH_LIMIT:
+                self.vol = 1.0                                         # A238: no reservoir to empty
+            elif X[k, 0] < 0.05:
                 self.vol = min(1.0, self.vol + dt / REFILL_S)
             else:
                 self.vol = max(0.0, self.vol - ad['u'][k] * dt / V_CAP)

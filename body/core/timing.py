@@ -47,6 +47,19 @@ from .physiology import MOTOR
 
 
 
+class _StreamGain(torch.autograd.Function):
+    """the stream's share of a lesson's gradient multiplied (forward: the identity), the readout's own gradient untouched (an
+    experiment's switch, act_stream_gain: does the representation learn the acts when the act lessons reach it more?)"""
+    @staticmethod
+    def forward(ctx, x, k):
+        ctx.k = float(k)
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, g):
+        return g * ctx.k, None
+
+
 def _against(P, rows):
     """A153 (2026-10-01): TEACHING AGAINST AN ACT, BOUNDED. act_pred's lesson toward an act is the squared distance of its forecast P to
     the act's row (toward); a negative weight (A150, A152: dopamine's credit against the act) cannot be the same distance with its sign
@@ -203,14 +216,16 @@ class TimingMixin:
         (step R7f) its recall map, the proposal's third, which learns through the same lesson and the same plain step"""
         tm = self.m.timing[e.name]
         rc = list(self.m.recall[e.name].parameters()) if "recall" in self.m._modules else []   # step R7f: its recall map, the proposal's third term
-        return list(tm.pred.parameters()) + (list(tm.cor.parameters()) if tm.sense_n else []) + rc
+        cl = list(self.m.cueline[e.name].parameters()) if "cueline" in self.m._modules else []   # D4a: its cue line's map, the fourth
+        return list(tm.pred.parameters()) + (list(tm.cor.parameters()) if tm.sense_n else []) + rc + cl
 
     def _gated_names(self, e):
         """the names of `_gated_params(e)` in its order, within e's timing organ (pred.weight, pred.bias, cor.weight), then (step R7f)
         its recall map's beside it (recall.weight: the organs' recall[e.name])"""
         tm = self.m.timing[e.name]
         rc = [f"recall.{n}" for n, _ in self.m.recall[e.name].named_parameters()] if "recall" in self.m._modules else []
-        return [f"pred.{n}" for n, _ in tm.pred.named_parameters()] + ([f"cor.{n}" for n, _ in tm.cor.named_parameters()] if tm.sense_n else []) + rc
+        cl = [f"cueline.{n}" for n, _ in self.m.cueline[e.name].named_parameters()] if "cueline" in self.m._modules else []   # D4a
+        return [f"pred.{n}" for n, _ in tm.pred.named_parameters()] + ([f"cor.{n}" for n, _ in tm.cor.named_parameters()] if tm.sense_n else []) + rc + cl
 
     def _timing_step(self, scale=1.0):
         """ACT_PRED'S AND THE CORRECTION'S STEP IN THE WAKING LESSON (after the waking lesson's own step): each later effector's group
@@ -305,8 +320,9 @@ class TimingMixin:
         drv_ = self._sense_driven(e) if prev is not None else None                # A230: the world drove its joints itself (its own act moved nothing)
         keep_ = None if push_ is not None else (self._inv_keep(e, prev) if prev is not None else None)   # A228: else the joints its act alone moved
         s_own_ = s_now if push_ is None else s_now - push_                        # A228b: the move its own act made
-        if e.inverse and st["sense"] is not None and prev is not None and prev["acted"] and (keep_ is None or any(keep_)) and not drv_:
-            if every_ <= 1 and not chance_:
+        if e.inverse and st["sense"] is not None and prev is not None and prev["acted"] and (keep_ is None or any(keep_)) and not drv_ \
+                and not getattr(self, "_watch_now", False):                # W1: while watching no pair is learned or gathered (the act was
+            if every_ <= 1 and not chance_:                                 # this model's own reading: it must not teach itself its readings)
                 if keep_ is None:
                     self._inverse_lesson(i, st["sense"], s_own_, int(prev["act"]))   # R6's: a step a tick, its reliability Cohen's kappa
                 else:
@@ -319,10 +335,48 @@ class TimingMixin:
                 st["inv_batch"].append(pr_ if keep_ is None else pr_ + (keep_,))
         if e.inverse and st["sense"] is not None and prev is not None and not prev.get("acted") and not drv_:
             self._prop_agree(e, st, st["sense"], s_now, prev, push_)            # A235: act_pred's guess against the demonstration of a rest
-        if e.inverse and st.get("inv_batch") and self.ticks % max(1, every_) == 0:
+        if e.inverse and st.get("inv_batch") and self.ticks % max(1, every_) == 0 and not getattr(self, "_watch_now", False):
             self._inverse_batch(i)                                             # step R6h: one step on the pairs gathered since the last
         st["err"] = (s_now - st["fwd"]) if st["fwd"] is not None else None
         st["sense"] = s_now
+
+    def watch_read(self, e, obs0, obs1):
+        """W1 (2026-10-21, the owner's question 'learn from video'): THE WATCH'S READING of motor effector e's act from two frames'
+        observations, this tick's and the next's as a recording holds them (tools/harness/demo_train.py --watch-from: a recording whose acts are
+        not read). Its own inverse model on its body sense at both, the next's less the push the world shows there (A228b: the move less
+        what the brainstem pushed, as act_inv learned it); a joint's setting the frame shows blocked read as its rest (A233), a joint the
+        world pushed nothing on read as its rest (A233); its rest where it has no inverse model, no sense, or the frame shows none.
+        -> the act's id. The reading is forced as a guided act and taught as far as the model has earned (`_timing_loss`, @wch)"""
+        import types
+        tab = self.m.get_submodule(e.organ)
+        if not getattr(e, "inverse", False) or e.sense is None or obs0.get(e.sense) is None or obs1.get(e.sense) is None:
+            return int(e.rest_id)
+        tm = self.m.timing[e.name]
+        idx_ = None if e.sense_idx is None else torch.tensor([int(j) for j in e.sense_idx], device=self.dev)
+        def sense_(o_):
+            x = torch.as_tensor(o_[e.sense], dtype=torch.float32, device=self.dev).reshape(-1)
+            return x if idx_ is None else x[idx_]
+        s0, s1 = sense_(obs0), sense_(obs1)
+        push = None
+        if getattr(e, "approach", None) and obs1.get(e.sense + "_push") is not None:
+            push = torch.as_tensor(obs1[e.sense + "_push"], dtype=torch.float32, device=self.dev).reshape(-1)
+            push = push if idx_ is None else push[idx_]
+            s1 = s1 - push
+        rest_d = [int(x_) for x_ in tab.digits(torch.tensor(int(e.rest_id))).tolist()]
+        with torch.no_grad():
+            dig = [int(lg.argmax()) for lg in tm.inverse_logits(s0, s1)]
+        flags = self._blocked_flags(e, types.SimpleNamespace(obs=obs0), tab)
+        if flags is not None:
+            o_ = 0
+            for j_, k_ in enumerate(e.factors):
+                if flags[o_ + dig[j_]]:
+                    dig[j_] = rest_d[j_]
+                o_ += int(k_)
+        if push is not None and int(push.numel()) == len(e.factors):
+            for j_ in range(len(e.factors)):
+                if abs(float(push[j_])) <= 1e-12:
+                    dig[j_] = rest_d[j_]
+        return int(tab.flat(dig))
 
     def _sense_push(self, e):
         """A228b (2026-10-17): THE MOVE LESS WHAT THE BRAINSTEM PUSHED. For an effector that declares the born approach, the part of its
@@ -385,6 +439,40 @@ class TimingMixin:
             dg_, dt_ = (int(g_) > rd[j_]) - (int(g_) < rd[j_]), (int(t_) > rd[j_]) - (int(t_) < rd[j_])
             if dg_ and dt_:
                 ag[j_][0] = d * ag[j_][0] + 1.0; ag[j_][1] = d * ag[j_][1] + float(dg_ == dt_)
+
+    def _earn_count(self, e, st, guess, target, prev_dig):
+        """D4b (2026-10-20, P1's gaze probes): THE CORTEX EARNS EACH JOINT FROM ITS REFLEXES. On a demonstrated tick (a relived act, the
+        D1 trainer's; its label where the act done is not the act to learn, D1y), act_pred's own best setting (A235's guess) set against
+        the demonstration, joint by joint, counted only WHERE THE DEMONSTRATED DIRECTION CHANGES (the target names a side the act before it
+        did not): there the last act tells nothing and only the scene does, so a proposal that copies its last act earns nothing (on the
+        expert's held-out ticks the guess took the expert's gaze-yaw side on 0.79 of its moves and 0.48 of these). Running counts over
+        act_inv_tau pairs, as A235's (st["earn_agree"]: [pairs, agreed] per joint)"""
+        if guess is None or target is None or prev_dig is None or len(guess) != len(e.factors):
+            return
+        rd = [int(x_) for x_ in self.m.get_submodule(e.organ).digits(torch.tensor(int(e.rest_id))).tolist()]
+        sd = lambda x_, j_: (int(x_) > rd[j_]) - (int(x_) < rd[j_])   # noqa: E731
+        d = 1.0 - 1.0 / float(self._motor_const("act_inv_tau"))
+        ea = st.get("earn_agree")
+        if ea is None or len(ea) != len(rd):
+            ea = st["earn_agree"] = [[0.0, 0.0] for _ in rd]
+        for j_ in range(len(rd)):
+            ts_, ps_, gs_ = sd(target[j_], j_), sd(prev_dig[j_], j_), sd(guess[j_], j_)
+            if ts_ and gs_ and ts_ != ps_:
+                ea[j_][0] = d * ea[j_][0] + 1.0; ea[j_][1] = d * ea[j_][1] + float(gs_ == ts_)
+
+    def _earned_share(self, st, j):
+        """D4b: joint j's earned share, its guess's agreement with the demonstrations' changes beyond a coin's (2 x the agreement - 1, in
+        [0, 1]); 0 until 64 pairs have been counted (the newborn's reflexes whole). The born orienting (its bias on the logits, its
+        saccade below the gate) is scaled by 1 - the share on that joint: as the cortex earns a joint the colliculus's pull on it yields
+        (Johnson 1990: cortical control of orienting matures over the reflexive route; CONSPEC to CONLERN)"""
+        ea = st.get("earn_agree")
+        if not ea or j >= len(ea) or ea[j][0] <= 64.0:
+            return 0.0
+        return max(0.0, min(1.0, 2.0 * ea[j][1] / ea[j][0] - 1.0))
+
+    def _orient_earned_on(self):
+        """the switch `orient_earned` (D4b): 0 for a body born before it (its cfg holds no such key)"""
+        return bool(int(self.cfg.get("orient_earned", 0)))
 
     def _prop_agreement(self, st, j):
         """A235: joint j's share of its earned decisiveness, its proposal's agreement in direction with its demonstrations beyond a
@@ -450,6 +538,7 @@ class TimingMixin:
         else:
             self._inv_rel_update(e, st, label, true, keep=keep)
         tm.inv_standardize(torch.cat([s0, s1 - s0], -1).reshape(1, -1), self._inv_std_rate(1))   # A229n: its input's statistics (the function unchanged)
+        tm.inv_read_scale(torch.cat([s0, s1 - s0], -1).reshape(1, -1), int(self._motor_const("act_inv_std_at")))   # A229z: read once, held
         with torch.enable_grad():
             self.opt_inv.zero_grad(set_to_none=True)
             lg = tm.inverse_logits(s0, s1)
@@ -511,6 +600,7 @@ class TimingMixin:
                 self._inv_rel_update(e, st, lab_, true_, chance=p_[3], held=p_[3] is None, keep=k_)
         tt = torch.tensor(trues, dtype=torch.long)
         tm.inv_standardize(torch.cat([S0, S1 - S0], -1), self._inv_std_rate(len(pairs)))   # A229n: its input's statistics (the function unchanged)
+        tm.inv_read_scale(torch.cat([S0, S1 - S0], -1), int(self._motor_const("act_inv_std_at")))   # A229z: read once, held
         with torch.enable_grad():
             self.opt_inv.zero_grad(set_to_none=True)
             lg = tm.inverse_logits(S0, S1)
@@ -627,6 +717,10 @@ class TimingMixin:
         if int(self.cfg.get("imagine_vte", 0)):
             vt_ = self._vte_term(e)                                    # A182: the lean toward the better imagined future's first act
             p = p + vt_
+        if self._cue_line_on():
+            q_ = getattr(self, "_cue_now", None)                       # D4a: the cue line read at this tick's choice (mouth `_choose_effector`)
+            if q_ is not None and q_[0] == self.ticks:
+                p = p + self._cue_term(e, q_[1])
         if hasattr(self, "ledger_terms"):
             self.ledger_terms(e.name, rt_, vt_)                         # I1: each term read against the act taken (an instrument)
         return p
@@ -639,7 +733,15 @@ class TimingMixin:
             return
         C = getattr(self, "_C_last", None)
         with torch.no_grad():
-            st["fwd"] = self.m.timing[e.name].fwd(C).detach().clone() if C is not None else None
+            fw_ = self.m.timing[e.name].fwd(C) if C is not None else None
+            ef_ = getattr(self.m, "eff_fwd", None)
+            if fw_ is not None and ef_ is not None and e.name in ef_ and self.win:
+                # R1: THE COROLLARY DISCHARGE TO THE FORWARD HALF ALONE: the tick's efference (every effector's act at its own step, as the
+                # stream held it before the switch) through the effector's own map, beside the stream's forecast
+                w_ = self.win[-1]
+                o1_ = {e2_.name: torch.tensor([int(w_.get(e2_.field, e2_.rest_id))], device=self.dev) for e2_ in self.anatomy.motors}
+                fw_ = fw_ + ef_[e.name](self.m.efference(self.anatomy, o1_)[0])
+            st["fwd"] = fw_.detach().clone() if fw_ is not None else None
 
     def _fwd_err_in(self, st):
         """THE FORWARD ERROR AS A GATE INPUT (step R6h; SIM_DESIGN.md 3.5, 3.6: each limb's forward error feeds its gate): the size of the
@@ -728,9 +830,20 @@ class TimingMixin:
         if T < 2:
             return None, None, None
         rest = int(e.rest_id)
+        lbl_ = obs.get("@lbl:" + e.name)
+        nol_ = None
+        if lbl_ is not None:
+            # D1y (2026-10-20): THE ACT TO LEARN APART FROM THE ACT DONE. Where the record carries a label (the D1 trainer's: the
+            # expert's intended act where its noise drew another, DART, Laskey et al. 2017; the expert's act on the student's own states,
+            # DAgger, Ross, Gordon and Bagnell 2011), act_pred's target is the label (-2: the act done; -1: none, no lesson there); the
+            # act done is still what the body did and the cortex heard (the efference copy, the forward half's sense). A life has none
+            lbl_ = lbl_.to(acts.device).long()
+            nol_ = lbl_ == -1
+            acts = torch.where(lbl_ < 0, acts, lbl_)
         own = acts != rest
         tgt = acts.clone()
         wt = torch.ones(T, device=C.device)
+        gr_teach = None                                                    # (D1u: the guided rests taught, under its switch)
         s = self._window_sense(e, obs) if e.sense is not None else None
         gain = 0.0
         if e.inverse:
@@ -770,6 +883,30 @@ class TimingMixin:
             if bool(rested[-1]):
                 wt[-1] = 0.0                                               # its next sense is not yet felt: no label
             wt[:-1] = torch.where(rested[:-1] & (tgt[:-1] == rest), torch.zeros_like(wt[:-1]), wt[:-1])   # A229: a rest read as rest, no label (below)
+            gd_ = obs.get("@gdd:" + e.name)
+            td_ = obs.get("@tch:" + e.name)                                # L1: a position the teacher corrected is its demonstration too
+            if td_ is not None:
+                gd_ = td_ if gd_ is None else (gd_ | td_.to(gd_.device))
+            if gd_ is not None:
+                # D1e (2026-10-19): A GUIDED REST IS THE EXPERT'S REST. Under the D1 trainer a position whose act was guided and is the
+                # rest is the expert's decision not to move: nothing but the body's own rest moved it, so act_inv's reading of the move
+                # (the walk command's decay read as 'small back', A233's fault) is no demonstration: the position is the rest, no label
+                # (A229). student2 at 18,000 ticks: the walk command's act_pred on the expert's moved ticks 0.30, under the expert's own
+                # most common setting's share (about 0.49 on the held-out come recording), its gaze 0.76. A life has no guided position
+                gr_ = gd_.to(rested.device) & rested
+                tgt = torch.where(gr_, torch.full_like(tgt, rest), tgt)
+                if int(self.cfg.get("guided_rest_detached", 0)):
+                    # D1u (2026-10-20): THE EXPERT'S REST TAUGHT TO ITS PROPOSAL, NOT TO THE STREAM. D1e left the guided rest untaught, and
+                    # act_pred never named the rest: wherever a gate opened the proposal stepped (the closed loop's wander, 3.6 m a task).
+                    # D1n taught it through the stream and the word organ's reading of the stream moved (eight times the chatter). Here
+                    # the guided rest is act_pred's target at an own act's weight, the stream read detached there (a rested position's,
+                    # as act_inv's labels are: below), so the proposal learns to name the rest and the stream does not learn from it
+                    gr_teach = gr_
+                    wt = torch.where(gr_, torch.ones_like(wt), wt)
+                    if bool(rested[-1]):
+                        wt[-1] = 0.0
+                else:
+                    wt = torch.where(gr_, torch.zeros_like(wt), wt)
         Cp = C[:-1]
         if night:
             Cp = Cp.detach()                                               # step R8b: the night's weighted targets never reach the stream
@@ -777,16 +914,42 @@ class TimingMixin:
             # ACT_INV'S LABELS TEACH THE PROPOSAL, NOT THE STREAM: at a position whose target is act_inv's label the stream is read
             # detached, so that lesson reaches act_pred and the correction alone (their plasticity gated by the label's reliability)
             Cp = torch.where(rested[1:].unsqueeze(-1), Cp.detach(), Cp)
+        ag_ = float(self.cfg.get("act_stream_gain", 1.0))
+        if ag_ != 1.0 and not night and Cp.requires_grad:
+            Cp = _StreamGain.apply(Cp, ag_)                                # (the experiment's switch: the stream's share of the act lesson)
         P = tm.pred(Cp)
         lf = None
         if s is not None:
             fw = tm.fwd(C[:-1])                                            # the sense at t+1 foreseen from the stream at t
+            ef_ = getattr(self.m, "eff_fwd", None)
+            if ef_ is not None and e.name in ef_:                          # R1: and from the act at t, its corollary discharge alone
+                fw = fw + ef_[e.name](self.m.efference(self.anatomy, obs)[:-1])
             P = P + tm.cor(s[1:] - fw.detach())                          # the proposal at t+1 reads the error there
             lf = 0.5 * ((fw.float() - s[1:].float()) ** 2).sum(-1).mean()
+            if int(self.cfg.get("fwd_scale", 0)):
+                # D1s (2026-10-20): EACH FORWARD HALF ON ITS OWN ERROR'S SCALE, as each channel's forecast is (R7c's err_scale). The
+                # forward halves' squared errors are summed over their senses' widths and reach the stream whole: the tract's, whose sense
+                # is the ears (1,725 numbers), was 71% of the squared gradient on the stream's own weights in student2's windows (the
+                # legs' 12%, the hands' 8%; every act lesson 0.1 to 0.2%, the own word 0.2%: the representation learned to foresee
+                # the sounds and hardly what the expert did or said). Under fwd_scale each effector's forward error is divided by its
+                # running mean (err_tau's horizon; the day's lessons advance it, the night's replays read it)
+                fs_ = getattr(self, "_fwd_scale", None)
+                if fs_ is None:
+                    fs_ = {}; self._fwd_scale = fs_
+                n_f, mu_f = fs_.get(e.name, [0, 0.0])
+                if not night:
+                    n_f += 1; mu_f = mu_f + (float(lf.detach()) - mu_f) / min(float(n_f), float(self._frame_const("err_tau")))
+                    fs_[e.name] = [n_f, mu_f]
+                if mu_f > 0.0:
+                    lf = lf / mu_f
         if "@frec" in obs:
             P = P + self._recall_term(e, obs["@frec"][1:])               # step R7f: the proposal at t+1 read the recall made at its choice
+        if "@cue" in obs and self._cue_line_on():
+            P = P + self._cue_term(e, obs["@cue"][1:])                   # D4a: and the cue line its choice read (the day's and the tape's)
         with torch.no_grad():
             rows = tab(tgt[1:])
+        if nol_ is not None and bool(nol_.any()):
+            wt = torch.where(nol_, torch.zeros_like(wt), wt)                # D1y: no label, no lesson
         w1 = wt[1:]
         err = 0.5 * ((P.float() - rows.float()) ** 2).sum(-1)
         # THE LABELS APART (since R6 fix 5): the own acts' errors (and an uninverted effector's rests) and act_inv's labels' at full
@@ -807,12 +970,37 @@ class TimingMixin:
             # taught rest at the labels' weight on every rested tick, and day 192's first command block under A228b made 9 forward acts
             # in 2,247 (13-22% on days 190-191), its own acts a zero-speed turn dither (11 and 13: 1,683 of them)
             lab_f = lab_f & (tgt[1:] != rest)
-            w_own = torch.where(lab1, torch.zeros_like(w1), w1)
+            if nol_ is not None:
+                lab_f = lab_f & ~nol_[1:]                                  # (D1y: none there either)
+            w_own = torch.where(lab1 & ~gr_teach[1:], torch.zeros_like(w1), w1) if gr_teach is not None else torch.where(lab1, torch.zeros_like(w1), w1)
         if wpos is not None:                                              # step R7d: the weight on act_pred's error at its own acts (A152: dopamine's credit)
             w_ = wpos[1:].to(err.dtype)
+            gw_ = obs.get("@gdd:" + e.name)
+            tw_ = obs.get("@tch:" + e.name)                                # L1: the teacher's correction is a demonstration: taught at 1, by
+            if tw_ is not None:                                            # day and by night, as a guided act (the child's own acts beside it
+                gw_ = tw_ if gw_ is None else (gw_ | tw_.to(gw_.device))   # keep dopamine's credit, A152)
+            if gw_ is not None:
+                # D1p (2026-10-20): A GUIDED ACT IS TAUGHT AT NIGHT AS BY DAY. Dopamine's credit weighs the child's own choices (A152:
+                # acts followed by net harm are not taught as acts to make); a guided act is the expert's, a demonstration, which the
+                # day teaches at weight 1 and D1b keeps out of the striatum's credit. Weighted by the replayed credit at night it was
+                # taught AGAINST wherever the credit was negative: student2's nights 2-10 taught against 45% rising to 67% of the
+                # replayed positions (the critic's slow bands below zero), each night turning act_pred away from the acts the day taught.
+                # At a guided position the night's weight is now the day's, 1 (a guided rest stays at no lesson, D1e, through w_own).
+                # A life has no guided position: unchanged
+                w_ = torch.where(gw_[1:].to(w_.device), torch.ones_like(w_), w_)
+                wc_ = obs.get("@wch:" + e.name)
+                if wc_ is not None:
+                    # W1 (2026-10-21): A WATCHED ACT IS TAUGHT AS FAR AS THE INVERSE MODEL HAS EARNED. The act was not in the recording;
+                    # the trainer read it from the senses' change by this body's own inverse model (tools/harness/demo_train.py --watch-from), so
+                    # its lesson carries that model's reliability (inv_gain: Cohen's kappa on its own acts), as act_inv's labels at rested
+                    # positions do, by day and by night. A recording with its acts, a life: no watched position, unchanged
+                    w_ = torch.where(wc_[1:].to(w_.device), torch.full_like(w_, float(gain)), w_)
             err_o = torch.where(w_ >= 0.0, w_ * err, (-w_) * _against(P, rows))   # A153: a negative weight teaches against by the cosine's hinge, not the distance
         else:
             err_o = err
+            wc_ = obs.get("@wch:" + e.name)
+            if wc_ is not None:                                            # W1: by day too, a watched act at the inverse model's earned weight
+                err_o = err * torch.where(wc_[1:].to(err.device), torch.full_like(err, float(gain)), torch.ones_like(err))
         err_l = err * (wlab if wlab is not None else wpos.clamp_min(0.0))[1:].to(err.dtype) if (wlab is not None or wpos is not None) else err   # and at act_inv's labels (R8's)
         lp = (err_o * w_own).sum() / float(T - 1)                         # over the positions: the weights absolute
         n_lab = int(lab_f.sum()) if lab_f is not None else 0

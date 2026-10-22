@@ -15,7 +15,7 @@ it is the line's last word (checked over every frame at import).
 THE LINE CHECK (check()) holds every line, the templates' and Claude's alike, to the form and to what she perceives:
   form        lowercase words, single spaces, only ". ? !" and only after a word, ending in one; at most 6 words (4.5)
   words       only her vocabulary, plus the day's new word, and the new word, if said, last (4.5, A15), in a line measured to
-              put it on the line's pitch peak (A34: PEAK, the table tools/sim_voice_check.py --peak writes)
+              put it on the line's pitch peak (A34: PEAK, the table tools/measure/sim_voice_check.py --peak writes)
   held out    never a never-taught pair before its test: both its words in one line, or its colour said of an object of its
               name (A28, A55: "it is blue." said of the blue ball is the pair, whatever the words)
   perceived   every object word names an object she sees (and each filled slot's object is one she sees); a colour word, an object
@@ -92,7 +92,7 @@ FIXTURE_NOUNS = frozenset(ROOM) | {w for w, c in GROWTH if c == "fixture"}
 CHILD_BODY = frozenset(BODY) | {w for w, c in GROWTH if c == "body"}
 HER_FACE = frozenset(w for w, c in GROWTH if c == "face")
 COLOURS = frozenset(w for w, c in GROWTH if c == "colour")
-OPEN_CONTAINERS = frozenset({"bucket"})   # A129: what she can see into; a toy lying in it is seen "in the bucket" (the percept's `on` is "bucket")
+OPEN_CONTAINERS = frozenset({"bucket", "bucket2"})   # A129: what she can see into; a toy lying in it is seen "in the bucket" (the percept's `on` is "bucket")
 NOUNS = OBJECT_NOUNS | FIXTURE_NOUNS | CHILD_BODY          # a recast or an echo says "the X" of these ("ball! the ball!")
 FUNCTION = frozenset(dict(GROUPS)["function"])             # never a focus word: her ear never expects them
 PAST_EVENTS = {"sat": ("sat",), "rolled": ("rolled",), "fell": ("fell",), "got": ("got",),
@@ -174,14 +174,29 @@ FRAMES = {
     "redirect": [F("look! the {o}.", "{o}"), F("look at the {o}!", "{o}"), F("see? the {o}.", "{o}")],
     "ask_where": [F("where is the {o}?", "{o}"), F("the {o}? where is the {o}?", "{o}"), F("look at the {o}.", "{o}")],
     "ask_what": [F("what is this?"), F("what is it?")],
+    # THE SHOWN TASKS (docs/PREREGISTRATION_LIVE.md 3, 2026-10-21): she does the thing before its eyes, then asks it to do the same
+    # (her birth words only, the focus last: 'put', 'watch', 'like', 'shake' and 'bucket' are not hers at stage 2 and her check refuses
+    # a word she has not got, 17:15; the meaning is in what she just did before its eyes, the words are the cue)
+    "watch_me": [F("look. look at mama.", "mama"), F("{n}. look.", "look"), F("look here.", "here")],
+    "do_in": [F("in. in. the {o}.", "{o}"), F("you. in. the {o}.", "{o}"), F("the {o}. in. the {o}.", "{o}")],
+    "do_shake": [F("up. up. the {o}.", "{o}"), F("you. up. up. the {o}.", "{o}"), F("more. up. the {o}.", "{o}")],   # (the show: up and down)
+    "do_put": [F("there. there. the {o}.", "{o}"), F("on the mat. the {o}.", "{o}"), F("you. there. the {o}.", "{o}")],
+    # THE WATCH TASKS (tools/harness/demo_tasks.py 'watch', 2026-10-21 17:50, the owner: 'what objects do' in the pretraining diet, the child only
+    # watching): her word as she does the thing with the toy before its eyes (rolls it, lets it fall, lifts it, puts it in the bucket)
+    "see_roll": [F("roll. the {o}.", "{o}"), F("roll. roll. the {o}.", "{o}"), F("look. roll. the {o}.", "{o}")],
+    "see_down": [F("down. the {o}.", "{o}"), F("down. down. the {o}.", "{o}"), F("look. down. the {o}.", "{o}")],
+    "see_up": [F("up. the {o}.", "{o}"), F("up. up. the {o}.", "{o}"), F("look. up. the {o}.", "{o}")],
+    "see_in": [F("in. the {o}.", "{o}"), F("in. in. the {o}.", "{o}"), F("look. in. the {o}.", "{o}")],
     "ask_give": [F("give me the {o}.", "{o}"), F("give mama the {o}.", "{o}"), F("the {o}. give me the {o}.", "{o}")],
     "confirm": [F("yes. the {o}!", "{o}"), F("yes! a {o}.", "{o}"), F("good. the {o}!", "{o}"), F("yes. it is a {o}.", "{o}")],
     "confirm_act": [F("yes! good.", "good"), F("good. good!", "good")],
     "confirm_got": [F("you hold the {o}!", "{o}"), F("yes! you hold the {o}.", "{o}"), F("look. you hold the {o}.", "{o}")],      # C270: her words (C351 amended twice: 'have' was never hers)
     "confirm_held": [F("you hold the {o}.", "{o}"), F("yes! you hold the {o}.", "{o}")],                                 # for its own act
-    "confirm_stood": [F("you stand!", "stand"), F("yes! you stand.", "stand"), F("up. you stand up!", "up")],     # C284
-    "confirm_stepped": [F("you walk!", "walk"), F("yes! you walk.", "walk"), F("walk. walk!", "walk")],
-    "confirm_came": [F("you did it!", "it"), F("yes! you did it.", "it"), F("good! you did it!", "it")],   # C372: its coming to her, in her words
+    "confirm_stood": [F("you stand!", "stand"), F("yes! you stand.", "stand"), F("up. you stand up!", "up"), F("yes! up!", "up")],     # C284 (E1b: a
+                                                                                # birth-words frame, so a newborn standing hears her before 'stand' is hers)
+    "confirm_stepped": [F("you walk!", "walk"), F("yes! you walk.", "walk"), F("walk. walk!", "walk"), F("yes! good. good!", "good")],
+    "confirm_came": [F("you did it!", "it"), F("yes! you did it.", "it"), F("good! you did it!", "it"), F("yes! good!", "good"),
+                     F("here! good!", "good")],   # C372: its coming to her, in her words (E1b: birth-words frames for a newborn's comings)
     "confirm_lifted": [F("the {o} is up.", "up"), F("up. up! the {o}.", "{o}")],
     "confirm_shook": [F("oh! the {o}.", "{o}"), F("look. the {o}!", "{o}"), F("the {o}. the {o}!", "{o}")],
     "confirm_hit": [F("oh! the {o}.", "{o}"), F("look. the {o}!", "{o}")],
@@ -198,6 +213,13 @@ FRAMES = {
     "narrate_walk": [F("walk. walk. walk.", "walk"), F("mama walk. walk.", "walk"), F("look. mama walk. walk.", "walk")],   # C300: she shows walking (C351 amended twice: 'walks', 'goes' and the commas were never hers; the frames refused since C300)
     "narrate_sib": [F("look. walk. walk. walk.", "walk"), F("see? walk. walk.", "walk"), F("walk. walk. walk.", "walk")],   # D2: the sibling walking in its view
     "narrate_sib_get": [F("look. get the {o}.", "{o}"), F("up. the {o}.", "{o}"), F("see? the {o}.", "{o}")],   # D2: the sibling getting a toy
+    "talk_where": [F("the {o} is on the {p}.", "{p}"), F("here is the {o}.", "{o}"), F("look. the {o}.", "{o}")],   # E3: her answer to the
+                                                                                # sibling's 'where is the X?', her look on it
+    "talk_ask": [F("where is the {o}?", "{o}"), F("the {o}? where is the {o}?", "{o}")],   # E3b: her question to the sibling (never judged)
+    "talk_ask_what": [F("what is it?"), F("look. what is it?")],        # E3b: of the toy in the sibling's hand (never judged)
+    "talk_yes": [F("yes. the {o}.", "{o}"), F("yes! a {o}.", "{o}"), F("the {o}. yes. the {o}.", "{o}")],   # E3b: her reply to its answer
+    "talk_what": [F("it is a {o}.", "{o}"), F("a {o}. a {o}.", "{o}"), F("this is a {o}.", "{o}")],   # E3: her answer to the sibling's
+                                                                                # 'look. a X!' / 'what is this?', of the toy in its hand
     "narrate_get": [F("mama get the {o}.", "{o}"), F("up. mama hold the {o}.", "{o}"), F("look. mama get the {o}.", "{o}")],   # C300: she shows getting
     "narrate_fell": [F("uh oh. the {o} is down.", "down"), F("oh! the {o} is down.", "down")],
     "narrate_on": [F("the {o} is on the {p}.", "{p}")],
@@ -229,7 +251,7 @@ TRIAL_FRAMES = ("trial_where", "trial_combo", "trial_name")   # a trial tests kn
 # rule), 3 of distinct words drawn among them (FastLayer.variation_set: two lines of the same words, "a rattle." and "a rattle!",
 # are one frame to the set, key()); a word with fewer than 3 such lines of distinct words waits. The P3 verifier's third round
 # measured 17 of the first 210 lines (3 a word) off the peak; each class's list was then widened by frames of the same kind, and
-# every one measured (tools/sim_voice_check.py --peak; "look at the X" dropped from the face's frames: it is the gaze ask's
+# every one measured (tools/measure/sim_voice_check.py --peak; "look at the X" dropped from the face's frames: it is the gaze ask's
 # form, A51). Its fourth round found the widening had added punctuation-only twins, which left "red" on the red ball and
 # "yellow" on the duck (A55's colour words, where A55 puts them) with 2 lines of distinct words on the peak: the colours took
 # "{w}. {w}!", "look. {w}." / "look. {w}!", "oh! {w}!" and "the {o}. {w}!", each measured, so each colour on each of its toys
@@ -274,7 +296,7 @@ INTRO_WORD = {                                                             # wor
     "please": [F("{w}.", "{w}"), F("more? {w}.", "{w}"), F("give me. {w}.", "{w}")],
     "all": [F("it is {w}.", "{w}"), F("look. {w}.", "{w}"), F("{w}!", "{w}")],
     # "mouth", short: its face frames but "the mouth." and "the mouth!", with which 3 of its lines ran at up to 3.19 words a
-    # second, over C25's 3 (measured, tools/sim_voice_check.py --growth); every set of 3 of these is under it
+    # second, over C25's 3 (measured, tools/measure/sim_voice_check.py --growth); every set of 3 of these is under it
     "mouth": [F("look. {w}.", "{w}"), F("see? {w}!", "{w}"), F("see the {w}?", "{w}"), F("you see the {w}?", "{w}")],
 }
 
@@ -315,7 +337,7 @@ class Line:
 
 
 # ---------------------------------------------------------------------------------------- the new word's pitch peak (A34)
-# PEAK: every line she can say with a growth word as the new word, measured by tools/sim_voice_check.py --peak (the line in the
+# PEAK: every line she can say with a growth word as the new word, measured by tools/measure/sim_voice_check.py --peak (the line in the
 # new-word register, its last word emphasized, 4.4): text -> [the new word, its peak F0 (Hz), the highest other word's peak F0,
 # that word, the line's words, its spoken span in seconds] (a peak None where no frame of the word is voiced). On its peak: the
 # new word's peak above every other word's (a tie at the tracker's resolution is no peak: P3's fourth round, where ties had
@@ -333,7 +355,7 @@ def on_peak(text):
     """a new word's line (its last word the new word) -> (on its pitch peak as measured, why not)."""
     r = PEAK.get(text)
     if r is None:
-        return False, "not measured on the line's pitch peak (A34; tools/sim_voice_check.py --peak)"
+        return False, "not measured on the line's pitch peak (A34; tools/measure/sim_voice_check.py --peak)"
     w, pk, other, ow = r[:4]
     if pk is None:
         return False, f"measured with no voiced frame in {w!r} (A34)"
@@ -366,7 +388,7 @@ def new_word_lines():
     growth toy, {c} a colour, {p} a growth fixture, {b} a growth body word, {w} any growth word her ear can hear: her recasts
     and echoes; a literal focus that is a growth word: "all done."), each passing the line check's other rules with every
     other word hers. What
-    tools/sim_voice_check.py --peak measures; Claude's lines ending on the new word pass only if among them."""
+    tools/measure/sim_voice_check.py --peak measures; Claude's lines ending on the new word pass only if among them."""
     from .percept import Seen                                          # noqa: PLC0415
     growth = [g for g in GROWTH_WORDS if GROWTH_CLASS[g] != "frame"]
     objs = sorted(OBJECT_NOUNS)

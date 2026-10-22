@@ -10,7 +10,7 @@ by piece, what runs where, and what we do not know until there is a machine.
 
 ## 1. The machine
 
-- A Unitree G1 with the Dex3 hands (the sim's body is this file: `body/sim/assets/unitree_g1/g1_with_hands.xml`), its head D435 and both IMUs.
+- A Unitree G1 with the Dex3 hands (the sim's body is this file: `assets/unitree_g1/g1_with_hands.xml`), its head D435 and both IMUs.
 - Its onboard computer for the loop below the tick (100 Hz) and the safety layer; a laptop beside it for the brain (7 Hz), the record
   and the saves, on a wired link. The brain's tick is 150 ms of work on this laptop; the 100 Hz loop must never wait for it.
 - An overhead tether or gantry rated for the body (34 kg) with a load cell, and an e-stop in the owner's hand. The tether is the ghost's

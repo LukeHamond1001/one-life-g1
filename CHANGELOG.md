@@ -3,6 +3,28 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.208.0 (2026-10-21): the pretraining line, and the living program begun
+
+Not a dawn of the life: the code as it stands at the start of the living program, after three days in which the same architecture was
+pretrained from recordings and that line was closed. In groups, with their ledger entries (`docs/SIM_DESIGN.md`, `docs/archive/`):
+
+- **Pretraining from recordings (D1-D4, P1-P5; `tools/harness/`, `docs/archive/PREREGISTRATION*.md`).** An expert drove the body through a
+  teacher's tasks and a fresh brain relived the recordings as one timeline (the recorded senses as its senses, the recorded acts as its
+  own, a night every 24,000 ticks). It learned to see, hear words and forecast from the record; it could not learn to choose from it (R3
+  tried and failed its pre-registered rule, and was removed). The recordings were deleted on 2026-10-21; one brain remains
+  (`data/demo/student7`, not in the repository).
+- **The living program (`docs/PREREGISTRATION_LIVE.md`, `docs/PREREGISTRATION_P6.md`; `tools/live/`).** That brain lives in the room with
+  learning on: a lever in the teacher's hand pays what it does right (`lever`, a reward source the body feels), the teacher pushes it when
+  it is stuck, and a tablet before its eyes (`body/sim/extras.py`: the screen) plays a film of its own body doing the task from the room
+  camera. Read: trials to the first unguided success, the rate per ten asks, and whether an unpaid clip ever makes it just do it.
+- **The body.** The copy of the act taken no longer fed back on the stream (`efference_stream=0`, R1); the value organ foresees the felt
+  reward (`face_form=foresee`); the lever; the watch (W1: the inverse model reads a watched recording's senses as acts); R3 removed. The
+  behaviour guard's digests: sim profile f3ee3d6289336335ecc7f147, language default 7c54199e3c72cf77d45a8e94.
+- **The teacher and the room.** The scanned objects (Google Scanned Objects; `tools/harness/gso_fetch.py`, `body/sim/extras.add_gso`), seen
+  by their word; the shown and watch tasks (she does the thing before its eyes); the films of the room camera (`tools/harness/demo_film.py`).
+- **The tree.** `tools/` by job (`tools/README.md`); the finished pre-registrations in `docs/archive/` with their verdicts; the README's
+  'Where it stands now'; `docs/ARCHITECTURE.md` 'The switches'.
+
 ## 0.207.0 (2026-10-19): days 149 to 206
 
 151 commits landed while the life went on, one timeline, never reset. In groups, with their ledger entries:

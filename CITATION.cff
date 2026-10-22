@@ -7,6 +7,5 @@ authors:
     given-names: Luke
 repository-code: "https://github.com/LukeHamond1001/one-life-g1"
 license: Apache-2.0
-version: 0.207.0
-date-released: 2026-10-19
-abstract: "A continual-learning architecture for a simulated Unitree G1 humanoid: a predictive model trained online from its own errors, a policy trained by one reward, a teacher's approval read from her face, intrinsic rewards for novelty and competence, and nightly replay. No dataset, no task reward, one life never reset. 207 days lived on one MacBook Air at the time of this release."
+date-released: 2026-10-11
+abstract: "A continual-learning architecture for a simulated Unitree G1 humanoid: a predictive model trained online from its own errors, a policy trained by one reward read from a teacher's face, intrinsic rewards for novelty and competence, and nightly replay. No dataset, no task reward, one life never reset. 148 days lived on one Mac at the time of this release."
