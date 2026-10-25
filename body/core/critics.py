@@ -19,19 +19,49 @@ class CriticsMixin:
         """D3c (2026-10-15, the owner's word: 'we don't want to rely on the longer bands too early'): a shaping band's own anticipation,
         kept by the body: each tick's value of that band is held SHAPE_H ticks while the reward of those ticks sums, then its running
         moments move (an exponential window of shape_tau ticks, a day by default). D3d: per band b. -> nothing; see _shape_rho"""
+        d = 1.0 - 1.0 / float(self.cfg.get("shape_tau", 24000))
+        if int(self.cfg.get("shape_own_h", 0)):
+            # D3e (2026-10-23, the owner's word: 'like a human, as it matures the reward should shift to the longer bands once they have
+            # matured'): EACH BAND JUDGED AT ITS OWN HORIZON. D3c read every shaping band's value against the reward of the next 64
+            # ticks, the clock-256 to clock-16,384 bands' too: a band built to anticipate reward a minute or an hour ahead was trusted only
+            # as far as it foretold the next twelve seconds, and none had earned anything (P8, 12:2x 10-23: the earned gains of bands 3-7
+            # 0.017, 0, 0, 0.030, 0.009), so the credit was the four-second band's alone and an own start eighty ticks before a pay
+            # earned 0.9375^80 of it. Here band b's value is read against the reward of its own clock's ticks (64, 256, 1,024, 4,096,
+            # 16,384), from the life's cumulative reward (one running sum a tick: the window's reward the sum's difference, whatever its
+            # length), and earns its gain only after a horizon of its own (_shape_rho). A band whose horizon changed (the switch's first
+            # tick) starts its moments and its window again
+            H = self._shape_h(b)
+            hs_ = getattr(self, "_shape_hs", None)
+            if not isinstance(hs_, dict):
+                hs_ = {}; self._shape_hs = hs_
+            if hs_.get(int(b)) != H:
+                self._shape_q[int(b)] = collections.deque(); self._shape_m[int(b)] = [0.0] * 6; hs_[int(b)] = H
+            if int(getattr(self, "_shape_Ct", -1)) != int(self.ticks):
+                self._shape_C = float(getattr(self, "_shape_C", 0.0)) + float(r); self._shape_Ct = int(self.ticks)
+            C_ = float(self._shape_C)
+            q = self._shape_q.setdefault(int(b), collections.deque()); q.append([int(self.ticks), float(v), C_ - float(r)])
+            m = self._shape_m.setdefault(int(b), [0.0] * 6)
+            while q and int(self.ticks) - q[0][0] >= H - 1:
+                _, v_, c0_ = q.popleft(); g_ = C_ - c0_
+                m[0] = d * m[0] + 1.0; m[1] = d * m[1] + v_; m[2] = d * m[2] + g_; m[3] = d * m[3] + v_ * v_; m[4] = d * m[4] + g_ * g_; m[5] = d * m[5] + v_ * g_
+            return
         q = self._shape_q.setdefault(int(b), collections.deque()); q.append([int(self.ticks), float(v), 0.0])
         for p_ in q:
             p_[2] += float(r)
-        d = 1.0 - 1.0 / float(self.cfg.get("shape_tau", 24000)); m = self._shape_m.setdefault(int(b), [0.0] * 6)
+        m = self._shape_m.setdefault(int(b), [0.0] * 6)
         while q and int(self.ticks) - q[0][0] >= SHAPE_H:
             _, v_, g_ = q.popleft()
             m[0] = d * m[0] + 1.0; m[1] = d * m[1] + v_; m[2] = d * m[2] + g_; m[3] = d * m[3] + v_ * v_; m[4] = d * m[4] + g_ * g_; m[5] = d * m[5] + v_ * g_
+
+    def _shape_h(self, b):
+        """D3e: the reward window band b's anticipation is read against: its own clock under shape_own_h, else SHAPE_H"""
+        return int(self.m.clocks[int(b)]) if int(self.cfg.get("shape_own_h", 0)) else SHAPE_H
 
     def _shape_rho(self, b):
         """the shaping gain band b has earned: the correlation of its value with the reward of the SHAPE_H ticks after, clipped to
         [0, 1]; 0 until SHAPE_H moments are in (born 0: a band's outlook is trusted as far as it has predicted reward)"""
         m = self._shape_m.get(int(b)); n = m[0] if m else 0.0
-        if n < SHAPE_H:
+        if n < (self._shape_h(b) if int(self.cfg.get("shape_own_h", 0)) else SHAPE_H):   # (D3e: a horizon of its own first)
             return 0.0
         mv, mg = m[1] / n, m[2] / n
         vv, gg, vg = m[3] / n - mv * mv, m[4] / n - mg * mg, m[5] / n - mv * mg
@@ -297,6 +327,19 @@ class CriticsMixin:
                     gain_ = 1.0 / math.sqrt(max(ms_, float(self.cfg.get("dopamine_adapt_floor", 1e-4))))
                     self._dop_gain = gain_
                     delta_a = float(delta_a) * gain_
+                    c_ = float(self.cfg.get("dopamine_sat", 0.0))
+                    if c_ > 0.0:
+                        # A172b (2026-10-24, P8): THE ADAPTED DOPAMINE IS BOUNDED. A172 divides by a 256-tick RMS, so after a quiet stretch
+                        # the gain rose to 15-50 and one tick of pain (net reward -1) reached the actors at -15 to -50 units of the usual
+                        # spread: on P8's day of 10-24 22 pain ticks of 2,000 carried 0.35 of the actors' summed update and a signed sum
+                        # (-72) as large as all the rest (+73), and the pain of the box's hand-overs drove D5e's follow gains past the
+                        # teacher's pay (scratchpad dop_bound.py; T3c). A dopamine neuron's burst and pause are bounded by its firing (a few
+                        # tens of spikes a second above, the floor of zero below), so its phasic response saturates however large the error
+                        # (Bayer and Glimcher 2005; Tobler, Fiorillo and Schultz 2005's adaptive coding within that range). Here the adapted
+                        # dopamine passes c x tanh(x / c), c = dopamine_sat running-RMS units: a usual error (|x| <= 1) as before (within
+                        # 4% at c 3), a huge one held to c. The critics' own errors and the record's dopamine are untouched (as A172's)
+                        delta_a = c_ * math.tanh(float(delta_a) / c_)
+                    self._dop_last = float(delta_a)                  # (the actors' dopamine this tick: an instrument)
                 if int(self.cfg.get("actor", 0)) and str(self.cfg.get("actor_form", "add")) == "softmax":
                     self._chooser_learn(delta)
                 elif int(self.cfg.get("actor", 0)) and getattr(self, "_e_actor", None) is not None:
@@ -312,12 +355,21 @@ class CriticsMixin:
                                 st_["a_upd"][0] += float(fast_.norm())       # (the ruler counted the fast lesson only under a slow rate > 0:
                                                                              # it read 2 to 3 a day against actors moving 0.05 in cosine a day;
                                                                              # counted always since 2026-10-03, C254)
+                            ef_ = st_.get("e_follow")
+                            if ef_ is not None and self._sight_suggest_n(e_):   # D5e: the follow gain, by the same dopamine on its own eligibility
+                                fg_ = getattr(self, "_sight_fg", None)
+                                if fg_ is None:
+                                    fg_ = self._sight_fg = {}
+                                fg_[e_.name] = float(fg_.get(e_.name, 0.0)) + float(self.cfg.get("actor_lr", 0.02)) * float(delta_a) * float(ef_)
                         if slr_ > 0.0 and st_.get("a_tag") is not None and abs(float(delta)) > 1e-9:
                             with torch.no_grad():                        # A142/C153: the tag captured by the same phasic dopamine
                                 upd = slr_ * delta_a * st_["a_tag"]      # (mouth._actor_tag_step: the 64-tick trace; A172: adapted)
                                 m.get_submodule(e_.actor).weight.add_(upd)
                                 st_["a_upd"][1] += float(upd.norm())
                     self._actor_scaling(m)                           # A147: each actor's synapses scaled toward its set point
+                    if int(self.cfg.get("sight_ladder", 0)) and getattr(self, "_sight_ue", None) is not None:
+                        with torch.no_grad():                        # D6: the control over the eye's ladder, by the actors' dopamine
+                            self._sight_u = self._sight_ladder_u() + float(self.cfg.get("sight_ladder_lr", 0.01)) * float(delta_a) * self._sight_ue
                 if stri and int(self.cfg.get("wm", 0)) and getattr(m, "stri_wm", 0):
                     with torch.no_grad():                        # WORKING MEMORY: latch at a burst, clear at the reward or with age
                         m.wm_tick()

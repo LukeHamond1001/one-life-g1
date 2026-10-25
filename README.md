@@ -23,11 +23,13 @@ docs/archive/PREREGISTRATION.md to _P5). It learned to see, hear words and forec
 on every ruler) but could not learn to choose from it — the choosers' lesson is "my act and what followed" (R3, docs/archive/PREREGISTRATION_P3.md).
 The recordings were deleted at the owner's word; what remains of that chapter is one brain, `data/demo/student7`.
 
-The third chapter is **the living program** (`docs/PREREGISTRATION_LIVE.md`, `docs/PREREGISTRATION_P6.md`): that brain lives in the
-room with learning on, a lever in the teacher's hand pays what it does right, the teacher pushes it when it is stuck, and a tablet
-before its eyes plays a film of its own body doing the task from the room camera. The question is whether it learns to act from
-watching itself, through its own body: paid examples first, then a clip it was never paid for. `tools/live/start_p6.sh` starts it,
-`tools/live/resume_p6.sh` brings it back; `data/demo/p6/tasks_live.jsonl` is its record.
+The third chapter is **the living program** (`docs/PREREGISTRATION_LIVE.md`, `docs/PREREGISTRATION_P6.md`): that brain lives with
+learning on in a bare world (a floor, the toys, a box, a tablet; the teacher's body unseen and still), a lever pays what it does right,
+the teacher pushes it when it is stuck, and the tablet before its eyes plays a film of its own body doing the task from the room camera,
+then vanishes. Nothing is said. The question is whether it learns to act from watching itself: paid examples first, then a clip it was
+never paid for. The task now is **the box** (`tools/harness/demo_box.py`): the clip shows its own arm putting an object into the box;
+the object is handed into its hand, the box set by that hand; does it put it in. `tools/live/resume_p8.sh` starts or resumes the run
+(P8, `data/demo/p8`); `data/demo/p8/tasks_live.jsonl` is its record, the probes (clip only, no push, no pay) its measure.
 
 ## Replay it yourself
 
@@ -143,8 +145,9 @@ lists every red test by group with its reason, and they stay in the tree until e
 
 ## Roadmap
 
-1. The living program (now): the lever, the push and the screen — does it pick a task up from a few paid examples, and does an
-   unpaid clip of itself ever make it just do it (`docs/PREREGISTRATION_P6.md`).
+1. The living program (now): the box task from the screen — does it pick the task up from paid examples, and does an unpaid clip
+   of itself ever make it just do it (`docs/PREREGISTRATION_P6.md`, 'P8'). Then several acts and objects in the clip library, so a
+   success is imitation and not habit.
 2. In simulation after that: manipulation from the screen, the door onto a second room, two-word speech.
 3. On a real G1: her face from a camera, the command port on the real gait, the lever in a hand, the rulers published every day.
 

@@ -690,6 +690,8 @@ class MouthMixin:
         prev = st["now"]
         if self._cue_line_on():
             self._cue_line(frame)                                         # D4a: the cue line this tick's proposals read (cached for the tick)
+        if self._sight_line_on():
+            self._sight_line(frame)                                       # D5: the sight line this tick's proposals read (cached for the tick)
         with torch.no_grad():
             pred = e.propose(self, C1)                                    # act_pred's, corrected by the forward half's error (step R6)
             guess_ = ([int(lg_.argmax()) for lg_ in tab.logits(pred, 1.0)] if (pred is not None and getattr(e, "inverse", False)) else None)   # A235
@@ -772,7 +774,7 @@ class MouthMixin:
                 # the striatum disposes: its bias on each joint's proposal
                 if int(self.cfg.get("actor_cues", 0)):
                     self._actor_cues(frame)                                     # A225: the tick's cues, read before the actors read them
-                a_bias = float(self.cfg.get("actor_beta", 1.0)) * torch.tanh(m.get_submodule(e.actor)(self._actor_x(e)))   # (D2: the actor's own input; A226: with its limb's)
+                a_bias = float(self.cfg.get("actor_beta", 1.0)) * torch.tanh(self._actor_pre(e))   # (D2: the actor's own input; A226: with its limb's; D5e: the line's suggestion)
                 sb_ = tab.split(a_bias); self.ledger_vote(e.name, sb_)       # (I1: the vote, read against the act taken)
                 fav0_ = [int(lg.argmax()) for lg in logits]
                 mg_ = [float(v_[0] - v_[1]) for v_ in (torch.topk(lg.detach(), 2).values for lg in logits if lg.numel() > 1)]   # I1e: the proposal's margin
@@ -1138,9 +1140,10 @@ class MouthMixin:
         band_ = str(self.cfg.get("actor_input", "striatum")) == "band"
         n_ = 2 * len(self.anatomy.orienting or ()) if int(self.cfg.get("actor_cues", 0)) and band_ else 0
         k_ = self._actor_sense_n(e) if e is not None else 0
-        if (n_ or k_) and z is not None and int(z.numel()) > n_ + k_:          # A225, A226: each pathway at its own unit power (the band's 512,
-            cuts_ = [int(z.numel()) - n_ - k_, n_, k_]                          # the cues' 14, the limb's own 30 or 35: on one norm the cues'
-            parts_ = [p_ for p_ in torch.split(z, cuts_) if int(p_.numel())]    # share of a step was 14 in 500)
+        s_ = self._sight_actor_n() if e is not None else 0                      # D5b: the sight line's width, the last pathway
+        if (n_ or k_ or s_) and z is not None and int(z.numel()) > n_ + k_ + s_:   # A225, A226: each pathway at its own unit power (the band's
+            cuts_ = [int(z.numel()) - n_ - k_ - s_, n_, k_, s_]                 # 512, the cues' 14, the limb's own 30 or 35, the sight's 384:
+            parts_ = [p_ for p_ in torch.split(z, cuts_) if int(p_.numel())]    # on one norm the cues' share of a step was 14 in 500)
             return torch.cat([p_ / max(float(torch.dot(p_, p_)), 1.0) for p_ in parts_])
         return z / max(float(torch.dot(z, z)), 1.0)
 
@@ -1178,12 +1181,47 @@ class MouthMixin:
             if int(self.cfg.get("actor_cues", 0)):                              # A225: the born orienting cues beside the band (cord._actor_cues)
                 c_ = getattr(self, "_acue_now", None)
                 n_ = 2 * len(self.anatomy.orienting or ())
-                c_ = c_[1] if (c_ is not None and c_[0] == self.ticks) else torch.zeros(n_)
+                c_ = c_[1] if c_ is not None else torch.zeros(n_)
+                # THE CUE LINE HOLDS ITS LAST READING (2026-10-23, the owner's organ check). The tick's cues are read in the choice
+                # (`_actor_cues`, mouth `_act`), after the critics' step; until then the line held zeros (the cache keyed on the tick), so
+                # every read before the choice saw no cue: A147's scaling (critics `_actor_scaling`) held the drive WITHOUT the cues at
+                # its set point while the choice read them (firing on 83-94% of P8's ticks), the arms' pitch and elbow at the tanh's rail
+                # on 0.88-0.95 of 400 rows; and cue_adapt's mean, moved once a tick at the first read, averaged only those zeros (exactly
+                # 0.0 in all 14 units on the 12:28 save, hours after 05:0x): neither A147 nor cue_adapt ever saw a cue. A sense's last
+                # reading stands until the next (the cue as the actor last read it, the previous tick's, before this tick's own)
+                if int(self.cfg.get("cue_adapt", 0)):
+                    c_ = self._cue_adapted(c_)                                  # (05:0x 10-23: THE CUE LINE ADAPTED, as D4 adapts the band)
                 xn_ = torch.cat([xn_, c_.to(dtype=xn_.dtype, device=xn_.device)])
             if e is not None and self._actor_sense_n(e):                    # A226: the effector's own body sense after them
                 xn_ = torch.cat([xn_, self._actor_sense(e).to(dtype=xn_.dtype, device=xn_.device)])
+            if e is not None and self._sight_actor_n():                     # D5b: THE SIGHT LINE INTO THE STRIATUM, last (the visual cortex's
+                sn_ = self._sight_actor_n()                                 # road into the caudate's tail, where seen things learn their
+                q_ = getattr(self, "_sight_now", None)                      # worth: Hikosaka et al. 2014; Kim and Hikosaka 2013): the trace of
+                q_ = q_[1] if (q_ is not None and int(q_[1].numel()) == sn_) else torch.zeros(sn_)   # what the gaze saw (its last reading
+                                                                            # before the tick's own, as the cue line's above),
+                xn_ = torch.cat([xn_, q_.to(dtype=xn_.dtype, device=xn_.device)])   # as the proposal reads it (cord `_sight_line`; none yet: zeros)
             return xn_
         return self._z_now
+
+    def _cue_adapted(self, c):
+        """THE CUE LINE ADAPTED (the switch `cue_adapt`, 2026-10-23, P8): the born orienting cues the actors read (A225, cord
+        `_actor_cues`: [fired, side] per cue) less their running mean per unit, at the actors' own clock (actor_norm_tau ticks, one move a
+        tick); no division by their spread (they stand on the unit's scale already, and a rare cue's spread would make it shout). Why: D4
+        took the standing part out of the band ("the readout and the eligibility both carry the state and nothing standing") and A226 out
+        of the limb's sense, but the cue line came in raw, and three of its flags (a salient thing, a hand, an onset in the periphery) fire
+        on 83-94% of P8's ticks in every phase: a standing input, so every actor's eligibility piled onto it and its weights became a bias
+        unit (26-60% of each actor's weight on the cue block on the 10-23 save: the voice 60%, the legs 56%, the arms 42-46%), the arms'
+        pitch votes held at their tanh's rails by it (the box trace's apv: the cues +4.8 of the pitch's +7.9 pre-activation; every setting
+        of the right arm's pitch at +-1, the eligibility through the rails near 0: a vote no lesson could move). Born at zero (the line as
+        it was read), the mean comes over the clock, so the standing part fades as a sense adapts, not at once"""
+        c = c.double()
+        m_ = getattr(self, "_acue_m", None)
+        if m_ is None or m_.shape != c.shape:
+            m_ = torch.zeros_like(c); self._acue_m = m_; self._acue_t = -1
+        if int(getattr(self, "_acue_t", -1)) != int(self.ticks):         # (one move a tick: the read is asked for many times a tick)
+            m_ = m_.to(c.dtype) + (c - m_.to(c.dtype)) / float(self.cfg.get("cue_adapt_tau", self.cfg.get("actor_norm_tau", 24000)))   # (its own clock if set)
+            self._acue_m = m_; self._acue_t = int(self.ticks)
+        return (c - m_.to(c.dtype)).float()
 
     def _actor_sense_n(self, e):
         """A226: the size of later effector e's own body sense its actor reads (0: none, or the switch off)"""
@@ -1225,8 +1263,22 @@ class MouthMixin:
         if x_ is None:
             return 1.0
         with torch.no_grad():
-            t_ = torch.tanh(actor(x_))
+            t_ = torch.tanh(actor(x_) if (actor is self.m.actor or e is None) else self._actor_pre(e, x_))   # (D5e: the follow term in it)
             return float(self.cfg.get("actor_beta", 1.0)) * (1.0 - t_ * t_)
+
+    def _actor_pre(self, e, x=None):
+        """later effector e's striatal pre-activation, one a setting: its actor's reading of its input (`_actor_x`), plus D5e's follow term
+        where the switch `sight_suggest` holds for it: the sight line's suggestion (cord `_sight_suggest`, standardized per setting) times
+        the effector's follow gain (`_sight_follow`, learned by dopamine, born 0), outside A147's scaling (which keeps the actor's own
+        synapses at its set point: the gain is the striatum's learned trust in what the line suggests, not one of those synapses)"""
+        x_ = self._actor_x(e) if x is None else x
+        mod_ = self.m.get_submodule(e.actor)
+        pre_ = mod_(x_)
+        if self._sight_suggest_n(e):
+            g_ = self._sight_follow(e)
+            if g_ != 0.0:
+                pre_ = pre_ + g_ * self._sight_suggest(e).to(pre_.device, pre_.dtype)
+        return pre_
 
     def _act_effectors(self, u, stri, gam, tick_tr):
         """THE LATER EFFECTORS' ACTS (step R5), each after the voice's, in the anatomy's order: its actor's eligibility (per act, or
@@ -1238,15 +1290,24 @@ class MouthMixin:
         the forward half foresees the next tick's body sense from the stream after this tick's own step (`_timing_foresee`)."""
         m = self.m; g_ = float(gam[int(self.cfg["dopamine_band"])])
         frame = self._tick_frame(u)                                      # this tick of the world, the one _sense took (step R9)
+        if int(self.cfg.get("sight_ladder", 0)) and getattr(self, "_sight_ue", None) is not None:
+            self._sight_ue = g_ * self._sight_ue                         # D6: the ladder control's eligibility fades at dopamine's horizon
         for i_, (e_, st_) in enumerate(zip(self.anatomy.motors, self.motor)):
             now = st_["now"]
             if tick_tr and st_["e_actor"] is not None:
                 st_["e_actor"] = g_ * st_["e_actor"]
+            if tick_tr and st_.get("e_follow") is not None:
+                st_["e_follow"] = g_ * float(st_["e_follow"])                # (D5e: at the same horizon)
             self._actor_tag_step(st_, None)                          # A142: the tag decays at the long critic's horizon every tick
             if now["acted"]:
                 self.ledger_act(e_, now)                                 # I1: the vote for the act taken, the lean's following
                 self._vte_credit(e_, now)                                # A219: the lean's credit (the share that followed, the reward after)
-            if now["acted"] and now["act_on"] and not now["cont"] and not now.get("guided") and self._actor_x() is not None:   # (D2: no input
+            if now["acted"] and now["act_on"] and not now["cont"] and (not now.get("guided") or int(self.cfg.get("guided_credit", 0))) \
+                    and self._actor_x() is not None:   # (D2: no input yet, no credit). GUIDED_CREDIT (2026-10-22, P8 11:45): under a real
+                # reward (the lever) a guided act earns the striatum's credit as an own act does: dopamine gates the corticostriatal
+                # synapses of the movement just made, whoever moved it (Reynolds and Wickens 2002); the push then teaches the selector,
+                # not only the gate and the habit (500 pushes and the probe's arm still hovered without direction: the actor had never
+                # been credited for the carry). Default 0: D1b's exclusion, as the relive had it (no reward there, and the rule drifted)
                 # yet, no credit). D1b (2026-10-19): A GUIDED ACT IS NOT THE STRIATUM'S CHOICE. Under the D1 trainer the expert's act takes the
                 # choice; the actor's eligibility is (the act's one-hot - the policy's probabilities) x its input, whose mean is zero only for
                 # acts the policy itself drew, so dopamine's offset under guidance moved every actor along the expert's acts or against them
@@ -1261,7 +1322,19 @@ class MouthMixin:
                     e_new = torch.outer(oh, self._actor_input(e=e_))             # A148: on the striatal input at unit power (A226: its limb's too)
                     ea = st_["e_actor"]
                     st_["e_actor"] = ((1.0 if tick_tr else g_) * ea if ea is not None else torch.zeros_like(e_new)) + e_new
+                    if self._sight_suggest_n(e_):                        # D5e: THE FOLLOW GAIN'S ELIGIBILITY: its score, d log pi / d g through
+                        sg_ = self._sight_suggest(e_).to(oh.device, oh.dtype)   # the same squashing, at the suggestion's unit power: A148's bound,
+                        ef_new = float(oh @ sg_) / max(float(sg_ @ sg_), 1.0)    # a unit of dopamine moves the follow term by at most lr x beta
+                        ef_ = st_.get("e_follow")                                # x |oh| (18:4x 10-23: over its score's mean square instead, the
+                                                                                 # live gains walked 0.06 -> 0.49 in 300 ticks on pain at the
+                                                                                 # set-downs, ten times the actor synapses' noise, no pull back)
+                        st_["e_follow"] = ((1.0 if tick_tr else g_) * float(ef_) if ef_ is not None else 0.0) + ef_new
                     self._actor_tag_step(st_, e_new)                 # A142: and takes this act's eligibility
+                    if int(self.cfg.get("sight_ladder", 0)):
+                        ec_ = self._sight_ladder_credit(e_, now)         # D6: and the ladder control's, its own act on the rungs' reading
+                        if ec_ is not None:
+                            ue_ = getattr(self, "_sight_ue", None)
+                            self._sight_ue = ec_ if ue_ is None or tuple(ue_.shape) != tuple(ec_.shape) else ue_ + ec_
             if now["acted"] and e_.intrinsic:
                 now["int"] = self._perf_error(e_, st_, now)       # step R6h: its performance error, when it declares one (A41, C61)
             if now["acted"] or now["reflex"]:

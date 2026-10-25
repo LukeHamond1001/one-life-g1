@@ -46,7 +46,7 @@ from .anatomy import anatomy_for
 from .cerebellum import cerebellum_spec
 from .amygdala import amygdala_spec
 from .frames import recall_spec
-from .cord import cueline_spec
+from .cord import cueline_spec, sightline_spec, sightmix_spec
 from .physiology import PHYSIOLOGY
 
 # THE DAY (A70; the module's doc): what of the life's attributes the day does not hold, being held elsewhere or not the life's state: the
@@ -83,8 +83,13 @@ class PersistenceMixin:
                          "vrel": list(self._vrel), "vrel_gain": float(self._vrel_gain), "vrel_corr": float(self._vrel_corr),
                          "actor_in_m": None if getattr(self, "_actor_in_m", None) is None else [float(x_) for x_ in self._actor_in_m.reshape(-1).tolist()],   # D4
                          "actor_in_v": None if getattr(self, "_actor_in_v", None) is None else [float(x_) for x_ in self._actor_in_v.reshape(-1).tolist()],
+                         "acue_m": None if getattr(self, "_acue_m", None) is None else [float(x_) for x_ in self._acue_m.reshape(-1).tolist()],   # (cue_adapt)
+                         "sight_u": None if getattr(self, "_sight_u", None) is None else [float(x_) for x_ in self._sight_u.reshape(-1).tolist()],   # (D6: the ladder's control)
                          "asense_m": {k_: [float(x_) for x_ in v_.reshape(-1).tolist()] for k_, v_ in (getattr(self, "_asense_m", None) or {}).items()},   # A226
                          "asense_v": {k_: [float(x_) for x_ in v_.reshape(-1).tolist()] for k_, v_ in (getattr(self, "_asense_v", None) or {}).items()},
+                         "sight_fg2": {k_: float(v_) for k_, v_ in (getattr(self, "_sight_fg", None) or {}).items()},   # D5e: the follow gains, learned: kept
+                         "asug_m": {k_: [float(x_) for x_ in v_.reshape(-1).tolist()] for k_, v_ in (getattr(self, "_asug_m", None) or {}).items()},   # D5e
+                         "asug_v": {k_: [float(x_) for x_ in v_.reshape(-1).tolist()] for k_, v_ in (getattr(self, "_asug_v", None) or {}).items()},
                          "dop_ms": float(getattr(self, "_dop_ms", 1.0)), "dop_shape_m": {str(k_): float(v_) for k_, v_ in getattr(self, "_dop_shape_m", {}).items()},   # (D3b/D3d: each shaping band's term's running mean)            # A172: dopamine's running mean square (the actors' adaptive gain)
                          "vbuf_v": list(self._vbuf_v), "vbuf_r": list(self._vbuf_r), "sharp_cal": float(self.sharp_cal),
                          "frel": list(self._frel), "frel_gain": float(self._frel_gain), "frel_corr": float(self._frel_corr),
@@ -149,7 +154,9 @@ class PersistenceMixin:
                         amygdala=amygdala_spec(anatomy, c),                         # and the amygdala when its switch is on (step R7d; from the save)
                         recall=recall_spec(anatomy, c),                             # and recall's maps when its switch is on (step R7f; from the save)
                         cueline=cueline_spec(anatomy, c),                           # and the cue line's maps when its switch is on (D4a; born at
-                        effout=int(c.get("efference_stream", 1)) == 0)              # (R1: the efference to the forward half alone)
+                        effout=int(c.get("efference_stream", 1)) == 0,              # (R1: the efference to the forward half alone)
+                        sightline=sightline_spec(anatomy, c),                       # (D5: the sight line's maps when its switch is on, born at zero)
+                        sightmix=sightmix_spec(anatomy, c))                         # (D5c: the mixed population and its maps when its switch is on)
                                                                                     # zero beside an older save's organs, strict=False below)
         # A BODY IS BORN WITH ITS SWITCHES (SIM_DESIGN.md A20; the R6c verifier's fourth finding): a save whose organs hold a cerebellum
         # loads only with the switch on, and one whose organs hold none only with it off, every one of the organ's entries from the save
@@ -367,10 +374,20 @@ class PersistenceMixin:
             life._feat_mu = L["feat_mu"].to(device)                  # the gate's adapted input, its running mean
         if isinstance(L.get("actor_in_m"), list) and isinstance(L.get("actor_in_v"), list) and len(L["actor_in_m"]) == len(L["actor_in_v"]) > 0:   # D4
             life._actor_in_m = torch.tensor(L["actor_in_m"], dtype=torch.float64); life._actor_in_v = torch.tensor(L["actor_in_v"], dtype=torch.float64); life._actor_in_t = -1
+        if isinstance(L.get("acue_m"), list) and L["acue_m"]:                    # (cue_adapt: the cue line's running mean)
+            life._acue_m = torch.tensor(L["acue_m"], dtype=torch.float64); life._acue_t = -1
+        if isinstance(L.get("sight_u"), list) and L["sight_u"]:                  # (D6: the control over the eye's ladder, learned: kept)
+            life._sight_u = torch.tensor(L["sight_u"], dtype=torch.float64)
         if isinstance(L.get("asense_m"), dict) and isinstance(L.get("asense_v"), dict) and L["asense_m"]:   # A226: each limb's sense moments
             life._asense_m = {k_: torch.tensor(v_, dtype=torch.float64) for k_, v_ in L["asense_m"].items()}
             life._asense_v = {k_: torch.tensor(L["asense_v"][k_], dtype=torch.float64) for k_ in L["asense_m"] if k_ in L["asense_v"]}
             life._asense_t = {k_: -1 for k_ in life._asense_m}; life._asense_n = {k_: 10 ** 9 for k_ in life._asense_m}   # (past the birth rate)
+        if isinstance(L.get("sight_fg2"), dict) and L["sight_fg2"]:            # D5e: the follow gains (the day's state keeps them too)
+            life._sight_fg = {k_: float(v_) for k_, v_ in L["sight_fg2"].items()}
+        if isinstance(L.get("asug_m"), dict) and isinstance(L.get("asug_v"), dict) and L["asug_m"]:   # D5e: each line's suggestion's moments
+            life._asug_m = {k_: torch.tensor(v_, dtype=torch.float64) for k_, v_ in L["asug_m"].items()}
+            life._asug_v = {k_: torch.tensor(L["asug_v"][k_], dtype=torch.float64) for k_ in L["asug_m"] if k_ in L["asug_v"]}
+            life._asug_t = {k_: -1 for k_ in life._asug_m}; life._asug_n = {k_: 10 ** 9 for k_ in life._asug_m}   # (past the birth rate)
         if L.get("dop_ms") is not None:
             life._dop_ms = float(L["dop_ms"])                        # (A172; an older save: born at 1, re-adapts within the tau)
         if isinstance(L.get("dop_shape_m"), dict):                            # D3d: per band
@@ -500,6 +517,17 @@ class PersistenceMixin:
             day_ = blob.get("day")
             if isinstance(day_, dict) and day_.get("anatomy") == _anatomy_sig(life.anatomy):
                 life._day_back(day_, born_)
+                if not isinstance(L.get("sight_fg2"), dict) and (getattr(life, "_sight_fg", None) or getattr(life, "_sight_fi", None)):
+                    # D5e (19:1x 10-23): A SAVE FROM BEFORE THE GAINS' RESET. The day's working state gives every attribute back, so the
+                    # gains the unbounded step walked (arm_r 0.685 by 18:55) came back through it whatever the life's own record said, and
+                    # the bounded run saved them as its own (0.704). Every follow gain and its eligibility saved before "sight_fg2" is
+                    # dropped: born again at 0, to be earned under the bounded step
+                    print(f"load: D5e's follow gains {getattr(life, '_sight_fg', None)} from before the reset not kept: born again at 0", flush=True)
+                    for k_ in ("_sight_fg", "_sight_fi"):
+                        if hasattr(life, k_):
+                            delattr(life, k_)
+                    for st_ in (getattr(life, "motor", None) or ()):
+                        st_.pop("e_follow", None)
                 for e_, st_ in zip(life.anatomy.motors, getattr(life, "motor", ())):   # D2: a trace saved for a head of another width
                     w_ = int(life.m.get_submodule(e_.actor).weight.shape[1])              # (the actors' input changed) is dropped
                     for k_ in ("e_actor", "a_tag"):
@@ -574,5 +602,7 @@ class PersistenceMixin:
                         amygdala=amygdala_spec(anatomy, cfg),       # the amygdala when its switch is on (R7d, the last), recall's maps (R7f);
                         recall=recall_spec(anatomy, cfg),           # the diary declares none of them
                         cueline=cueline_spec(anatomy, cfg),         # (D4a: the cue line's maps when its switch is on)
-                        effout=int(cfg.get("efference_stream", 1)) == 0)   # (R1: the efference copy to the forward half alone)
+                        effout=int(cfg.get("efference_stream", 1)) == 0,   # (R1: the efference copy to the forward half alone)
+                        sightline=sightline_spec(anatomy, cfg),     # (D5: the sight line's maps when its switch is on)
+                        sightmix=sightmix_spec(anatomy, cfg))       # (D5c: the mixed population and its maps when its switch is on)
         return cls(organs, anatomy, cfg=cfg, device=device, seed=seed, save_path=save_path, world=world)

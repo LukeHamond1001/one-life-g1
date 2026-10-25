@@ -250,6 +250,18 @@ class SleepMixin:
         if int(blk["q"].shape[1]) == int(q_.numel()):
             blk["q"][r] = q_.reshape(-1).to(torch.float16)
 
+    def _tape_sight(self, blk, r, w):
+        """D5 (2026-10-22): THE SIGHT LINE TAPED BESIDE THE ACT. The sight line the position's proposals read (the window's "sight": body/core/
+        cord.py `_sight_line`), into the block's sight columns ("sg" [rows, width], float16: standardized numbers within +-4 times
+        sqrt(d / n)), the columns added at the first position that holds one (a row with none, zeros: nothing seen, as an imagined position's)"""
+        g_ = w.get("sight")
+        if g_ is None:
+            return
+        if "sg" not in blk:
+            blk["sg"] = torch.zeros(int(blk["v"].shape[0]), int(g_.numel()), dtype=torch.float16)
+        if int(blk["sg"].shape[1]) == int(g_.numel()):
+            blk["sg"][r] = g_.reshape(-1).to(torch.float16)
+
     def _tape_driven(self, blk, r):
         """A230 (2026-10-17): WHETHER THE WORLD DROVE EACH EFFECTOR, TAPED BESIDE THE MOVE. For every motor effector, whether the frame the
         tick is lived on shows the world drove its joints in the tick before (timing `_sense_driven`): the block's column "dv" (int8,
@@ -322,6 +334,7 @@ class SleepMixin:
             blk["bands"][r] = w["bundle"].to("cpu", torch.float16)   # the ladder's bands the cortex received at this tick (the lead's item 1)
             self._tape_push(blk, r)                                  # A228c: the cord's push beside the move it is part of
             self._tape_cue(blk, r, w)                                # D4a: the cue line the tick's proposals read
+            self._tape_sight(blk, r, w)                              # D5: the sight line the tick's proposals read
             self._tape_driven(blk, r)                                # A230: whether the world drove each effector, beside the move
             self._tape_blocked(blk, r, w)                            # A233: the settings its actuator could not carry out, beside the act
         blk["end"][r] = bool(w.get("end", False))
@@ -412,6 +425,10 @@ class SleepMixin:
         if wq_ is not None:                                              # D4a: the cue line (a block taped before its first: zeros)
             out["q"] = torch.cat([blk["q"] if "q" in blk and int(blk["q"].shape[1]) == wq_ else torch.zeros(int(blk["v"].shape[0]), wq_, dtype=torch.float16)
                                   for blk in tape])[:n].clone()
+        wg_ = next((int(blk["sg"].shape[1]) for blk in tape if "sg" in blk), None)
+        if wg_ is not None:                                              # D5: the sight line (a block taped before its first: zeros)
+            out["sg"] = torch.cat([blk["sg"] if "sg" in blk and int(blk["sg"].shape[1]) == wg_ else torch.zeros(int(blk["v"].shape[0]), wg_, dtype=torch.float16)
+                                   for blk in tape])[:n].clone()
         if any("dv" in blk for blk in tape):                              # A230: the world's drive per effector (a block taped before its first: unknown)
             m_ = len(self.anatomy.motors)
             out["dv"] = torch.cat([blk["dv"] if "dv" in blk else torch.full((int(blk["v"].shape[0]), m_), -1, dtype=torch.int8) for blk in tape])[:n].clone()
@@ -520,7 +537,7 @@ class SleepMixin:
     def _episode_rows(self, ep):
         """an episode's dream window: its reel's rows w0..w1 (views)"""
         r_ = self._reels[ep["reel"]]; s = slice(ep["w0"], ep["w1"] + 1)
-        out = {k_: r_[k_][s] for k_ in ("s", "v", "xo", "a", "end", "G", "p", "pk", "dv", "q") if k_ in r_}   # (A228c: the push where the reel keeps it; A230: the drive; D4a: the cue line)
+        out = {k_: r_[k_][s] for k_ in ("s", "v", "xo", "a", "end", "G", "p", "pk", "dv", "q", "sg") if k_ in r_}   # (A228c: the push where the reel keeps it; A230: the drive; D4a: the cue line)
         out.update({k_: r_[k_][s] for k_ in r_ if k_.startswith("bk:") or k_.startswith("gd:") or k_.startswith("td:") or k_.startswith("wc:") or k_.startswith("lb:")})   # (A233: the blocked
                                                                                          # settings; D1e: the guided rows; D1y: the labels)
         return out
@@ -581,7 +598,7 @@ class SleepMixin:
             order = torch.randperm(len(dreams), generator=self.gen).tolist(); tot = 0.0; ok = 0
             parts_sum = {}; parts_n = 0
             for i0 in range(0, len(order), nb):
-                opt.zero_grad(set_to_none=True); self.opt_pred.zero_grad(set_to_none=True)
+                opt.zero_grad(set_to_none=True); self.opt_pred.zero_grad(set_to_none=True); self._nlms_acc = {}
                 batch = [dreams[j] for j in order[i0:i0 + nb]]
                 loss, parts = self._frames_lesson(batch)
                 if loss is None or not bool(torch.isfinite(loss.detach())):
@@ -594,6 +611,8 @@ class SleepMixin:
                 gn = torch.nn.utils.clip_grad_norm_(params, 1.0)
                 if bool(torch.isfinite(gn)):
                     opt.step()
+                    if int(self.cfg.get("act_nlms", 0)):
+                        self._nlms_apply()                        # (act_nlms: the batch's step within its stability, timing `_nlms_apply`)
                     self.opt_pred.step()                          # act_pred, its correction (and the maps): the plain step, never the Adam
                     self._forecast_scaling()                      # A154: the forecast heads held at the act rows' scale, by night as by day
                 opt.zero_grad(set_to_none=True); self.opt_pred.zero_grad(set_to_none=True)
@@ -710,6 +729,14 @@ class SleepMixin:
                 if "q" in r_ and int(r_["q"].shape[1]) == nq_:
                     Q_[b, :lens[b]] = r_["q"].float()
             obs["@cue"] = Q_.to(dev)
+        if self._sight_line_on():                                         # D5: the sight line at each position (a reel taped without it: zeros)
+            from .cord import sight_width
+            ng_ = sight_width(self.cfg)
+            G_ = torch.zeros(B, T, ng_)
+            for b, r_ in enumerate(rows):
+                if "sg" in r_ and int(r_["sg"].shape[1]) == ng_:
+                    G_[b, :lens[b]] = r_["sg"].float()
+            obs["@sight"] = G_.to(dev)
         m_ = len(mot)
         if any("dv" in r_ and int(r_["dv"].shape[1]) == m_ for r_ in rows):     # A230: the world's drive per effector at each position (-1: unknown)
             DV_ = torch.full((B, T, m_), -1, dtype=torch.int8)
@@ -985,6 +1012,7 @@ class SleepMixin:
         bands = bands0.float().to(dev); bundles, Cs, bnext = [], [], []
         bans = list(self.bans)
         macts = {e.name: [int(r_["a"][t, j]) for t in range(T0)] for j, e in enumerate(mot)} if limbs else {}
+        emu_ = self._emulator_raw(r_, T0, vec, mot)                         # A239: the sensed channels' last felt values, or None
         # R13 (2026-10-19): THE ROLLOUT BY ITS CACHE. Each step fed the cortex the whole window again (inputs and stream over n positions
         # for the n-th: a rollout of IMAG_SEED + rem_steps = 11 positions passed 66), though while the window only grows no earlier
         # position can change (the attention is causal, and the stream has no position code): the newest position's input alone through
@@ -1001,7 +1029,10 @@ class SleepMixin:
                         if c_.name != words.name:
                             syms[c_.name].append(int(c_.rest_id))
                     for c_ in vec:
-                        codes[c_.name].append(m.head(self.anatomy, idx[c_.name])(Cs[-1]) if c_.forecast else torch.zeros(m.d, device=dev))
+                        if emu_ is not None and c_.name in emu_:
+                            codes[c_.name].append(self._emulate(c_, emu_, macts, Cs[-1], step))   # A239: the felt body foreseen from the act
+                        else:
+                            codes[c_.name].append(m.head(self.anatomy, idx[c_.name])(Cs[-1]) if c_.forecast else torch.zeros(m.d, device=dev))
                     if limbs:
                         for e in mot:
                             a_ = self._rem_limb_act(e, Cs[-1], rt)
@@ -1028,6 +1059,69 @@ class SleepMixin:
                 bands = m.band_update(bands, C)
                 bnext.append(bands.clone())
         return dict(Cs=Cs, bnext=bnext, syms=syms, codes=codes, macts=macts, sym=sym, vec=vec, mot=mot)
+
+    def _emulator_on(self):
+        """the switch `imagine_emulator` (A239): 0 for every body born before it (its cfg holds no such key)"""
+        return bool(int(self.cfg.get("imagine_emulator", 0)))
+
+    def _emulator_raw(self, r_, T0, vec, mot):
+        """A239 (2026-10-22, the owner's word "do it"): THE EMULATOR IN THE IMAGINED STREAM. Since R1 (efference_stream 0, 2026-10-21) no
+        copy of an act enters the cortex's input, and the stream run free fills every vector channel with its head's forecast from the
+        stream alone: an imagined act changed nothing in the imagined future. Read on P8 (the dawn-15 save): the deliberation (A190)
+        weighed an act against rest 50,426 times and found the two futures' valence equal every time (its usual difference 0.0), the
+        waking imagination ran 51,123 times and leaned no act, ever. The forward halves still take the corollary discharge (R1's road:
+        each motor effector's foreseen next body sense from the stream and the tick's efference). In imagination the felt body is the
+        forward models' forecast: each sensed channel starts from its last felt values (the seed's last row) and, at every imagined
+        position, each motor effector that senses it writes its own numbers there as its forward half foresees them from the stream
+        before and the acts imagined there; the channel then enters the stream as felt. The emulator of Grush (2004): in motor imagery
+        the controller drives a forward model of the body whose output stands in for the senses (Wolpert, Ghahramani and Jordan 1995;
+        Jeannerod 2001: imagined action is simulated action). Every rollout reads it (the deliberation's, the waking imagination's,
+        REM's): one machinery. Returns {channel name: its raw values [size]} for the channels a motor effector senses, None when the
+        switch is off or none is sensed"""
+        if not self._emulator_on():
+            return None
+        offs, o_ = {}, 0
+        for c_ in vec:
+            offs[c_.name] = (o_, int(c_.size)); o_ += int(c_.size)
+        names = set()
+        for e in mot:
+            tm_ = self.m.timing[e.name] if e.name in self.m.timing else None
+            if e.sense is not None and e.sense in offs and tm_ is not None and int(getattr(tm_, "sense_n", 0) or 0) > 0:
+                names.add(e.sense)
+        if not names or T0 < 1:
+            return None
+        return {nm: r_["v"][T0 - 1, offs[nm][0]:offs[nm][0] + offs[nm][1]].float().to(self.dev).clone() for nm in names}
+
+    def _emulate(self, c, raw, macts, C, step):
+        """A239: sensed channel c's code at imagined position `step`: its last values with each motor effector's own numbers there
+        replaced by its forward half's forecast from the stream at step - 1 (`C`) and that position's efference (the acts imagined there,
+        each effector's rest where the rollout imagines no limbs), as `_timing_foresee` foresees the next tick awake; kept for the next
+        position"""
+        m = self.m
+        with torch.no_grad():
+            ef_ = getattr(m, "eff_fwd", None)
+            eff = None
+            if ef_ is not None:
+                o1_ = {e2_.name: torch.tensor([int(macts[e2_.name][step - 1]) if (macts and e2_.name in macts) else int(e2_.rest_id)],
+                                              device=self.dev) for e2_ in self.anatomy.motors}
+                eff = m.efference(self.anatomy, o1_)[0]
+            x = raw[c.name]
+            for e in self.anatomy.motors:
+                if e.sense != c.name or e.name not in m.timing:
+                    continue
+                tm_ = m.timing[e.name]
+                if not int(getattr(tm_, "sense_n", 0) or 0):
+                    continue
+                p_ = tm_.fwd(C)
+                if eff is not None and e.name in ef_:
+                    p_ = p_ + ef_[e.name](eff)
+                p_ = p_.reshape(-1).to(x.dtype)
+                if e.sense_idx is not None:
+                    x[torch.tensor([int(j) for j in e.sense_idx], device=x.device)] = p_
+                else:
+                    x = p_.clone()
+            raw[c.name] = x
+            return c.encode(m, x)
 
     def _rem_frames(self, ep, k=3):
         """REM ON FRAMES (step R8b; REM stays on: the owner's ruling; the first design's "REM samples discrete channels, takes the mean

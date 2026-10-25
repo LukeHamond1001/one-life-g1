@@ -544,3 +544,12 @@ sim threaded f3ee3d6289336335ecc7f147 unchanged, the language default 7c54199e3c
 D1y words, D1z, D2ag (2026-10-20, the lead, on c00abf75): the words' no-lesson label only where a recording carries it (the window's,
 the tape's and the batch's key absent otherwise); the parent's routine and owed smiles only where a demo world sets them (the stub world
 has no parent): sim threaded f3ee3d6289336335ecc7f147 unchanged, the language default 7c54199e3c72cf77d45a8e94 unchanged.
+P8's commits (2026-10-21 to 10-24, the lead, re-taken 2026-10-24 on main's 8310f021): the sim pin MOVES: threaded
+755c51ec2826bdfa4b50c2e0 (was f3ee3d6289336335ecc7f147), one-thread 7768236df6818f0bf388b830 (was 2c4a44c9138b76a71e44c02e), consts
+ed20f0327da0 unchanged; the language default re-run: 7c54199e3c72cf77d45a8e94 (kept). Placed by bisecting the threaded sections (--full's
+per-section digests): a7422870 (cue_adapt: the cue line's running mean saved with the life) moved the work section alone (091895dcdf5e
+to 2be095e46322); c0f2a506 (the actors' cue and sight lines hold their last reading before the tick's choice: a fix, the stub's actors
+now read the cues they choose on) moved the organs (8a52ec4c0a4c to ac7e78be3d9e), the store (e58416c18cc2 to a3a706da3969) and the
+optimizers (cde381985263 to 32ae709f94d0), its summary unchanged (store 60, episodes 12, dreams 64, tagged 11, twitches 4); 38ab8923
+(act_nlms: the act lesson's step kept within its stability) the work section alone (to 25ed80543dca); 34d30f60 (A172b dopamine_sat)
+the work and cfg sections alone (to dd578e058ba9 and 2c359b22d0c9). The bisects found no other section moved.

@@ -163,12 +163,17 @@ GRASP_HOLD_TICKS = 40           # A162: the grasp fires at full strength this lo
                                 # (the reflex's response to a sustained, unchanging stimulus wanes: Thompson and Spencer 1966; the palmar grasp
                                 # holds an object placed in a newborn's hand for seconds, not minutes: Twitchell 1965); the span is A4's hand-over
                                 # window (her release once the hand has closed), ours
+GRASP_FALL_LOG = 0.05           # A164b (08:1x 10-24, P8; the world's switch grasp_fall): a fall of the palm's side's log force past this in a
+                                # tick wakes a habituated grasp as a rise does (Thompson and Spencer 1966: dishabituation by a changed stimulus,
+                                # either way). P8's drops (54 in the stage-5 run): the hand pressed at the grasp's threshold through 0.88 of the
+                                # last 10 ticks before each, the reflex silent by A162 and a slipping object (the push falling) never waking it;
+                                # the margin keeps a steady fist on nothing (its own fingers' push steady) habituated. Ours
 GRASP_RECOVER_TICKS = 10        # A162: a palm free of pressure this long (1.5 s) re-arms the grasp in full (the habituated response recovers
                                 # once the stimulus is withdrawn: Thompson and Spencer 1966; ours). Not a touch onset: the grasp's own squeeze
                                 # makes onsets at the palm every tick, so an onset would never let it habituate (measured on the test's ball)
 
 
-def grasp(hand, own, palm_log, state=None, onset=0.0):
+def grasp(hand, own, palm_log, state=None, onset=0.0, whole=False, offset=0.0, fall=False):
     """THE PALMAR GRASP at the spinal cord (see the module's doc): the hand's own act this tick (`own`, its flat act; None its rest)
     and its palm's touch (the frame's log force) give (the act its servos take, the event): (own, None) when the palm is not
     touched at GRASP_N; else the sum JOINT BY JOINT (A160, 2026-10-01; A35's own principle: the reflex and the descending command meet
@@ -198,7 +203,8 @@ def grasp(hand, own, palm_log, state=None, onset=0.0):
         if state[1] >= GRASP_RECOVER_TICKS:                          # the palm was free: the reflex in full again
             state[0] = 0
         state[1] = 0
-        if state[0] > GRASP_HOLD_TICKS and float(onset) > 0.0:         # silent, and the palm's force rose: a new press, the reflex in full
+        if state[0] > GRASP_HOLD_TICKS and (float(onset) > 0.0 or (fall and float(offset) > GRASP_FALL_LOG)):   # silent, and the palm's
+            # force rose (a new press) or, A164b, fell past GRASP_FALL_LOG (the object slipping away): a changed stimulus, the reflex in full
             state[0] = 0
         state[0] += 1
         if state[0] > GRASP_HOLD_TICKS:
@@ -206,6 +212,24 @@ def grasp(hand, own, palm_log, state=None, onset=0.0):
     n = len(_JOINTS[hand])
     rest = W.rest_id(n)
     dig = W.act_digits(rest if own is None else own, n)
+    if whole:
+        # A160b (2026-10-23, P8; the world's switch grasp_whole): THE GRASP YIELDS TO A WHOLE OPENING. Under A160 the cortex took any
+        # closing joint its own step opened, and the reflex closed the rest; a hand acting at random opens one or two of its six closing
+        # joints on many ticks (P8's holding hand, its own acts on held unpushed ticks: some closing joint opened on 0.25-0.37 of them,
+        # 06:26-08:24 10-23), and a grip missing a finger or the thumb let the toy slide out under the reflex's own squeeze (the palm's
+        # force fell to zero over 1-6 ticks while the hand's own act was a small close or a partial opening: the 08:09 lift lesson's six
+        # hand-overs; the lessons' and the tests' drops after k 12 0.06 a sampled held tick). A newborn's palmar grasp is not undone
+        # finger by finger: the hand lets go when it opens as a whole, the release a coordinated act of the extensors that matures
+        # months after the reflex (Twitchell 1965; Halverson 1937, the voluntary release at about 4-5 months). Here, while the reflex
+        # fires, every closing joint is stepped at least one big step closed unless the own act opens EVERY closing joint (the
+        # release: "overridden", as before); a partial opening is closed over. Off: A160 as before
+        op_ = [W.SETTINGS[dig[i]] * CLOSING[hand][j] < 0 for i, j in enumerate(_JOINTS[hand]) if j in CLOSING[hand]]
+        if op_ and all(op_):
+            return own, "overridden"
+        for i, j in enumerate(_JOINTS[hand]):
+            if j in CLOSING[hand] and W.SETTINGS[dig[i]] * CLOSING[hand][j] < W.STEP_BIG:
+                dig[i] = _BIG[CLOSING[hand][j]]
+        return W.act_flat(dig), "grasp"
     closed = 0
     for i, j in enumerate(_JOINTS[hand]):
         if j in CLOSING[hand]:

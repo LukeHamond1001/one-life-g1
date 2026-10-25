@@ -234,20 +234,27 @@ def enter_room2(world, expert, gen, lane, rng):
     return moved_
 
 
-def build(out, seed, claim2=False, objects=0, screen=False):
+def build(out, seed, claim2=False, objects=0, screen=False, bare=False):
     DM.DEMO_WALK = False; DM.DEMO_REACH = False                  # the expert alone drives the child: the life's walk and reach hands
                                                                  # (E1, E2) off in a demo world (their pushes are not the recorded acts)
     from body.sim.voice import synth as V
+    if bare:
+        X.set_bucket_dims(X.BARE_BUCKET_IN, X.BARE_BUCKET_H)                                              # THE BARE WORLD'S BOX (deeper, wider)
     ex_ = X.EXTRAS["book_box_buckets" if claim2 else "book_box_bucket"]()                                 # (P1 claim two: its room's second bucket)
     gso_ = X.add_gso(seed, int(objects)) if int(objects) > 0 else None                                     # the scanned objects for this seed
     sc_ = X.add_screen() if screen else None                                                                 # THE SCREEN (the living test's)
-    def extra_(spec):                                                                                        # (docs/archive/DATA_PIPELINE.md 3)
+    br_ = X.add_bare() if bare else None                                                                     # THE BARE WORLD (the floor, her unseen)
+    def extra_(spec):                                                                                        # (docs/DATA_PIPELINE.md 3)
         ex_(spec)
         if gso_ is not None:
             gso_(spec)
         if sc_ is not None:
             sc_(spec)
+        if br_ is not None:
+            br_(spec)
     world = W.G1World(seed=seed, extra=extra_, xml=G.scene_path("door", "a"))
+    if br_ is not None:
+        X.hide_parent(world.m)                                                # (her body joins the spec after the extras: hidden on the model)
     if sc_ is not None:
         world.screen = X.ScreenPlayer(world.m)                                 # (its frame ticked before the eyes see: world.frame)
     if gso_ is not None:                                                  # the graspable among them join the reach list by their words
@@ -261,6 +268,8 @@ def build(out, seed, claim2=False, objects=0, screen=False):
     lane = LN.ParentLane(world, seed=seed, voice=voice, plan=False, stage=2,   # her stage 2: the words her ear accepts are judged
                          day_ticks=int(SIM_CFG.get("wake_ticks", 24000)))
     anat = SimAnatomy(born_table(LX.BIRTH_WORDS), SIM_CFG, limits=[float(x) for x in world.tau_max])
+    if br_ is not None:
+        lane.conduct.body_still = True                                # THE BARE WORLD: her body unseen and still (conduct._request)
     world.ghost.on_(world, command=True, walk=True)                   # the child stands and walks on the gait (a command block's hold)
     lane.conduct.routine = frozenset(ROUTINE_ACTS)                    # D2ag: her smile for its answers, not its mastered acts
     world.door_shut = True; world.room = 1                            # D2ah: the home room alone (the door test opens the other)
@@ -360,6 +369,32 @@ def set_child_at(world, expert, lane, q, yaw):
     d.qpos[0:2] = np.asarray(q, float); d.qpos[3:7] = [math.cos(yaw / 2), 0.0, 0.0, math.sin(yaw / 2)]; d.qvel[:] = 0.0
     mujoco.mj_forward(m, d)
     world.ghost.on_(world, command=True, walk=True)
+    for k, b in expert.par.toys.items():
+        if hasattr(lane, "toy_prev"):
+            lane.toy_prev[k] = np.asarray(d.xpos[b], float).copy()
+    return True
+
+
+def set_child_gently(world, expert, lane, q, yaw):
+    """THE GENTLE SET-DOWN (19:3x 10-23, P8's pain record): the child set down standing at floor point q facing yaw as set_child_at
+    does, but the gait's guide left on, its own references (the walk's lead and the pelvis's last point) moved with the body and its
+    heading read afresh, the steadying hold let go. Why: set_child_at turns the ghost off at once and on again (its wrenches gone in a
+    tick, the legs' servos from the walking law to the resting one and back, the gait's memory reset), and the body jolts: in a
+    brainless world 67 pain ticks in the 30 after 5 set-downs (the base's force 49, the waist's pitch 29, its roll 18), 48 with the
+    base's tilt kept, 0 with the guide left on (scratchpad setdown_exp.py); live, 309 of a run's 316 pain ticks fell within 30 ticks of
+    its 23 set-downs, the dopamine's adaptation dimmed for minutes after each. A parent sets a child down without hurting it -> True"""
+    import mujoco
+    m, d = world.m, world.d
+    gh = world.ghost
+    p0 = np.array(d.qpos[0:2], float)
+    d.qpos[0:2] = np.asarray(q, float); d.qpos[3:7] = [math.cos(yaw / 2), 0.0, 0.0, math.sin(yaw / 2)]; d.qvel[:] = 0.0
+    mujoco.mj_forward(m, d)
+    sh = np.asarray(q, float) - p0
+    for nm in ("lead", "pxy"):
+        v = getattr(gh, nm, None)
+        if v is not None:
+            setattr(gh, nm, np.asarray(v, float) + sh)
+    R = d.xmat[gh.b].reshape(3, 3); gh.heading = float(math.atan2(R[1, 0], R[0, 0])); gh.steady = None
     for k, b in expert.par.toys.items():
         if hasattr(lane, "toy_prev"):
             lane.toy_prev[k] = np.asarray(d.xpos[b], float).copy()
@@ -1140,7 +1175,7 @@ class Generator:
                 return
         if self.curriculum:
             return self._start_curriculum(t)
-        if self.rng.random() < HAND_SHARE:                       # D2c: the hand's tasks standing (the floor's start serves them: its
+        if self.rng.random() < HAND_SHARE and _allowed("take"):   # D2c: the hand's tasks standing (the floor's start serves them: its
             holds_ = sorted(k for k in self.x.holds() if k.split("_")[0] in LX.TABLE[:LX.N_BIRTH])   # (the toys it can name: a rattle in
                                                                  # its hand is no name_held nor give: the expert cannot say it)
             r_ = self.rng.random()
@@ -2070,6 +2105,7 @@ def main():
                     "through the recording to OUT/film.mp4 with its captions (tools/harness/demo_film.py: the task and her word at each change), every "
                     "--film-every ticks; a fault in it stops the film, never the recording")
     ap.add_argument("--film-every", type=int, default=2, help="a frame every this many ticks (2: three frames a second of the sim's six)")
+    ap.add_argument("--bare", action="store_true", help="THE BARE WORLD (body/sim/extras.add_bare): the floor alone, her body unseen")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     if args.families:
@@ -2078,7 +2114,7 @@ def main():
         bad_ = sorted(FAMILY_SET - set(CURRICULUM) - set(RUNG2) - set(FAMILIES))
         if bad_:
             raise SystemExit(f"--families names no family of this generator: {bad_}")
-    world, eyes, lane, anat = build(args.out, args.seed, claim2=args.claim2, objects=args.objects)
+    world, eyes, lane, anat = build(args.out, args.seed, claim2=args.claim2, objects=args.objects, bare=args.bare)
     if args.eye_dino:
         from body.sim.dino import DinoEye
         eyes.dino = DinoEye()

@@ -55,21 +55,30 @@ def index(recdirs, fams=None):
             if not (MIN_TICKS <= t1 - t0 <= MAX_TICKS):
                 continue
             f0 = max(0, (t0 - tick0) // every); f1 = max(f0 + 1, (t1 - tick0) // every + 1)
-            out.append(dict(dir=d, fam=e["fam"], toy=e.get("toy"), t0=t0, t=t1, f0=int(f0), f1=int(f1), fps=TICK_HZ / every))
+            out.append(dict(dir=d, fam=e["fam"], toy=e.get("toy"), t0=t0, t=t1, f0=int(f0), f1=int(f1), fps=TICK_HZ / every, hand=e.get("hand")))   # (hand: the filmed body's holding hand, 17:1x 10-24)
     return out
 
 
+CROP = tuple(int(v_) for v_ in os.environ.get("P8_CLIP_CROP", "").split(":") if v_) or None   # THE CLOSER SHOT (19:58 10-22): x0:y0:w:h of
+# the film (640 x 480 front films: 120:0:400:300, the head to the thighs at 1.6x). The child's eye could not tell the clips apart: over 70
+# shows from 17:44 to 19:52 its colour camera's and colour window's DINO codes, its fovea's and its periphery's numbers, averaged over
+# each show, told the shown act at chance (0.40 / 0.13 / 0.17 against 0.46): the figure on the 24 cm tablet at 0.45 m stood about 25 px
+# wide in its 238 px colour image (an arm 3 to 4 px), its own hands often before it. The same film, framed closer, for every act alike.
+
+
 def frames(entry, pad_s=PAD_S):
-    """the clip's frames at the panel's size, one a tick -> [n, SCREEN_H, SCREEN_W, 3] uint8"""
+    """the clip's frames at the panel's size, one a tick -> [n, SCREEN_H, SCREEN_W, 3] uint8 (the closer shot when CROP is set)"""
     start = max(0.0, entry["f0"] / entry["fps"] - pad_s)
     dur = (entry["f1"] - entry["f0"]) / entry["fps"] + 2 * pad_s
-    return X.clip_frames(os.path.join(entry["dir"], "film.mp4"), start_s=start, dur_s=dur, fps=TICK_HZ)
+    return X.clip_frames(os.path.join(entry["dir"], "film.mp4"), start_s=start, dur_s=dur, fps=TICK_HZ, crop=CROP)
 
 
 class Library:
-    def __init__(self, globs, fams=None, rng=None):
+    def __init__(self, globs, fams=None, rng=None, toys=None):
         dirs = sorted({os.path.abspath(d_) for g_ in globs for d_ in glob.glob(g_) if os.path.isdir(d_)})
         self.entries = index(dirs, fams)
+        if toys:                                                         # the clips of these objects only (2026-10-22 03:33: the box task's
+            self.entries = [e for e in self.entries if e.get("toy") in set(toys)]   # block slipped from its hand six times a task; the duck held)
         self.rng = rng if rng is not None else np.random.default_rng(0)
         self.by_fam = {}
         for e in self.entries:

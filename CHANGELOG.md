@@ -3,6 +3,40 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.209.0 (2026-10-24): P8, the box and the rhythms from the tablet; the sight line
+
+Not a dawn of the life: the code as it stands when P8 was stopped (2026-10-24 23:42), before the next experiment (a brain born fresh).
+In groups, with their records (`docs/PREREGISTRATION_P6.md`, P8's log):
+
+- **P8, imitation from the tablet (`tools/harness/demo_box.py`, `tools/live/curriculum_p8.py`, `tools/live/resume_p8.sh`).** The child
+  moves its arms; Unitree's walking policy holds its legs. A lesson: the tablet plays a clip of the child's own body doing an act, the
+  tablet goes, an object is handed over, and after k ticks the guide pushes the arm and the lever pays. A test: the clip alone, no push,
+  no pay. The acts: placing (into the box, lift, out, low, side), rhythms (shake, wave, poke, and two diagonals never taught), and two
+  made of taught ones (the high wave, the wave held out).
+- **What its pre-registered tests found.** The wave's first formal test met its rule (the wave's judge after the wave's clip 16 of 60,
+  after the others 12 of 112; one-sided Fisher p = 0.0074); its replication on fresh tests did not (11 of 30 against 13 of 66,
+  p = 0.066), and among the three rhythms the child did not do the one shown more often than the others (D7's test, 10-24 09:5x). The
+  never-taught poke (7 of 30 against 6 of 36, p = 0.355) and the diagonals (D = +0.167, p = 0.359) were not shown imitated. Imitation
+  from the tablet is not shown. Two tests were stopped before their counts on the owner's word and claim nothing (the waves' at 12 of
+  30 each; the taught acts' confirmatory test at 8 of 90).
+- **The sight line, the seeing-to-doing pathway (`body/core/cord.py`).** D5: what the gaze just saw, as a line into the act proposal;
+  D5b into the striatum; D5c a born mixed population (`sight_mix`); D5d (`sight_demo`) its maps taught by the demonstration alone; D5e
+  (`sight_suggest`) its suggestion into the striatum at a follow gain dopamine learns; D5f (`sight_prep`) prepared over the whole delay;
+  D6 (`sight_ladder`) the eye's memory at the cortex's clocks; D7 (`sight_hold`) built and switched off (under it the lessons' first
+  steps went against the shown act's way); D5g (`sight_src=fovea`) the line on the born fovea, for a brain with no pretrained eye.
+- **The body's fixes.** The actors' cue and sight lines read before the tick's choice (c0f2a506: until then the actors had read zeros
+  for their cues, and the arms' pitch and elbow stood at the squash's rail where no lesson could move them); `act_nlms` (the act
+  lesson's step within its stability); `cue_adapt`; `inv_rest_pairs` (the null command an efference copy too); `prep_ahead` (motor
+  preparation); A160b `grasp_whole`, A164b `grasp_fall`, A172b `dopamine_sat`, T3c `pin_ride`.
+- **The teacher and the room.** The hand-over (the object handed turned along the receiving wrist), the guide's hand through the
+  release over the box, the clear spot between tasks, the box set clear of the feet; the tablet seen and not felt, held nearer than the
+  hands, its picture at the fovea's size; the clips' films (`tools/live/film_box_clips.py`); the live snapshot page
+  (`tools/live/watch_page.py`); P8's measures (`tools/measure/p8/`).
+- **The behaviour guard.** The sim profile's digest moved to 755c51ec2826bdfa4b50c2e0 (one-thread 7768236df6818f0bf388b830):
+  c0f2a506's fix moved the organs, the store and the optimizers; a7422870, 38ab8923 and 34d30f60 moved the working and cfg sections
+  alone (`tools/measure/pins/digests.txt`). The language default is kept at 7c54199e3c72cf77d45a8e94.
+- **The tests.** 30 new test files in `body/tests/`, each run when its piece was built; the whole suite was not re-run for this release.
+
 ## 0.208.1 (2026-10-21): the cleanup's second pass
 
 - The folder: `tools/` by job (`tools/README.md`), the pre-G1 prototype worlds in `legacy/sim_prototype/`, the finished pre-registrations

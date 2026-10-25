@@ -80,6 +80,50 @@ def cueline_spec(anatomy, cfg):
     return dict(n=3 * len(anatomy.orienting), effectors=[(e.name, sum(int(k) for k in e.factors)) for e in motor_effectors(anatomy.effectors)])
 
 
+SIGHT_FROM, SIGHT_TO = 384, 768   # D5: the gaze window's DINO code within eye_d (body/sim/dino.py `features`: the colour camera's CLS, then
+                                  # the window's, 384 each)
+FOVEA_SIZE = 1536                 # the born eye's fovea channel eye_f (body/sim/eyes.py: per grey eye 8 x 8 cells x the born bank's 10 maps,
+                                  # then the colour window's 8 x 8 cells x the two opponent axes ON and OFF)
+
+
+def sight_source(cfg):
+    """D5g (2026-10-24, the owner's 'take out all external things the eyes ... put our own stuff back in'): WHAT THE SIGHT LINE READS.
+    sight_src "dino" (the default, every body before it): the pretrained eye's colour-window code, eye_d[384:768]; "fovea": THE BORN EYE'S
+    OWN FOVEA, eye_f whole (both grey foveae through the born bank, the colour window's opponent cells: the same 21 degrees at the gaze the
+    DINO window reads, coded by the body's own early visual system, Hubel and Wiesel's cells, nothing pretrained). -> (channel, from, to)"""
+    if str((cfg or {}).get("sight_src", "dino")) == "fovea":
+        return "eye_f", 0, FOVEA_SIZE
+    return "eye_d", SIGHT_FROM, SIGHT_TO
+
+
+def sight_width(cfg):
+    """D5g: the sight line's width for the body's source (`sight_source`)"""
+    _, a_, b_ = sight_source(cfg)
+    return b_ - a_
+
+
+def sightline_spec(anatomy, cfg):
+    """D5: WHAT THE ORGANS BUILD FOR THE SIGHT LINE (Organs(..., sightline=)): None while the switch `sight_line` is off or where the anatomy
+    declares no pretrained eye (no channel eye_d); else the line's width (the window's code) and each motor effector's name and its
+    settings' count (its map's outputs)"""
+    c = cfg or {}
+    if not int(c.get("sight_line", 0)) or sight_source(c)[0] not in [getattr(ch_, "name", None) for ch_ in (anatomy.channels or ())]:
+        return None
+    from .anatomy import motor_effectors
+    return dict(n=sight_width(c), effectors=[(e.name, sum(int(k) for k in e.factors)) for e in motor_effectors(anatomy.effectors)])
+
+
+def sightmix_spec(anatomy, cfg):
+    """D5c: WHAT THE ORGANS BUILD FOR THE MIXED POPULATION (Organs(..., sightmix=)): None while the switch `sight_mix` is off, the sight
+    line's is off or the anatomy declares no pretrained eye; else the sight line's width and each motor effector's name and its settings'
+    count (its readout's outputs). The population is the stream's width"""
+    c = cfg or {}
+    if not int(c.get("sight_mix", 0)) or sightline_spec(anatomy, c) is None:
+        return None
+    from .anatomy import motor_effectors
+    return dict(n=sight_width(c), effectors=[(e.name, sum(int(k) for k in e.factors)) for e in motor_effectors(anatomy.effectors)])
+
+
 class CordMixin:
     def _reflex_const(self, k):
         """a born pattern's or bias's constant: the body's cfg when it was given, else REFLEX's"""
@@ -379,6 +423,277 @@ class CordMixin:
         t_ = torch.tensor(out, dtype=torch.float32)
         self._cue_now = (int(self.ticks), t_)
         return t_
+
+    def _sight_line_on(self):
+        """the switch `sight_line` (D5): 0 for the diary and for a body born before it (its cfg holds no such key)"""
+        return bool(int(self.cfg.get("sight_line", 0))) and "sightline" in self.m._modules
+
+    def _sight_line(self, frame):
+        """D5 (2026-10-22, P8's iPad: the owner's 'it should bridge seeing it done on the iPad, from the third person, to doing it'): THE
+        SIGHT LINE, WHAT THE GAZE JUST SAW AS A LINE INTO THE PROPOSAL. The visual description of an action (the superior temporal sulcus)
+        reaches the premotor cortex through the parietal cortex (PF/PFG to F5: Rizzolatti and Craighero 2004; Nelissen et al. 2011), and a
+        seen thing is held across a delay by the inferotemporal and prefrontal cortex's persistent activity (Fuster and Alexander 1971;
+        Miller, Erickson and Desimone 1996); the sight of an act and the act are bound by their association (Keysers and Perrett 2004;
+        Heyes 2001, associative sequence learning). Here: the gaze window's DINO code (eye_d's second half), each number standardized by
+        its running mean and variance over sight_norm_tau ticks, faded into a trace over sight_tau ticks, the trace standardized by its own
+        running power and brought to the stream's (times sqrt(d / n)), read by each motor effector's proposal through a map born at zero and
+        taught as the cue line's is (act_pred's lesson and plain step, by day and by night). WHY: the cortex's stream held that a clip was on
+        the tablet (0.81) but not which act it showed (at chance, 137 states a reading point, 20:04-22:00), where the window's code averaged
+        over the clip's middle told it at 0.69 (chance 0.34) and its fading trace still told it 10 and 30 ticks after the clip's end (0.71 and
+        0.62 at a 100-tick fade): the proposal that makes the act never saw what the eye had seen. Nothing is fixed: the map learns only
+        from the acts done after a sight (the guided acts, the demonstrations, at their weight 1). Cached for the tick; zeros before the eye
+        has seen anything (the night, a body without eyes)"""
+        now_ = getattr(self, "_sight_now", None)
+        if now_ is not None and now_[0] == self.ticks:
+            return now_[1]
+        src_, a_s, b_s = sight_source(self.cfg)                            # (D5g: the pretrained eye's window or the born fovea)
+        n_ = b_s - a_s
+        o_ = frame.obs.get(src_) if frame is not None else None
+        if o_ is not None:
+            x_ = torch.as_tensor(o_, dtype=torch.float32).reshape(-1)
+            if int(x_.numel()) >= b_s and bool(torch.isfinite(x_).all()) and float(x_.abs().sum()) > 0.0:
+                x_ = x_[a_s:b_s]
+                a_n = 1.0 / float(self.cfg.get("sight_norm_tau", 4096))
+                mu_ = getattr(self, "_sight_mu", None)
+                if mu_ is None or int(mu_.numel()) != n_:
+                    self._sight_mu = x_.clone(); self._sight_var = torch.ones(n_)
+                else:
+                    d_ = x_ - mu_
+                    self._sight_mu = mu_ + a_n * d_
+                    self._sight_var = (1.0 - a_n) * self._sight_var + a_n * d_ * d_
+                z_ = (x_ - self._sight_mu) / torch.sqrt(self._sight_var + 1e-6)
+                a_t = 1.0 / float(self.cfg.get("sight_tau", 64))
+                tr_ = getattr(self, "_sight_tr", None)
+                self._sight_tr = z_.clone() if (tr_ is None or int(tr_.numel()) != n_) else tr_ + a_t * (z_ - tr_)
+                pw_ = getattr(self, "_sight_pw", None)
+                p2_ = self._sight_tr * self._sight_tr
+                self._sight_pw = p2_.clone() if (pw_ is None or int(pw_.numel()) != n_) else (1.0 - a_n) * pw_ + a_n * p2_
+                if int(self.cfg.get("sight_ladder", 0)):
+                    self._sight_ladder_step(z_, a_n)                       # D6: the eye's memory at the PFC's clocks (below)
+        tr_ = getattr(self, "_sight_tr", None)
+        if tr_ is None or int(tr_.numel()) != n_:
+            q_ = torch.zeros(n_)
+        else:
+            q_ = (tr_ / torch.sqrt(self._sight_pw + 1e-6)).clamp(-4.0, 4.0) * math.sqrt(float(self.m.d) / float(n_))
+        if int(self.cfg.get("sight_ladder", 0)):
+            q_ = self._sight_ladder_read(q_)
+        self._sight_now = (int(self.ticks), q_)
+        return q_
+
+    def _sight_ladder_u(self):
+        """D6: the control over the ladder's rungs (one value a clock), born favouring the rung at sight_tau's clock (sight_ladder_u0
+        above the rest: the rung the line was taught on holds most of the control at the switch, and dopamine moves it from there)"""
+        nb_ = len(self.m.clocks)
+        u_ = getattr(self, "_sight_u", None)
+        if u_ is None or int(u_.numel()) != nb_:
+            u_ = torch.zeros(nb_, dtype=torch.float64)
+            k_ = min(range(nb_), key=lambda i_: abs(float(self.m.clocks[i_]) - float(self.cfg.get("sight_tau", 64))))
+            u_[k_] = float(self.cfg.get("sight_ladder_u0", 2.0))
+            self._sight_u = u_
+        return u_
+
+    def _sight_ladder_step(self, z_, a_n):
+        """D6: one tick of the ladder: each rung a fading trace of the window's standardized code at its clock, and its running power"""
+        nb_ = len(self.m.clocks); n_ = int(z_.numel())
+        tr_ = getattr(self, "_sight_rtr", None); pw_ = getattr(self, "_sight_rpw", None)
+        if tr_ is None or tuple(tr_.shape) != (nb_, n_):
+            self._sight_rtr = z_.unsqueeze(0).repeat(nb_, 1).clone(); self._sight_rpw = (z_ * z_).unsqueeze(0).repeat(nb_, 1).clone()
+            return
+        rate_ = torch.tensor([1.0 / float(c_) for c_ in self.m.clocks], dtype=tr_.dtype).unsqueeze(1)
+        self._sight_rtr = tr_ + rate_ * (z_.unsqueeze(0) - tr_)
+        self._sight_rpw = (1.0 - a_n) * pw_ + a_n * self._sight_rtr * self._sight_rtr
+
+    def _sight_ladder_read(self, q64_):
+        """D6 (2026-10-23, the owner's word: 'what about PFC reward where it chooses which band takes control', the hand-set 64-tick
+        fade 'cheating'): THE EYE'S MEMORY AT THE PFC'S CLOCKS, THE RUNG CHOSEN BY REWARD. The sight line read one fading trace of what
+        the gaze's window saw, its clock set by hand (sight_tau 64): the act shown was told by it 0.81 at the hand-over + 10 and 0.59 at
+        + 60 (12:0x 10-23), the line's between-clip spread fell from 0.185 at + 10 to 0.101 at + 40 over 221 clip-only tests, and the
+        wait before a lesson's push now runs to + 40. Here the window's code is held at every clock of the PFC's ladder (1, 4, 16, 64,
+        256, 1,024, 4,096, 16,384 ticks), each rung standardized by its own running power, and the line reads their mixture under a
+        control (a softmax over one value a rung, _sight_ladder_u) that dopamine moves: at each own act of an effector with a sight line,
+        each rung's credit is how far the line read on that rung alone favoured the act taken over what the draw expected
+        (`_sight_ladder_credit`), traced at dopamine's horizon and stepped by the actors' dopamine (critics: sight_ladder_lr). Delayed
+        working memory is the prefrontal cortex's persistent activity (Fuster and Alexander 1971), and which representation reaches
+        action is gated by the basal ganglia under dopamine (O'Reilly and Frank 2006; Chatham, Frank and Badre 2014). The mixture is
+        what the tick's proposals, the window and the tape carry as the sight line (D5d teaches the line on it as before). -> q [n]"""
+        tr_ = getattr(self, "_sight_rtr", None)
+        if tr_ is None:
+            self._sight_rungs = None
+            return q64_
+        n_ = int(tr_.shape[1])
+        rungs_ = (tr_ / torch.sqrt(self._sight_rpw + 1e-6)).clamp(-4.0, 4.0) * math.sqrt(float(self.m.d) / float(n_))
+        if int(self.cfg.get("sight_hold", 0)):                               # D7: the rungs as they stood at the last event's boundary
+            h_ = getattr(self, "_sight_held", None)
+            if h_ is None or bool(getattr(self, "_shold_due", False)) or tuple(h_.shape) != tuple(rungs_.shape):
+                self._sight_held = rungs_.detach().clone(); self._shold_due = False
+            rungs_ = self._sight_held
+        g_ = torch.softmax(self._sight_ladder_u(), dim=0).to(rungs_.dtype)
+        self._sight_rungs = (int(self.ticks), rungs_.float(), g_.float())
+        return (g_.unsqueeze(1) * rungs_).sum(0).float()
+
+    def _sight_hold_mark(self, s):
+        """D7 (2026-10-24, P8's iPad; the owner's "we need to make sure the final result is it learns to imitate from the iPad"): THE EYE'S
+        HELD MEMORY, UPDATED AT AN EVENT'S BOUNDARY. The sight line read the ladder's live rungs, and what the tablet showed faded from them
+        through the hand-over and the wait: a readout of the mixture as it stood at the first hand-over, held, took the expert's step at
+        0.70 / 0.54 where the live mixture took it at 0.61 / 0.44 (arm_l / arm_r, 22,000 ticks of 10-23/24, scratchpad/latch_surprise.py),
+        and no gate from the senses reached it (touch, the sight's own change, novelty, a still gaze: 21:5x-23:3x 10-23). The world model's
+        own prediction error peaks there: the frame's surprise one and two ticks after the first hand-over (z +1.42, +1.15 over 66), at
+        re-hands far less (a peak above z 2 on 0.56 of first hand-overs, 0.27 of re-hands, 0.038 of 5-tick windows); held from its peaks,
+        the readout took the step at 0.65 / 0.58. Working memory is updated at event boundaries, which the brain marks by its prediction
+        error (Zacks et al. 2007; Kurby and Zacks 2008), and is held between them by persistent activity (Fuster and Alexander 1971).
+        Here: the frame's surprise standardized by its running moments (sight_hold_tau ticks); past sight_hold_z, and sight_hold_refr ticks
+        since the last, the boundary is marked and the ladder's rungs are taken into the held memory at the next read
+        (`_sight_ladder_read`), which the line, its mixed population and the ladder's own credit read until the next boundary"""
+        a_ = 1.0 / float(self.cfg.get("sight_hold_tau", 4096))
+        m_ = getattr(self, "_shold_m", None)
+        if m_ is None:
+            self._shold_m = float(s); self._shold_v = 1.0; self._shold_r = 0
+            return
+        d_ = float(s) - float(m_)
+        self._shold_m = float(m_) + a_ * d_
+        self._shold_v = (1.0 - a_) * float(self._shold_v) + a_ * d_ * d_
+        z_ = d_ / math.sqrt(float(self._shold_v) + 1e-9)
+        r_ = int(getattr(self, "_shold_r", 0))
+        if z_ > float(self.cfg.get("sight_hold_z", 1.5)) and r_ <= 0:
+            self._shold_due = True; self._shold_r = int(self.cfg.get("sight_hold_refr", 30))
+        else:
+            self._shold_r = r_ - 1
+
+    def _sight_ladder_credit(self, e, now):
+        """D6: the control's eligibility for an own act of motor effector e (one value a rung): for each rung, the line read on that
+        rung alone, each joint's settings scored through e's rows; how far the act taken stands above the draw's expectation under it,
+        summed over the joints (the policy's gradient on the mixture's weight, its sharpness left out: a positive scale a joint); through
+        the softmax onto the values. None where nothing is held this tick"""
+        rk_ = getattr(self, "_sight_rungs", None)
+        if rk_ is None or rk_[0] != int(self.ticks) or "sightline" not in self.m._modules or e.name not in self.m.sightline:
+            return None
+        rungs_, g_ = rk_[1], rk_[2]
+        R = self.m.acts[e.name].rows
+        with torch.no_grad():
+            S_ = self.m.sightline[e.name](rungs_.to(R.device, R.dtype)) @ R              # [nb, d]: each rung's term
+            dlg_ = torch.zeros(int(rungs_.shape[0]), dtype=torch.float64)
+            o_ = 0
+            for j_, (k_, a_, p_) in enumerate(zip(e.factors, now["digits"], now["probs"])):
+                Rj_ = R[o_:o_ + int(k_)]; o_ += int(k_)
+                s_ = (S_ @ Rj_.t()).double().cpu()                                           # [nb, K_j]
+                p_ = p_.detach().double().cpu()
+                dlg_ += s_[:, int(a_)] - (s_ * p_.unsqueeze(0)).sum(1)
+            g64_ = g_.double()
+            return g64_ * (dlg_ - float((g64_ * dlg_).sum()))                                 # d log pi / d u through the softmax
+
+    def _sight_actor_n(self):
+        """D5b: the width of the sight line each later effector's striatal actor reads (0: the switch `sight_actor` off, the sight line's
+        off, the actors not on the band, or no pretrained eye)"""
+        c = self.cfg
+        if not int(self.cfg.get("sight_actor", 0)) or not int(c.get("sight_line", 0)) or str(c.get("actor_input", "striatum")) != "band" \
+                or sight_source(c)[0] not in [getattr(ch_, "name", None) for ch_ in (self.anatomy.channels or ())]:
+            return 0
+        return sight_width(c)
+
+    def _sight_suggest_n(self, e):
+        """D5e: the width of the sight line's suggestion for later effector e (one score a setting of each of its joints, the line's own
+        output); 0 where the switch `sight_suggest` is off, the actors do not read the sight (D5b), e has no sight line, or the
+        demonstration teaches the lines of other effectors only (D5d: sight_demo_fx names the effectors whose line is the demonstration's,
+        and only a line the demonstration teaches suggests what was shown)"""
+        if e is None or not int(self.cfg.get("sight_suggest", 0)) or not self._sight_actor_n() or "sightline" not in self.m._modules \
+                or e.name not in self.m.sightline:
+            return 0
+        fx_ = self.cfg.get("sight_demo_fx")
+        if int(self.cfg.get("sight_demo", 0)) and fx_ and e.name not in str(fx_).split(","):
+            return 0
+        return int(self.m.sightline[e.name].out_features)
+
+    def _sight_suggest(self, e):
+        """D5e (2026-10-23, P8: the owner's 'we basically have to keep pushing till it figures out we want it to do what's on the iPad'):
+        THE SIGHT LINE'S SUGGESTION INTO THE STRIATUM, AT A GAIN DOPAMINE LEARNS: LEARNING TO IMITATE. The sight line (D5, taught by the
+        demonstration alone under D5d) says, setting by setting, what the act shown on the tablet does next; the striatal actors read the
+        sight itself (D5b) but never what the line makes of it, so dopamine could teach an actor only "after this clip, this act", one clip
+        at a time, a mapping no new clip reaches. Read live (the current run, 602 test rows, 18:1x 10-23): the child acted on 55-76% of
+        the waits' ticks after every clip (the gate open), its first own pitch and elbow moves the shown act's way at chance (the praise's
+        agreement 0.41), the line's clip-specific part 0.1-0.6 of a logit beside the stream's 1.3 and the mixed population's 1.0, which do
+        not change with the clip. Here each such effector's striatal pre-activation gains g x s (mouth `_actor_pre`): s the line's score
+        per setting for what the gaze has just seen (its map's own reading of the sight trace the proposal reads, `_sight_now`), each
+        score's departure from its running mean in units of its running spread (D4's adaptation, A226's per-effector moments over
+        actor_norm_tau ticks: the line's standing part is no input); g ONE gain an effector (`_sight_follow`), born 0, moved by the actors'
+        dopamine on its own eligibility (d log pi / d g at an own act, through the bias's squashing, at the suggestion's unit power:
+        A148's bound, a unit of dopamine moving the follow term by at most lr x beta as it moves the actor's synapses' vote), outside
+        A147's scaling. An own act that took the settings the line favoured and was
+        paid (the teacher's praise of a first step the shown act's way, a lesson done by its own act) raises g, for every clip and every
+        joint at once: what is learned is to follow what was seen, not one act after one clip. The cortico-striatal synapses from the
+        cortex's description of a seen action learn by reward to carry it into the act (the striatum learns which cortical input to
+        follow: Reynolds and Wickens 2002; the mirror mapping put to use by reinforcement: Oztop, Kawato and Arbib 2006; imitation's gate,
+        the control that lets an observed action through to the motor system or holds it back: Brass, Ruby and Spengler 2009; Heyes 2001),
+        so a clip never paid (a new act on the tablet) reaches the act through the line wherever the line reads it, at the trust earned
+        on the acts that were paid. -> [n] float32; zeros before the eye has seen anything (the line's reading then its map's constant,
+        the departure 0)"""
+        n_ = self._sight_suggest_n(e)
+        q_ = getattr(self, "_sight_now", None); sn_ = self._sight_actor_n()
+        mp_ = self.m.sightline[e.name]
+        with torch.no_grad():
+            if q_ is not None and int(q_[1].numel()) == sn_:
+                s_ = mp_(q_[1].to(mp_.weight.device, mp_.weight.dtype)).detach().double().cpu().reshape(-1)
+            else:
+                s_ = mp_(torch.zeros(sn_, device=mp_.weight.device, dtype=mp_.weight.dtype)).detach().double().cpu().reshape(-1)
+        if int(s_.numel()) != n_:
+            return torch.zeros(n_)
+        M = getattr(self, "_asug_m", None)
+        if M is None:
+            M = self._asug_m = {}; self._asug_v = {}; self._asug_t = {}; self._asug_n = {}
+        m_ = M.get(e.name); v_ = self._asug_v.get(e.name)
+        if m_ is None or v_ is None or m_.shape != s_.shape:
+            m_ = s_.clone(); v_ = torch.full_like(s_, 1e-4); self._asug_n[e.name] = 1; self._asug_t[e.name] = int(self.ticks)
+        elif int(self._asug_t.get(e.name, -1)) != int(self.ticks):        # (one move a tick: the read is asked for many times a tick)
+            k_ = int(self._asug_n.get(e.name, 0)) + 1; self._asug_n[e.name] = k_
+            r_ = max(1.0 / float(self.cfg.get("actor_norm_tau", 24000)), 1.0 / float(k_))   # (the plain moments over the first ticks)
+            d_ = s_ - m_; m_ = m_ + r_ * d_; v_ = v_ + r_ * (d_ * d_ - v_); self._asug_t[e.name] = int(self.ticks)
+        M[e.name] = m_; self._asug_v[e.name] = v_
+        return ((s_ - m_) / torch.sqrt(v_ + 1e-6)).float()
+
+    def _sight_follow(self, e):
+        """D5e: later effector e's follow gain, the striatum's learned trust in the sight line's suggestion (one number an effector, every
+        joint's settings alike, so what was learned following the line on the joints the teacher judged reaches the joints it never
+        judged: a shown act that moves another joint). Born 0 (the actor as before); moved by the actors' dopamine on its own eligibility
+        (critics, beside each actor's lesson), its size bounded by the squashing it enters (the bias's tanh: a gain past the line's spread
+        saturates the vote and its eligibility with it)"""
+        return float((getattr(self, "_sight_fg", None) or {}).get(e.name, 0.0))
+
+    def _sight_term(self, e, q):
+        """D5: THE SIGHT LINE'S TERM IN MOTOR EFFECTOR e's PROPOSAL for sight lines `q` [.., n] (already at the stream's power): a score per
+        setting through its map (born at zero), read back through its acts' rows, as the cue line's (`_cue_term`): [.., d]"""
+        R = self.m.acts[e.name].rows
+        return self.m.sightline[e.name](q.to(R.device, R.dtype)) @ R
+
+    def _sight_mix_on(self):
+        """the switch `sight_mix` (D5c): 0 for every body born before it (its cfg holds no such key), and nothing without the sight line"""
+        return bool(int(self.cfg.get("sight_mix", 0))) and "sightmix" in self.m._modules and self._sight_line_on()
+
+    def _sight_mix(self, C, q):
+        """D5c (2026-10-23, P8's iPad): THE MIXED POPULATION, a born population of the stream's width whose every unit multiplies its own
+        fixed reading of the stream C [.., d] by its own fixed gain from the sight line q [.., n] (already at the stream's power): h =
+        (A C) * (1 + tanh(B q)), A and B drawn at birth and never trained (as the bands' input maps are), each unit at about unit power.
+        Each motor effector's proposal reads it through its own map (`_sight_mix_term`, born at zero). WHY: the sight line (D5) entered
+        the proposal as a term beside act_pred's linear reading of the stream, so a sight could add the same constant to every tick's
+        proposal but never change what a posture or a motion under way calls for; a shake (up, then down) and a lift (up, then hold)
+        start from the same posture and part by what the arm does next. Measured at 00:47 10-23 (scratchpad sightmap_eval.py,
+        trace_decode2.py): the line still told the act shown at the hand-over and 20 ticks on (a ridge readout 0.71 and 0.73, chance
+        0.31), the expert's first acts differ by clip (the elbow +0.92 after the put-in, -0.54 after the lift, +0.61 after the shake), the
+        habit's guess followed the push mid-lesson (its sign 0.68 on the put-in's moving joints) and stood at chance at a test's start,
+        and the line's maps told the clips apart in 4% of their variance. A learned gain on act_pred's own reading (00:58, not deployed)
+        learned nothing in 6,000 ticks of a sight-times-state demonstration (0.56 against the line's 0.56): its lesson reached it only
+        through act_pred's weights. The brain's road: neurons of nonlinear mixed selectivity (Rigotti et al. 2013), each responding to a
+        product of the variables it reads, as gain fields multiply a sensory response by a context (Andersen, Essick and Siegel 1985;
+        Salinas and Sejnowski 2001), form a basis from which a linear readout computes a mapping that changes with the context (Pouget and
+        Sejnowski 1997; Salinas 2004), and random connections give such mixing for free (Barak, Rigotti and Fusi 2013). Only the readouts
+        learn, by act_pred's own lesson and plain step, by day and by night; the population reads the stream detached in the lesson, so
+        nothing new teaches the cortex; nothing fixed for any act"""
+        A, B = self.m.mix_a, self.m.mix_b
+        return (C.to(A.device, A.dtype) @ A.t()) * (1.0 + torch.tanh(q.to(B.device, B.dtype) @ B.t()))
+
+    def _sight_mix_term(self, e, h):
+        """D5c: THE MIXED POPULATION'S TERM IN MOTOR EFFECTOR e's PROPOSAL for its activity `h` [.., d]: a score per setting through its
+        map (born at zero), read back through its acts' rows, as the sight line's (`_sight_term`): [.., d]"""
+        R = self.m.acts[e.name].rows
+        return self.m.sightmix[e.name](h.to(R.device, R.dtype)) @ R
 
     def _cue_term(self, e, q):
         """D4a: THE CUE LINE'S TERM IN MOTOR EFFECTOR e's PROPOSAL for cue lines `q` [.., n]: a score per setting through its map (born at

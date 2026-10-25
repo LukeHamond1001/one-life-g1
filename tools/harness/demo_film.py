@@ -8,24 +8,61 @@ far) for a later composition side by side. Off by default; a fault in the film s
 draws and record are untouched: rendering reads the state and writes nothing)."""
 import json
 import os
+
+import numpy as np
 import subprocess
 
 W, H = 640, 360
+FILL_DIFFUSE = 0.45                                           # the front camera's fill light (the film's scene alone; ours)
+FRONT_DIST_M, FRONT_ELEV_DEG, FRONT_LOOK_Z = 2.0, -15.0, 0.5   # the front camera (Film cam "front"): before the child, a little above, at
+                                                              # the height between its hands and the box (ours)
 
 
 class Film:
-    def __init__(self, world, eyes, out, every=2, cam="room"):
+    def __init__(self, world, eyes, out, every=2, cam="room", size=None):
         import mujoco
         self.world, self.eyes, self.every, self.cam = world, eyes, max(1, int(every)), cam
         self.out = out
         os.makedirs(out, exist_ok=True)
-        self.r = mujoco.Renderer(world.m, height=H, width=W)
+        self.h, self.w = (int(size[0]), int(size[1])) if size else (H, W)   # (16:10 10-22: the clips from its own eye at the tablet's 4:3)
+        self.r = mujoco.Renderer(world.m, height=self.h, width=self.w)
         self.cap = open(os.path.join(out, "film_captions.jsonl"), "w")
         self.p = None; self.n = 0; self.dead = False; self.last = None; self.t_first = None; self.frames = []
 
+    def _front_cam(self):
+        """THE FRONT CAMERA (16:15 10-22, the clips for the tablet): a free camera before the child, facing it, a little above, tracking its
+        pelvis: its hands, the object in them and the box at its feet large in the middle of the picture, whichever hand it uses and
+        wherever it stands (the room cameras saw its back or only an arm at the frame's edge; its own eye never saw the box)"""
+        import mujoco as _mj
+        d = self.world.d; pid = getattr(self.world, "pelvis_id", None)
+        if pid is None:
+            pid = self.world.m.body("pelvis").id
+        R = np.asarray(d.xmat[pid], float).reshape(3, 3); p = np.asarray(d.xpos[pid], float)
+        yaw = float(np.degrees(np.arctan2(R[1, 0], R[0, 0])))
+        cam = _mj.MjvCamera(); cam.type = _mj.mjtCamera.mjCAMERA_FREE
+        cam.lookat[:] = [p[0], p[1], FRONT_LOOK_Z]; cam.distance = FRONT_DIST_M; cam.elevation = FRONT_ELEV_DEG; cam.azimuth = yaw + 180.0
+        return cam
+
+    def _fill_light(self, cam):
+        """THE FRONT CAMERA'S FILL LIGHT (16:25 10-22): a directional light along the camera's line, added to this film's scene alone after
+        it is built (the room's sun and key light fall from behind a child that faces away from them: in the first front clips the
+        robot was a silhouette and the dark block on it unseen). The eyes' scene is another and is never touched"""
+        import mujoco as _mj
+        sc = self.r.scene
+        if sc.nlight >= len(sc.lights):
+            return
+        a, e = np.radians(float(cam.azimuth)), np.radians(float(cam.elevation))
+        f = np.array([np.cos(e) * np.cos(a), np.cos(e) * np.sin(a), np.sin(e)])
+        L = sc.lights[sc.nlight]
+        L.type = _mj.mjtLightType.mjLIGHT_DIRECTIONAL; L.headlight = 0; L.castshadow = 0
+        L.pos[:] = np.asarray(cam.lookat, float) - float(cam.distance) * f; L.dir[:] = f
+        L.diffuse[:] = [FILL_DIFFUSE] * 3; L.ambient[:] = [0.0, 0.0, 0.0]; L.specular[:] = [0.05, 0.05, 0.05]
+        sc.nlight += 1
+
     def _start(self, fps):
-        self.p = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
+        self.p = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{self.w}x{self.h}",
                                    "-r", str(int(fps)), "-i", "-", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+                                   "-movflags", "+frag_keyframe+empty_moov",          # (readable while it is being written: a fragmented MP4)
                                    os.path.join(self.out, "film.mp4")], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for fr_ in self.frames:
             self.p.stdin.write(fr_)
@@ -39,7 +76,10 @@ class Film:
             sp_ = getattr(self.world, "screen", None)                        # THE SCREEN: its frame uploaded in this renderer's context
             if sp_ is not None and hasattr(self.r, "_gl_context"):           # too (each GL context holds its own copy of the texture)
                 self.r._gl_context.make_current(); sp_.upload(self.r._mjr_context)
-            self.r.update_scene(self.world.d, camera=self.cam)
+            fc_ = self._front_cam() if self.cam == "front" else None
+            self.r.update_scene(self.world.d, camera=(fc_ if fc_ is not None else self.cam))
+            if fc_ is not None:
+                self._fill_light(fc_)                                         # (the film's own scene: the child's eyes see the room as ever)
             img = self.r.render()
             self.eyes.ctx.make_current()                                     # the eyes' own context back (they render next tick)
             fr = img.tobytes()

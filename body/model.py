@@ -644,7 +644,7 @@ class Organs(nn.Module):
     """all the learned organs, one module, saved with the body"""
 
     def __init__(self, vocab, d=256, layers=6, heads=4, window=64, clocks=CLOCKS, birth_act=0.25, channels=None, effectors=None, born_seed=0,
-                 cerebellum=None, events=None, amygdala=None, recall=None, cueline=None, effout=False):
+                 cerebellum=None, events=None, amygdala=None, recall=None, cueline=None, effout=False, sightline=None, sightmix=None):
         super().__init__()
         self.vocab, self.d, self.window = int(vocab), int(d), int(window)
         self.clocks = tuple(int(c) for c in clocks)
@@ -913,6 +913,32 @@ class Organs(nn.Module):
                 mp = nn.Linear(int(cueline["n"]), int(n_set), bias=False)
                 nn.init.zeros_(mp.weight)
                 self.cueline[name] = mp
+        # THE SIGHT LINE (D5, 2026-10-22; body/core/cord.py `_sight_line`): `sightline` is what `sightline_spec` gives for a body whose switch
+        # is on (the line's width, each motor effector's name and its settings), None otherwise: each motor effector's map from the fading
+        # trace of what its gaze's window saw to a score per setting, read back through its acts' rows into its proposal (no bias, born at
+        # zero: at birth it leaves every proposal exactly as it is; it draws no random number)
+        if sightline is not None:
+            self.sightline = nn.ModuleDict()
+            for name, n_set in sightline["effectors"]:
+                mp = nn.Linear(int(sightline["n"]), int(n_set), bias=False)
+                nn.init.zeros_(mp.weight)
+                self.sightline[name] = mp
+        # THE MIXED POPULATION (D5c, 2026-10-23; body/core/cord.py `_sight_mix`): `sightmix` is what `sightmix_spec` gives for a body whose
+        # switch is on (the sight line's width, each motor effector's name and its settings), None otherwise: a born population of the
+        # stream's width, each unit's fixed reading of the stream (mix_a) times its fixed gain from the sight line (mix_b; both drawn from a
+        # generator of their own, at unit power, never trained), and each motor effector's map from it to a score per setting, read back
+        # through its acts' rows into its proposal (no bias, born at zero: at birth every proposal is exactly as it was; the maps built with
+        # the generator's state kept, so no organ born after them draws differently)
+        if sightmix is not None:
+            g_mix = torch.Generator().manual_seed(int(born_seed) + 67867967)
+            self.register_buffer("mix_a", torch.randn(int(d), int(d), generator=g_mix) / math.sqrt(float(d)))
+            self.register_buffer("mix_b", torch.randn(int(d), int(sightmix["n"]), generator=g_mix) / math.sqrt(float(d)))
+            self.sightmix = nn.ModuleDict()
+            with torch.random.fork_rng(devices=[]):
+                for name, n_set in sightmix["effectors"]:
+                    mp = nn.Linear(int(d), int(n_set), bias=False)
+                    nn.init.zeros_(mp.weight)
+                    self.sightmix[name] = mp
         # R1 (2026-10-21, the owner's word: pretraining from recordings done right): THE EFFERENCE COPY OUT OF THE STREAM. `effout` (the
         # switch efference_stream 0): each later effector's own act no longer enters the cortex's input (so the stream that proposes the
         # next act, the gates and the forecasts read no copy of the act just done: the copy of its own last act, P2 section 8e, had no

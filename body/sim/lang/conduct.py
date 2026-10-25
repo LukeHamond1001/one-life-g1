@@ -1163,6 +1163,13 @@ class Conduct:
         if getattr(self, "stay_put", False) and act.kind in self.STAY_PUT_KINDS:
             self.fast.refused.append((t, act.kind, "stay put: she calls from across the room (C351 amended three times)"))
             return None
+        if getattr(self, "body_still", False) and act.kind != "look":
+            # THE BARE WORLD (the owner's word 2026-10-21 22:50: 'get rid of the room and the teacher model'): her body is unseen there
+            # (extras.hide_parent) and still: no fetch, no show, no hand-over, no hide (2026-10-22 00:40: invisible, she picked the box
+            # task's object up and carried it; her hide game would put objects into the box the task judges by). Her eyes, her voice,
+            # her reading of the child and the lever remain the teacher
+            self.fast.refused.append((t, act.kind, "the bare world: her body is unseen and still"))
+            return None
         mid = self.motion.request(act, t)
         self.acts_open.append([mid, act.kind, act.target, act.thing, int(t), "unreported"])
         if self.attn and self.attn[-1]["t"] == t:

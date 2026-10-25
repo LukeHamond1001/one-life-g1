@@ -81,7 +81,7 @@ __all__ = ["collections", "math", "os", "time", "torch", "F", "Organs", "Store",
 # change retired (a save's constants keep them). The unknown-key warning (review 2026-09-06) named the first at every load of the life
 # (actor_cues, actor_sense, actor_norm_tau, shape_bands, stress_slow, read and in force) beside the retired vte_adapt (A192): a warning
 # that names keys in force teaches its reader to ignore it. body/tests/test_cfg_keys.py holds this list to the code's reads
-INLINE_KEYS = frozenset(("act_stream_gain", "actor_cues", "cue_line", "eye_dino", "orient_earned", "place_channels", "actor_norm_tau", "actor_sense", "forecast_scaling", "fwd_scale", "guided_rest_detached", "own_words", "own_words_balance", "own_words_lr", "own_words_split", "shape_bands", "speak_std", "shape_tau", "store_off", "stress_slow", "teach_own", "efference_stream", "lever"))   # (D1j: own_words, own_words_lr; D1o: own_words_split; D1r: own_words_balance; D1s: fwd_scale; D4a: cue_line; D4b: orient_earned; D4c: place_channels; L1: teach_own; R1: efference_stream)
+INLINE_KEYS = frozenset(("act_stream_gain", "guided_credit", "imagine_emulator", "sight_line", "sight_tau", "sight_norm_tau", "sight_actor", "sight_suggest", "sight_prep", "sight_hold", "sight_hold_z", "sight_hold_refr", "sight_hold_tau", "sight_mix", "cue_adapt", "cue_adapt_tau", "prep_ahead", "sight_demo", "sight_demo_fx", "sight_demo_mix", "sight_demo_gain", "shape_own_h", "sight_ladder", "sight_ladder_lr", "sight_ladder_u0", "act_nlms", "inv_rest_pairs", "actor_cues", "cue_line", "eye_dino", "orient_earned", "place_channels", "actor_norm_tau", "actor_sense", "forecast_scaling", "fwd_scale", "guided_rest_detached", "own_words", "own_words_balance", "own_words_lr", "own_words_split", "shape_bands", "speak_std", "shape_tau", "store_off", "stress_slow", "teach_own", "efference_stream", "lever"))   # (D1j: own_words, own_words_lr; D1o: own_words_split; D1r: own_words_balance; D1s: fwd_scale; D4a: cue_line; D4b: orient_earned; D4c: place_channels; L1: teach_own; R1: efference_stream)
 RETIRED_KEYS = {"vte_adapt": "A192"}
 
 
@@ -207,7 +207,7 @@ class Life(LedgerMixin, SensesMixin, MemoryMixin, CortexMixin, MouthMixin, Criti
                             or organs.vfast.weight.shape[1] != m_ * (1 + wm_) or int(getattr(organs, "stri_Ws", torch.zeros(0, 0)).shape[0]) != ns_):
                         organs.striatum_init(k_, m_, seed=seed, wm=wm_, effectors=self.anatomy.effectors, events=ne_, sense=ns_,
                                              actor_width=(int(organs.value[fb].weight.shape[1]) + (2 * len(self.anatomy.orienting or ()) if int(self.cfg.get("actor_cues", 0)) else 0) if str(self.cfg.get("actor_input", "striatum")) == "band" else None),
-                                             actor_extra={e_.name: self._actor_sense_n(e_) for e_ in self.anatomy.motors})   # born (or re-born at a new size; D2: the actors on the band's width)
+                                             actor_extra={e_.name: self._actor_sense_n(e_) + self._sight_actor_n() for e_ in self.anatomy.motors})   # born (or re-born at a new size; D2: the actors on the band's width; D5b: and the sight line's)
                     organs.stri_sense_src = [(ch_, torch.tensor(ix_, dtype=torch.long)) for ch_, ix_ in src_]   # A149 (not saved: the anatomy's)
                     kf = m_ * (1 + wm_) + 1
                 else:
@@ -311,6 +311,7 @@ class Life(LedgerMixin, SensesMixin, MemoryMixin, CortexMixin, MouthMixin, Criti
         self._arel = [0.0] * 6; self._arel_gain = 0.0; self._arel_corr = 0.0; self._act_pending = collections.deque()   # the actor's reliability
         self._shape_m = {}; self._shape_q = {}; self._shape_rho_last = {}; self._dop_shape_m = {}   # D3c/D3d: each shaping band's anticipation (its gain earned) and its term's running mean
         self._actor_in_m = None; self._actor_in_v = None; self._actor_in_t = -1                # D4: the actors' input's running mean and spread (born at the first state)
+        self._acue_m = None; self._acue_t = -1                                                 # (cue_adapt: the cue line's running mean, born at 0)
         self._vte_m = {}; self._vte_pending = collections.deque()      # A219: the lean's earned gain per effector (its moments, its queue)
         self._store_after_night = None                    # the store's size when the last night ended: the day's new memories are counted from it
         self._a_bias_now = None; self._act_agree = collections.deque(maxlen=int(self.cfg["wake_ticks"]) + 16)

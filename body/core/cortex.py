@@ -155,6 +155,10 @@ class CortexMixin:
                         bk_ = (st_.get("now") or {}).get("blk")                 # and the push the world shows into it (A228b: an effector
                         if bk_ is not None:                                     # with the born approach)
                             self.win[-1]["blk:" + e_.name] = bk_
+                        if e_.inverse and getattr(e_, "approach", None):        # (2026-10-23, the organ check: back in the loop; D1y's words
+                            pu_ = self._sense_push(e_)                          # block, put in after the loop and above these lines, had made
+                            if pu_ is not None:                                 # them its body, so the push was kept only on a silenced
+                                self.win[-1]["push:" + e_.name] = pu_.detach().float().cpu()   # voice's ticks and for the last effector)
                         if (st_.get("now") or {}).get("guided"):                # D1e: a guided act at this position (never in a life)
                             self.win[-1]["gdd:" + e_.name] = True
                             if (st_.get("now") or {}).get("watched"):           # W1: read from the senses by the inverse model
@@ -167,16 +171,16 @@ class CortexMixin:
                                 self.win[-1]["lbl:" + e_.name] = int(st_["now"]["label"])
                     if (getattr(self, "_label_acts", None) or {}).get("words") == -1:   # D1y: its words at this tick no lesson (a DAgger
                         self.win[-1]["lbl:words"] = -1                                   # run's silenced voice: its silence not the expert's)
-                        if e_.inverse and getattr(e_, "approach", None):
-                            pu_ = self._sense_push(e_)
-                            if pu_ is not None:
-                                self.win[-1]["push:" + e_.name] = pu_.detach().float().cpu()
                     if self._recall_on():
                         self.win[-1]["frec"] = self._frec_now  # step R7f: the recall the tick's proposals read (body/core/frames.py)
                     if self._cue_line_on():
                         q_ = getattr(self, "_cue_now", None)   # D4a: the cue line they read (body/core/cord.py; none read this tick: none)
                         if q_ is not None and q_[0] == self.ticks:
                             self.win[-1]["cue"] = q_[1].detach().float().cpu()
+                    if self._sight_line_on():
+                        s_ = getattr(self, "_sight_now", None)   # D5: the sight line they read (body/core/cord.py; none read this tick: none)
+                        if s_ is not None and s_[0] == self.ticks:
+                            self.win[-1]["sight"] = s_[1].detach().float().cpu()
                 self._pos_open = False
             if who == 0 and not self._pos_open and getattr(self, "_C_last", None) is not None:
                 C = self._C_last                               # the last filled position's stream, and its forecast
@@ -280,6 +284,10 @@ class CortexMixin:
         if lesson and self.anatomy.motors and self._cue_line_on():   # D4a: each position's cue line (none read there: zeros)
             zq_ = torch.zeros(3 * len(self.anatomy.orienting))
             obs["@cue"] = torch.stack([w.get("cue", zq_) for w in win]).to(self.dev)
+        if lesson and self.anatomy.motors and self._sight_line_on():   # D5: each position's sight line (none read there: zeros)
+            from .cord import sight_width
+            zs_ = torch.zeros(sight_width(self.cfg))
+            obs["@sight"] = torch.stack([w.get("sight", zs_) for w in win]).to(self.dev)
         whos = torch.tensor([w["xo"] for w in win], device=self.dev)   # its own symbols, one per tick
         bundles = torch.stack([w["bundle"] for w in win])
         reads = torch.stack([w["read"] for w in win])
@@ -341,6 +349,7 @@ class CortexMixin:
             self.opt_day.zero_grad(set_to_none=True)
             if motor_:
                 self.opt_pred.zero_grad(set_to_none=True)          # act_pred's and the corrections' (step R6)
+                self._nlms_acc = {}                                # (act_nlms: this lesson's notes alone)
             u = m.inputs(self.anatomy, obs, whos, bundles)     # the window as lived: its own sound in it, attenuated
             C = m.stream(u)
             # the cortex is trained on ITS OWN forecast, day and night alike (predictive coding: each

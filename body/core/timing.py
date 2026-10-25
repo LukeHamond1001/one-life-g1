@@ -217,7 +217,9 @@ class TimingMixin:
         tm = self.m.timing[e.name]
         rc = list(self.m.recall[e.name].parameters()) if "recall" in self.m._modules else []   # step R7f: its recall map, the proposal's third term
         cl = list(self.m.cueline[e.name].parameters()) if "cueline" in self.m._modules else []   # D4a: its cue line's map, the fourth
-        return list(tm.pred.parameters()) + (list(tm.cor.parameters()) if tm.sense_n else []) + rc + cl
+        sl = list(self.m.sightline[e.name].parameters()) if "sightline" in self.m._modules else []   # D5: its sight line's map, the fifth
+        sm = list(self.m.sightmix[e.name].parameters()) if "sightmix" in self.m._modules else []   # D5c: its map from the mixed population
+        return list(tm.pred.parameters()) + (list(tm.cor.parameters()) if tm.sense_n else []) + rc + cl + sl + sm
 
     def _gated_names(self, e):
         """the names of `_gated_params(e)` in its order, within e's timing organ (pred.weight, pred.bias, cor.weight), then (step R7f)
@@ -225,7 +227,9 @@ class TimingMixin:
         tm = self.m.timing[e.name]
         rc = [f"recall.{n}" for n, _ in self.m.recall[e.name].named_parameters()] if "recall" in self.m._modules else []
         cl = [f"cueline.{n}" for n, _ in self.m.cueline[e.name].named_parameters()] if "cueline" in self.m._modules else []   # D4a
-        return [f"pred.{n}" for n, _ in tm.pred.named_parameters()] + ([f"cor.{n}" for n, _ in tm.cor.named_parameters()] if tm.sense_n else []) + rc + cl
+        sl = [f"sightline.{n}" for n, _ in self.m.sightline[e.name].named_parameters()] if "sightline" in self.m._modules else []   # D5
+        sm = [f"sightmix.{n}" for n, _ in self.m.sightmix[e.name].named_parameters()] if "sightmix" in self.m._modules else []   # D5c
+        return [f"pred.{n}" for n, _ in tm.pred.named_parameters()] + ([f"cor.{n}" for n, _ in tm.cor.named_parameters()] if tm.sense_n else []) + rc + cl + sl + sm
 
     def _timing_step(self, scale=1.0):
         """ACT_PRED'S AND THE CORRECTION'S STEP IN THE WAKING LESSON (after the waking lesson's own step): each later effector's group
@@ -252,8 +256,96 @@ class TimingMixin:
                     for p_ in g_["params"]:
                         if p_.grad is not None:
                             p_.grad.div_(s_)
+        if int(self.cfg.get("act_nlms", 0)):
+            self._nlms_apply()                                             # (act_nlms: each lesson's step within its stability, below)
         self.opt_pred.step()
         self._forecast_scaling()                                           # A154: the forecast heads held at the act rows' scale
+
+    def _nlms_rows(self, e):
+        """act_nlms: the largest gain of effector e's act rows, squared (a term read back through the rows moves the proposal by at most
+        this times its map's change; the rows are born and never trained, so it is read once)"""
+        c_ = getattr(self, "_nlms_rg", None)
+        if c_ is None:
+            c_ = self._nlms_rg = {}
+        if e.name not in c_:
+            with torch.no_grad():
+                c_[e.name] = float(torch.linalg.matrix_norm(self.m.acts[e.name].rows.detach().double().cpu(), 2)) ** 2
+        return c_[e.name]
+
+    def _nlms_lam(self, e, direct, rowed):
+        """act_nlms: THE LESSON'S LARGEST CURVATURE on one window, bounded from above: the largest eigenvalue of its positions' Gram over the
+        inputs its plain step trains (`direct`, read as they are: the stream for act_pred, the body sense's error for the correction;
+        `rowed`, read back through the acts' rows at their largest gain: recall's, the cue line's, the sight line's, the mixed
+        population's), over the positions (the lesson's mean over them), its labels' weights left out (each at most 1), so the bound is
+        the same at any reliability and the step stays linear in each label's weight -> lambda, or None with no input"""
+        G = None; n = 0
+        with torch.no_grad():
+            for x_, g_ in [(x_, 1.0) for x_ in direct] + [(x_, self._nlms_rows(e)) for x_ in rowed]:
+                n = int(x_.shape[0])
+                if n == 0:
+                    continue
+                X = x_.detach().reshape(n, -1).double().cpu()
+                G = g_ * (X @ X.t()) if G is None else G + g_ * (X @ X.t())
+            if G is None or n == 0:
+                return None
+            return float(torch.linalg.eigvalsh(G)[-1]) / float(n)
+
+    def _nlms_note(self, e, direct, rowed, demo, demo_gain, demo_line, demo_mix):
+        """act_nlms: one window's lesson of effector e noted for the next plain step (by day the one window, by night the batch's
+        windows, whose mean lesson's curvature is at most the mean of theirs): the act lesson's and, apart, the demonstration's (D5d:
+        the sight's terms taught by the demonstration alone, at its own gain), and which of the sight's maps the latter teaches"""
+        acc_ = getattr(self, "_nlms_acc", None)
+        if acc_ is None:
+            acc_ = self._nlms_acc = {}
+        a_ = acc_.setdefault(e.name, [0.0, 0, 0.0, 0, False, False])
+        l_ = self._nlms_lam(e, direct, rowed)
+        if l_ is not None:
+            a_[0] += l_; a_[1] += 1
+        if demo:
+            ld_ = self._nlms_lam(e, [], demo)
+            if ld_ is not None:
+                a_[2] += float(demo_gain) * ld_; a_[3] += 1
+        a_[4] = bool(demo_line); a_[5] = bool(demo_mix)
+
+    def _nlms_apply(self):
+        """act_nlms (2026-10-23, the owner's 'check all organs': THE PLAIN STEP KEPT WITHIN ITS STABILITY). GatedDescent's step was sized
+        for act_pred alone: plain descent is stable while lr_motor x the lesson's largest curvature stays below 2, that curvature about d
+        (the stream LayerNorm'd), so the product about 0.9 at P8's act_pred_rate 8 (lr_motor 1.8e-3). Every term added to the proposal
+        since was put at the stream's power so that it learns as fast as act_pred (the cue line's rule: |q|^2 = d), and in one lesson the
+        curvatures of terms on one proposal add: P8's hands and gaze read the stream, the sight line and the mixed population in their
+        act lesson, about 440 + 1.5 x 453 + 1.5 x 503 (the rows' largest gain 1.5) = 1,900, the product 2.6 to 3.1. Past 2 the stiffest
+        direction oscillates, each element held at GatedDescent's bound: at the 12:20 and 12:28 saves of 10-23 the left hand's sight
+        line moved 3.1 (15 times its usual change), rank one at 0.88 and 0.99, every row by the same amount (its spread 0.13 and 0.04 of
+        the mean: the bound's sign pattern), some elements past one lesson's bound, the second move undoing the first (cosine -0.79);
+        its mixed population's map and the gaze's alike, the arms' line (taught apart, D5d) quiet. THE RULE: each effector's plain step
+        is divided by the lesson's largest curvature over d where that exceeds d (normalized least mean squares: the step of an adaptive
+        linear filter divided by its input's power, which keeps it stable at any input size; Nagumo and Noda 1967; Widrow and Stearns
+        1985), the curvature from the window's own inputs (`_nlms_lam`), never from the error or the labels (no running normalisation:
+        GatedDescent's rule holds, a label teaches its reliability's share). A lesson of act_pred alone (curvature at most about d) steps
+        as before; the demonstration's own lesson (D5d) by its own curvature. Consumes the notes of the lesson just taken"""
+        acc_ = getattr(self, "_nlms_acc", None) or {}
+        last_ = {}
+        d_ = float(self.m.d)
+        with torch.no_grad():
+            for e_ in self.anatomy.motors:
+                a_ = acc_.get(e_.name)
+                if a_ is None:
+                    continue
+                s_lp = min(1.0, d_ / (a_[0] / a_[1])) if a_[1] and a_[0] > 0.0 else 1.0
+                s_dm = min(1.0, d_ / (a_[2] / a_[3])) if a_[3] and a_[2] > 0.0 else 1.0
+                dm_ids = set()
+                if a_[4] and "sightline" in self.m._modules and e_.name in self.m.sightline:
+                    dm_ids |= {id(p_) for p_ in self.m.sightline[e_.name].parameters()}
+                if a_[5] and "sightmix" in self.m._modules and e_.name in self.m.sightmix:
+                    dm_ids |= {id(p_) for p_ in self.m.sightmix[e_.name].parameters()}
+                for p_ in self._gated_params(e_):
+                    if p_.grad is not None:
+                        f_ = s_dm if id(p_) in dm_ids else s_lp
+                        if f_ != 1.0:
+                            p_.grad.mul_(f_)
+                last_[e_.name] = (round(s_lp, 4), round(s_dm, 4))
+        self._nlms_last = last_
+        self._nlms_acc = {}
 
     def _forecast_scaling(self):
         """A154 (2026-10-01): THE FORECAST'S SCALE IS THE ACT ROWS'. act_pred's forecast P is read as sharpness x cos(P, row) x |P|^g (C148),
@@ -335,6 +427,11 @@ class TimingMixin:
                 st["inv_batch"].append(pr_ if keep_ is None else pr_ + (keep_,))
         if e.inverse and st["sense"] is not None and prev is not None and not prev.get("acted") and not drv_:
             self._prop_agree(e, st, st["sense"], s_now, prev, push_)            # A235: act_pred's guess against the demonstration of a rest
+            if int(self.cfg.get("inv_rest_pairs", 0)) and push_ is None and not getattr(self, "_watch_now", False):
+                rs_ = st.setdefault("inv_rest", [])                             # inv_rest_pairs: THE NULL COMMAND'S PAIR (below, `_inverse_batch`)
+                rs_.append((st["sense"], s_now))
+                if len(rs_) > 256:
+                    del rs_[:len(rs_) - 256]
         if e.inverse and st.get("inv_batch") and self.ticks % max(1, every_) == 0 and not getattr(self, "_watch_now", False):
             self._inverse_batch(i)                                             # step R6h: one step on the pairs gathered since the last
         st["err"] = (s_now - st["fwd"]) if st["fwd"] is not None else None
@@ -598,8 +695,22 @@ class TimingMixin:
                 self._inv_rel_update(e, st, lab_, true_, chance=p_[3], held=p_[3] is None)
             else:
                 self._inv_rel_update(e, st, lab_, true_, chance=p_[3], held=p_[3] is None, keep=k_)
+        rests_ = st.get("inv_rest") or []
+        if rests_ and int(self.cfg.get("inv_rest_pairs", 0)):
+            # inv_rest_pairs (2026-10-23, the owner's organ check): THE NULL COMMAND IS AN EFFERENCE COPY TOO. act_inv learned from the
+            # ticks its effector acted (its act the label), and an act of all seven joints still is a draw of about 0.5^7: it never saw
+            # what the body's own rest makes (the sag under gravity and the held object's load), so at a rest it read that sag as an act
+            # (P8's left elbow at its own unpushed rests: read "back" 755, "forward" 220, still 133 of the holding ticks, 146 of 211
+            # "back" with the hand empty, 17:3x 10-23) and its labels, at its reliability (~0.9), taught act_pred the sag as an act to
+            # make; A229's premise (a move the body's own rest makes is read as the rest) fails where the rest is never learned. Here
+            # each rest the effector took (it did not act; no push, no world's drive, not watching) is a pair labelled the rest act,
+            # learned in the batch beside the acts; no reliability is scored on it (the reliability stays the reading of acts made)
+            st["inv_rest"] = []
+            S0 = torch.cat([S0, torch.stack([r_[0] for r_ in rests_])]); S1 = torch.cat([S1, torch.stack([r_[1] for r_ in rests_])])
+            rd_ = [int(x_) for x_ in tab.digits(torch.tensor(int(e.rest_id))).tolist()]
+            trues = trues + [rd_] * len(rests_); keeps = keeps + [None] * len(rests_)
         tt = torch.tensor(trues, dtype=torch.long)
-        tm.inv_standardize(torch.cat([S0, S1 - S0], -1), self._inv_std_rate(len(pairs)))   # A229n: its input's statistics (the function unchanged)
+        tm.inv_standardize(torch.cat([S0, S1 - S0], -1), self._inv_std_rate(len(trues)))   # A229n: its input's statistics (the function unchanged)
         tm.inv_read_scale(torch.cat([S0, S1 - S0], -1), int(self._motor_const("act_inv_std_at")))   # A229z: read once, held
         with torch.enable_grad():
             self.opt_inv.zero_grad(set_to_none=True)
@@ -617,7 +728,7 @@ class TimingMixin:
             loss.backward()
             self.opt_inv.step()
             self.opt_inv.zero_grad(set_to_none=True)
-        st["inv_n"] = int(st["inv_n"]) + len(pairs)
+        st["inv_n"] = int(st["inv_n"]) + len(pairs)                           # (the acts' pairs; the rests' are not counted as acts read)
         st["inv_last"] = {"tick": self.ticks, "loss": round(float(loss.detach()), 4), "n": len(pairs),
                           "hit": [round(sum(int(a == b) for a, b in zip(lab_, true_)) / len(true_), 3) for lab_, true_ in zip(labels, trues)],
                           **({"kept": [sum(1 for k_ in keeps if k_ is None or k_[j_]) for j_ in range(len(trues[0]))]}   # A228: each joint's
@@ -721,6 +832,12 @@ class TimingMixin:
             q_ = getattr(self, "_cue_now", None)                       # D4a: the cue line read at this tick's choice (mouth `_choose_effector`)
             if q_ is not None and q_[0] == self.ticks:
                 p = p + self._cue_term(e, q_[1])
+        if self._sight_line_on():
+            s_ = getattr(self, "_sight_now", None)                     # D5: the sight line read at this tick's choice
+            if s_ is not None and s_[0] == self.ticks:
+                p = p + self._sight_term(e, s_[1])
+                if self._sight_mix_on():
+                    p = p + self._sight_mix_term(e, self._sight_mix(C, s_[1]))   # D5c: and the mixed population of the stream and it
         if hasattr(self, "ledger_terms"):
             self.ledger_terms(e.name, rt_, vt_)                         # I1: each term read against the act taken (an instrument)
         return p
@@ -775,6 +892,30 @@ class TimingMixin:
         for j_, b_ in (blocked or {}).items():
             lg[j_] = lg[j_].clone(); lg[j_][b_] = float("-inf")
         return tab.flat([int(x.argmax()) for x in lg])
+
+    def _prep_target(self, e, tab, tgt, src, dst, H):
+        """THE PREPARED MOVEMENT (the switch `prep_ahead`, H ticks; 2026-10-23, P8). act_pred's target at a window position is the act the
+        effector does next (or act_inv's or the demonstration's label for it): during a wait that is the joint's stillness, tick after tick,
+        and the proposal learns to name stillness where a movement is coming. Motor cortex does otherwise: through a delay its preparatory
+        activity holds the movement to be made, and a separate go starts it (Tanji and Evarts 1976; Churchland, Yu, Ryu, Santhanam and
+        Shenoy 2006; Churchland et al. 2010); here the gate is the go. So, joint by joint, a position (`dst`) whose target holds the joint
+        still takes the setting that next moves it at a position whose act is a lesson (`src`), if that comes within H positions; else
+        stillness as before. P8 (10-23): in the clip-only tests the left arm's proposal named its pitch still with 0.77 of its mass while
+        the habit's own guess of the direction agreed with the expert's first steps 0.63 (the 20-tick wait's stillness taught 20 to 1 over
+        each act's start). -> (the flat targets [T], the positions given a prepared movement [T] bool)"""
+        rd = [int(x_) for x_ in tab.digits(torch.tensor(int(e.rest_id))).tolist()]
+        D = tab.digits(tgt.long())
+        T_, J_ = int(D.shape[0]), int(D.shape[1])
+        out = D.clone(); got = torch.zeros(T_, dtype=torch.bool, device=tgt.device)
+        Dl = D.tolist(); sl = [bool(x_) for x_ in src.tolist()]; dl = [bool(x_) for x_ in dst.tolist()]
+        for j in range(J_):
+            nv, nt = -1, -1
+            for t in range(T_ - 1, -1, -1):
+                if dl[t] and Dl[t][j] == rd[j] and nv >= 0 and nt - t <= H:
+                    out[t, j] = nv; got[t] = True
+                if sl[t] and Dl[t][j] != rd[j]:
+                    nv, nt = Dl[t][j], t
+        return tab.flat_many([out[:, j_] for j_ in range(J_)]), got
 
     def _timing_loss(self, i, C, obs, wpos=None, night=False, wlab=None):
         """THE WAKING LESSON OF LATER EFFECTOR i'S TIMING PART (step R6; body/core/cortex.py `_wake_lesson`), over the window's stream
@@ -946,6 +1087,75 @@ class TimingMixin:
             P = P + self._recall_term(e, obs["@frec"][1:])               # step R7f: the proposal at t+1 read the recall made at its choice
         if "@cue" in obs and self._cue_line_on():
             P = P + self._cue_term(e, obs["@cue"][1:])                   # D4a: and the cue line its choice read (the day's and the tape's)
+        SL_ = None; h_ = None                                              # (D5d: the sight's terms, apart below)
+        fx_ = self.cfg.get("sight_demo_fx")                                # D5d's effectors (a comma list; none: every motor effector).
+        sdemo_ = int(self.cfg.get("sight_demo", 0)) and (not fx_ or e.name in str(fx_).split(","))   # 08:2x 10-23: the hands' readouts
+        # taught by the demonstration alone learned the hand-over's own acts (the receiving hand's opening, the free hand's opening: the
+        # expert's shadow under every push), which the sight cannot tell from the holding hand's, and leaned the holding hand open at the
+        # hand + 10 states (the mixed population's closing preference -0.31 against act_pred's +0.31): its own acts closed on 0.27 of
+        # held ticks against 0.44 before, the hand-overs a task 4.28 against 3.0. The clip shows the arm's movement: P8 takes the arms
+        if "@sight" in obs and self._sight_line_on():
+            s1_ = self._sight_term(e, obs["@sight"][1:])                 # D5: and the sight line its choice read (the day's and the tape's)
+            h_ = self._sight_mix(Cp.detach(), obs["@sight"][1:]) if self._sight_mix_on() else None
+            s2_ = self._sight_mix_term(e, h_) if h_ is not None else None   # D5c: and
+            if sdemo_:                                                   # the mixed population of the stream (read detached: only its maps
+                dmix_ = int(self.cfg.get("sight_demo_mix", 1)) and s2_ is not None   # learn) and that line. D5d: under sight_demo the act
+                SL_ = s1_ + s2_ if dmix_ else s1_                        # lesson reads them, never teaches them (their own lesson below).
+                P = P + SL_.detach()                                     # sight_demo_mix 0 (08:3x 10-23): the mixed population's readout
+                if s2_ is not None and not dmix_:                        # stays in act_pred's lesson (taught at every position, as before):
+                    P = P + s2_                                          # taught at the demonstration's positions alone it read the stream's
+                                                                         # state, and at states no push visits (the hand-over + 10, k 10; the
+                                                                         # pushes begin at k 20-32) it said what nothing taught it, the left
+                                                                         # arm's pitch back 0.64 of its readout where every phase of the pushes
+                                                                         # stepped it back 0.02-0.28; the draws followed (small back 0.85 in
+                                                                         # the tests, 08:26) and act_pred learned the own acts (+0.72 back). The
+                                                                         # line reads the sight alone: the same clip's trace at a wait and at
+                                                                         # the push it prepares
+            else:
+                P = P + s1_
+                if s2_ is not None:
+                    P = P + s2_
+        if int(self.cfg.get("act_nlms", 0)):                               # (2026-10-23, the organ check: the plain step's stability, below)
+            sg_ = "@sight" in obs and self._sight_line_on()
+            dm2_ = bool(sdemo_) and bool(int(self.cfg.get("sight_demo_mix", 1))) and h_ is not None
+            dr_ = [Cp] + ([s[1:] - fw.detach()] if s is not None else [])
+            rw_ = []; dw_ = []
+            if "@frec" in obs:
+                R_ = self.m.acts[e.name].rows
+                rf_ = obs["@frec"][1:].to(R_.device, R_.dtype)
+                rw_.append((rf_ @ R_.t()) @ R_)
+            if "@cue" in obs and self._cue_line_on():
+                rw_.append(obs["@cue"][1:] * math.sqrt(float(self.m.d) / 3.0))
+            if sg_:
+                (dw_ if sdemo_ else rw_).append(obs["@sight"][1:])
+                if h_ is not None:
+                    (dw_ if dm2_ else rw_).append(h_)
+            self._nlms_note(e, dr_, rw_, dw_, 1.0 if night else float(self.cfg.get("sight_demo_gain", 1.0)), bool(sdemo_) and sg_, dm2_)
+        got_ = None; prep_l_ = None
+        H_p = int(self.cfg.get("prep_ahead", 0))
+        if H_p > 0:                                                        # (2026-10-23: THE PREPARED MOVEMENT, `_prep_target`)
+            no_ = nol_ if nol_ is not None else torch.zeros_like(wt, dtype=torch.bool)
+            gdm_ = obs.get("@gdd:" + e.name)                               # THE DEMONSTRATION PREPARED (06:2x): the movements prepared are
+            gdm_ = gdm_.to(wt.device).bool() if gdm_ is not None else torch.zeros_like(wt, dtype=torch.bool)   # the demonstration's (a guided
+            src_ = (wt > 0) & ~no_ & gdm_                                  # position's act): the child's own next moves keep their own-act
+            dst_ = (((wt > 0) | (tgt == rest)) & ~no_) & ~gdm_             # lesson and are not propagated back (its own drift would teach
+                                                                           # itself: the right arm's habit prepared its actor's step back,
+                                                                           # 0.63, every act's first step forward); where a joint is still
+                                                                           # at an own act, or the whole rest taught nothing, a destination;
+                                                                           # a guided position keeps the demonstration's label
+            tgt0_ = tgt
+            tgt, got_ = self._prep_target(e, tab, tgt, src_, dst_, H_p)
+            if SL_ is not None and sdemo_ and int(self.cfg.get("sight_prep", 0)):
+                # D5f (2026-10-23): THE LINE PREPARES OVER THE WHOLE DELAY. act_pred's preparation reaches H_p positions back from a
+                # demonstrated movement; the sight line's (taught by the demonstration alone, D5d) reaches every still position the
+                # window shows before it: the line reads what was seen, and what was seen stands in its input through the whole wait
+                # between the clip and the push (the instructed delay's preparatory activity spans the delay: Tanji and Evarts 1976;
+                # Crammond and Kalaska 2000). Read on the current run (scratchpad wait_fit.py): a readout of the line's input taught at
+                # the lessons' waits by the first push to come agreed with the expert's first steps at the tests' waits by clip 0.81
+                # (the left arm; 0.72 taught at the pushes alone), sign 12 of 12 (10 of 12): the tests' decision is the wait's, and the
+                # line was taught the wait's last 8 positions of 28
+                prep_l_ = self._prep_target(e, tab, tgt0_, src_, dst_, int(tgt0_.shape[0]))
+            wt = torch.where(got_ & (wt <= 0), torch.ones_like(wt), wt)  # (a rest that prepares a movement is a lesson; read detached, rested)
         with torch.no_grad():
             rows = tab(tgt[1:])
         if nol_ is not None and bool(nol_.any()):
@@ -1006,6 +1216,57 @@ class TimingMixin:
         n_lab = int(lab_f.sum()) if lab_f is not None else 0
         lb = (err_l * lab_f.float()).sum() / float(T - 1) if n_lab else None   # act_inv's labels, every one earned
         loss = lp if lf is None else lp + lf
+        ls_ = None
+        if SL_ is not None and sdemo_:
+            # D5d (2026-10-23, P8's iPad): THE SIGHT LINE TAUGHT BY THE DEMONSTRATION ALONE, ON ITS OWN ERROR. The sight line (D5) and the
+            # mixed population's readout (D5c) learned in act_pred's lesson, their terms summed with the stream's against every label:
+            # the child's own acts at weight 1 beside the demonstration. After every clip the child's own acts were the same (their mean
+            # per joint within 0.03 between the five clips over 5,000 test ticks, 07:1x 10-23), and they were most of the labels (the
+            # current run: 703 pushed positions among 3,398 in the box trace), so the line learned to say after every sight what the
+            # child does anyway: its between-clip spread at the tests 0.03-0.08 a joint, where a ridge readout of the same trace taught
+            # by the pushed positions alone spread 0.38 / 0.25 / 0.38 / 0.63 on the shoulder's pitch, roll, yaw and the elbow, the
+            # out's pitch -1.77 and elbow +1.11 against the expert's -1.59 and +1.66, the lift's elbow -0.48 against -0.46
+            # (scratchpad demo_line_fit.py). The trace held the act shown (a linear readout 0.81 at the hand-over + 10, 0.75 at + 30,
+            # chance 0.20; the cortex's stream 0.29): what the eye saw reached the proposal and was taught away. In the summed lesson
+            # the stream also explains the push's continuation from the arm's own motion, so the line learned only the residual (the
+            # Rescorla-Wagner sum's blocking, Kamin 1969). The brain's road: the association between the sight of an act and the act
+            # is learned from their contiguity, the sight followed by the act done with it (Heyes 2001, associative sequence learning;
+            # Cook, Bird, Catmur, Press and Heyes 2014), each pathway's synapses by their own activity and the act's (Hebb), not by
+            # what the other pathways already foretold. Here, under the switch: the line's and the mixed population's terms enter the
+            # act lesson detached (they are read, never taught, there: the stream's and act_pred's lesson as before around them) and
+            # are taught on their own error to the target at the demonstration's positions alone (the guided acts, the teacher's
+            # corrections, and the movements the demonstration prepared, prep_ahead), at the act lesson's own weights there (1 at a
+            # guided act; a guided rest as D1e/D1u weigh it; act_inv's labels at its reliability), by day and by night alike (D1p: a
+            # demonstration is taught at night as by day). A life has no demonstration: under the switch its sight line never learns
+            dm_ = obs.get("@gdd:" + e.name)
+            dm_ = dm_.to(w1.device).bool() if dm_ is not None else torch.zeros(T, dtype=torch.bool, device=w1.device)
+            tk_ = obs.get("@tch:" + e.name)
+            if tk_ is not None:
+                dm_ = dm_ | tk_.to(w1.device).bool()
+            if got_ is not None:
+                dm_ = dm_ | got_.to(w1.device).bool()
+            rows_s = rows
+            if prep_l_ is not None:                                        # D5f: the line's own targets, prepared over the whole window
+                with torch.no_grad():
+                    rows_s = tab(prep_l_[0][1:])
+                dm_ = dm_ | prep_l_[1].to(w1.device).bool()
+            ws_ = w_own.clamp_min(0.0) + (float(gain) * lab_f.float() if lab_f is not None else 0.0)
+            if prep_l_ is not None:                                        # (a rest that prepares a movement is a lesson, at 1)
+                ws_ = torch.where(prep_l_[1][1:].to(ws_.device).bool() & (ws_ <= 0), torch.ones_like(ws_), ws_)
+            ws_ = ws_ * dm_[1:].float()
+            es_ = 0.5 * ((SL_.float() - rows_s.float()) ** 2).sum(-1)
+            ls_ = (es_ * ws_).sum() / float(T - 1)
+            if not night:                                                  # (the positions the line's own lesson taught, by day: an instrument)
+                tl_ = getattr(self, "_sl_taught", None)
+                if tl_ is None:
+                    tl_ = self._sl_taught = {}
+                tl_[e.name] = int(tl_.get(e.name, 0)) + int((ws_ > 0).sum())
+            # sight_demo_gain (09:0x 10-23): the day's step on this lesson, the night's whole. A push is a burst of up to 40 positions of one
+            # act, and at the whole step by day the line's common part followed the last bursts (its pitch over every clip -0.49 at 08:43,
+            # +0.36 at 09:02 after three put-in lessons running) while its between-clip part held (the lift's elbow -0.16 to -0.51, the
+            # out's +0.17 to +0.44 at every save from 08:17). The night replays every act's demonstrations interleaved (the hippocampal
+            # replay that keeps a slow learner from being overwritten by its latest lesson: McClelland, McNaughton and O'Reilly 1995)
+            loss = loss + ls_ * (1.0 if night else float(self.cfg.get("sight_demo_gain", 1.0)))
         s_lab = n_lab / float(T - 1)
         with torch.no_grad():                                              # A154: the forecast's scale against the act rows' (the lesson's targets), for _forecast_scaling
             fs = getattr(self, "_fc_scale", None)
@@ -1020,6 +1281,8 @@ class TimingMixin:
                "s_lab": s_lab, "rel": gain}                               # their share of the positions, the reliability they were weighed at
         if lf is not None:
             rep["fwd"] = round(float(lf.detach()), 4)
+        if ls_ is not None:
+            rep["sdemo"] = round(float(ls_.detach()), 4)                   # D5d: the sight's own lesson at the demonstration
         return loss, rep, lb
 
     def _timing_report(self, i):

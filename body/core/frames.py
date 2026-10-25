@@ -533,6 +533,8 @@ class FramesMixin:
                     v_nxt = top
             total = self._frame_value(total, v_nxt)
         s = self._frame_surprise(codes)
+        if s is not None and int(self.cfg.get("sight_hold", 0)):
+            self._sight_hold_mark(float(s))                              # D7: an event's boundary marked for the eye's held memory
         tag, tag_w = self._tag_now()
         self._frame_boosts(tag)                                       # R7d: the tag of this tick reaching back onto the frames written
         if s is not None:

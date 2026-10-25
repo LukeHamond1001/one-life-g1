@@ -43,6 +43,7 @@ import numpy as np
 
 from . import consts as K
 from . import templates as TP
+from .. import extras as X
 from ..parent_consts import NEVER_FETCHED
 from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swallowed unseen)
 
@@ -383,7 +384,7 @@ class DayPlan:
             # A110's laying), as the ghost's catch lays a fallen child clear of the walls (LAY_CLEAR_M). Not while the ghost holds it
             try:
                 clear_ = getattr(world.parent, "_standing_clear_m", None); xy_ = np.array(world.d.qpos[:2], float)   # (a copy: the view read the mat's centre after the carry)
-                mat_ = np.asarray(world.m.geom_pos[world.m.geom("mat").id][:2], float)
+                mat_ = X.mat_rect(world.m)[0]
                 # C352 amended (2026-10-10, 13:55): THE CARRY ONLY WHERE THE MAT'S CENTRE IS CLEARER. Day 142 (6,816,050 to 6,819,400):
                 # the check fired 27 times at one spot and moved nothing: the child lay on the mat's south edge (the mat 2.8 x 2.0 m
                 # at (0, -0.6), its edge at the wall's metre) and carry_to_mat with no place lays a child already on its mat where it
@@ -498,7 +499,7 @@ class DayPlan:
             self.log.append((t, "it stood alone (C287)", int(t - (self.free_from if self.free_from is not None else t))))
             print(f"it stood alone {int(t - (self.free_from if self.free_from is not None else t))} ticks after she let go (C287)", flush=True)
             self.free_from = None
-            mat_ = np.asarray(world.m.geom_pos[world.m.geom("mat").id][:2], float)
+            mat_ = X.mat_rect(world.m)[0]
             # C328 (2026-10-08): THE WALK OVER, IT IS CARRIED BACK TO ITS MAT, NOT LEFT IN THE SECOND ROOM. Days 123 and 124: every tick
             # of both days in the second room (laid on its rug after each held walk through the door, D1c and D1e, and carried back
             # to the rug when her acts were blocked, D1b). Day 123 went as the mat's days do (stands 10 done, 2 refused; shows 21 and
@@ -568,10 +569,10 @@ class DayPlan:
         if (len(self.blocked_at) >= CARRY_AFTER or hurt_) and kind in ("floor", "motor", "show") and not self.away and not pm.holds and \
                 not any(v is not None for v in pm.holding.values()) and \
                 not any(a[5] not in ("done", "refused", "cancelled") for a in c.acts_open):
-            mat_ = world.m.geom_pos[world.m.geom("mat").id][:2]
+            mat_ = X.mat_rect(world.m)[0]
             if float(np.hypot(pm.base["at"][0] - mat_[0], pm.base["at"][1] - mat_[1])) >= CARRY_CLEAR_M:
                 was_ = [round(float(x), 2) for x in world.d.qpos[:2]]
-                if world.carry_to_mat(to=np.asarray(world.m.geom_pos[world.m.geom("mat").id][:2], float)):   # (C328: its mat always; D1b had laid it on the rug when past the door.
+                if world.carry_to_mat(to=X.mat_rect(world.m)[0]):   # (C328: its mat always; D1b had laid it on the rug when past the door.
                     # C298 (2026-10-06): the mat's CENTRE named, not None: lying on the mat's far edge by the front wall (0.4, -2.0) the
                     # child counted as 'on the mat' and the carry declined; day 102: nine stands refused 'no spot she can kneel at'
                     # in a morning, six of them there, and no carry)   # (the door stage: in the second room, its rug)

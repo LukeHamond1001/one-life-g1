@@ -5551,7 +5551,7 @@ class ParentMotion:
                 # the floor'; A110 carries it back only at dawn). Farther than WALK_TURN_M from the mat's centre, the walk's way
                 # turns toward it at STAND_TURN_DPS; her two hands on either side of its chest turn its trunk, and its steps follow
                 goal_ = getattr(self, "walk_goal", None)                    # the door stage: the day plan's destination (the doorway,
-                to_ = (np.asarray(goal_, float) if goal_ is not None else np.asarray(self.m.geom_pos[self.m.geom("mat").id][:2], float)) - feet[:2]   # then the second room's rug)
+                to_ = (np.asarray(goal_, float) if goal_ is not None else X.mat_rect(self.m)[0]) - feet[:2]   # then the second room's rug)
                 if float(np.linalg.norm(to_)) > (0.3 if goal_ is not None else K.WALK_TURN_M):
                     w0_ = math.atan2(c["wdir"][1], c["wdir"][0])
                     dw_ = _ang(math.atan2(to_[1], to_[0]) - w0_)
@@ -5765,7 +5765,7 @@ class ParentMotion:
             h.next = lead + off
             if c["lay_t"] >= n_:
                 c["state"] = "done" if c.get("stood") else f"stopped: {c.get('why') or 'it did not stand'}; she laid it back (C268)"
-                mat_ = np.asarray(self.m.geom_pos[self.m.geom("mat").id][:2], float)
+                mat_ = X.mat_rect(self.m)[0]
                 if float(np.linalg.norm(feet[:2] - mat_)) > K.CARRY_FAR_M and getattr(self, "carry_pending", None) is None:
                     # C345: LAID DOWN FAR FROM ITS MAT, IT IS CARRIED BACK. The carry (C281) followed only a walk that reached its settle;
                     # a stand that sank, stalled or folded far from the mat laid it where it was (day 129: in the arch's pocket). Her

@@ -2391,6 +2391,24 @@ def test_the_shaping_reaches_the_actors():
     print("the shaping reaches the actors: weights differ", float((A.m.actor.weight - B.m.actor.weight).abs().max()), "| ms", A._dop_ms, B._dop_ms, "| the term", sh, "at gamma", gam[s])
 
 
+def test_the_adapted_dopamine_is_bounded():
+    """A172b (2026-10-24): under A172's adaptive coding a reward far outside the quiet stretch's spread reaches the actors held to
+    dopamine_sat RMS units (c tanh(x / c)), where without the bound it reaches them many times larger; the actors' lesson still moves"""
+    def run(sat):
+        life = _watched(seed=0, dopamine_adapt=1); life.cfg["dopamine_sat"] = sat
+        _live(life, 300)                                                     # (a quiet stretch: the RMS falls, the gain rises)
+        w0 = life.m.actor.weight.clone(); peak = 0.0
+        for _ in range(6):
+            life.set_face(-2.0); life.tick(); peak = max(peak, abs(float(getattr(life, "_dop_last", 0.0))))
+        life.set_face(0.0)
+        return peak, float((life.m.actor.weight - w0).abs().max())
+    p0, m0 = run(0.0); p3, m3 = run(3.0)
+    print("A172b: the actors' dopamine at a frown after a quiet stretch, unbounded", round(p0, 2), "bounded at 3", round(p3, 3), "| the actors' largest move", m0, m3)
+    assert p3 <= 3.0 + 1e-9, p3
+    assert p0 > 3.0, ("the frown never exceeded the bound: the test does not reach it", p0)
+    assert m3 > 0.0, "the bounded dopamine moved nothing"
+
+
 def test_the_shaping_gain_is_earned():
     """D3c: the shaping gain is the shaping band's own anticipation (its value's correlation with the next 64 ticks' reward), born 0: a
     band whose value foretells the reward earns its gain; one whose value is noise against the reward earns none"""
@@ -2404,6 +2422,28 @@ def test_the_shaping_gain_is_earned():
         life2.ticks = t; life2._shape_track(b, _m.sin(t / 320.0), 0.02 * float(torch.randn(1, generator=rng)))
     rho_noise = life2._shape_rho(b); assert rho_noise < 0.3, rho_noise
     print("the shaping gain earned: a foretelling band", round(rho_good, 3), "| a band against noise", round(rho_noise, 3))
+
+
+def test_each_band_judged_at_its_own_horizon():
+    """D3e (the owner's word 2026-10-23: as it matures, the reward shifts to the longer bands once they have matured): under shape_own_h
+    band b's value is read against the reward of its own clock's ticks. A band-4 value (clock 256) that marks the 256 ticks before each
+    reward earns a gain near 1 at its own horizon, where D3c's 64-tick window reads the same value lower; the window's queue holds a
+    horizon at most; and nothing is earned before a horizon of samples is in"""
+    def run(own):
+        life = _watched(seed=0, shape_own_h=own); b = 4; H = int(life.m.clocks[b]); assert H == 256
+        rhos = []
+        for t in range(9000):                                             # a reward every 1,000 ticks; the value 1 on the 256 ticks up to it
+            life.ticks = t; v = 1.0 if (t % 1000) >= 1000 - 255 or t % 1000 == 0 and t > 0 else 0.0
+            life._shape_track(b, v, 1.0 if (t % 1000 == 0 and t > 0) else 0.0)
+            if t == 300:
+                rhos.append(life._shape_rho(b))                           # (before a horizon of samples: none earned)
+        return life, b, H, rhos[0], life._shape_rho(b)
+    L1, b, H, early, own = run(1)
+    L0, _, _, _, old = run(0)
+    assert early == 0.0, early
+    assert own > 0.9 and own > old + 0.2, (own, old)
+    assert len(L1._shape_q[b]) <= H, len(L1._shape_q[b])
+    print(f"D3e: the band-4 value against its own 256-tick window earns {own:.3f}; against D3c's 64 ticks {old:.3f}; none before a horizon")
 
 
 def test_the_actors_read_the_bands_departure():

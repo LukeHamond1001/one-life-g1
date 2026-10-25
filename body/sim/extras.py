@@ -81,6 +81,18 @@ BUCKET_RGBA = (0.45, 0.55, 0.20, 1.0)            # olive: no colour word of hers
 BUCKET_YAW_DEG = 0.0
 
 
+BARE_BUCKET_IN, BARE_BUCKET_H = 0.13, 0.16       # THE BARE WORLD'S BOX (2026-10-22 03:42: the box task's drops from a hand held at 0.85 m
+                                                 # bounced out of the 18 cm, 8 cm-deep bucket, the push's and its own): 26 cm square, 16 cm deep
+
+
+def set_bucket_dims(inner, h):
+    """the bucket's inner half-width and depth for every reader in this process (the spec that builds it, the lane's 'in the bucket', her
+    hide game's rim, the box task's judge all read BUCKET_IN and BUCKET_H at call time): the bare world sets its box before its spec is
+    built; the furnished room keeps the defaults (the guard's digests)"""
+    global BUCKET_IN, BUCKET_H
+    BUCKET_IN, BUCKET_H = float(inner), float(h)
+
+
 def add_bucket(xy=(-0.3, -0.45), yaw_deg=BUCKET_YAW_DEG, name="bucket", rgba=BUCKET_RGBA):
     """-> extra(spec): the bucket set at xy on the mat (A126, the third novel object and the first hollow one: a toy can be put INTO it in
     the child's view and be gone from its eyes while it stays, the hide game's vessel, A129), with the toys' contacts, its two hold welds
@@ -232,7 +244,24 @@ def add_gso(seed, n, folder=GSO_DIR, manifest=None):
 
 # ================================================================== THE SCREEN (the owner's end target, 2026-10-21 16:20: 'an iPad of it
 # doing something from a new angle, then it does it'; docs/PREREGISTRATION_LIVE.md 4d)
-SCREEN_W, SCREEN_H = 192, 144                 # the panel's texture (texels); the eyes see it at their own resolution
+MAT_XY, MAT_HALF = (0.0, -0.6), (1.40, 1.00)   # the mat's centre and half-size (make_g1room.MAT_CENTER, MAT_HX, MAT_HY): where a world has
+                                                 # no mat (the bare world, add_bare) the floor there stands for it
+
+
+def mat_rect(m):
+    """-> (centre xy, half-size xy) of the mat: the geom's where the room has one, else its place on the bare floor. 2026-10-22: P7's
+    night 6 failed at the dawn's carry_to_mat on the missing mat (KeyError 'mat'), the world stayed at night and the child lived a
+    day blind and deaf, her asleep; every reading of the mat goes through here"""
+    gid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "mat")
+    if gid < 0:
+        return np.array(MAT_XY, float), np.array(MAT_HALF, float)
+    return np.asarray(m.geom_pos[gid][:2], float).copy(), np.asarray(m.geom_size[gid][:2], float).copy()
+
+
+SCREEN_W, SCREEN_H = 384, 288                 # the panel's texture (texels); the eyes see it at their own resolution. 11:4x 10-24 (the
+                                              # owner: "is ipad high enough res"): 192 x 144 until the picture took the fovea's size (tools/
+                                              # harness/demo_screen.py SHOW_FOVEA_DEG), about half the face: 91 texels across it at 0.30 m and
+                                              # 54 at 0.18, under the colour window's 61 px; at 384 x 288, 182 and 109
 SCREEN_HALF = (0.12, 0.09, 0.004)             # m: a tablet, 24 x 18 cm, 8 mm thick (ours)
 SCREEN_MASS = 0.25                            # kg
 
@@ -274,12 +303,31 @@ class ScreenPlayer:
         self.tid = m.texture("screen").id
         self.adr = int(m.tex_adr[self.tid]); self.w, self.h, self.nc = int(m.tex_width[self.tid]), int(m.tex_height[self.tid]), int(m.tex_nchannel[self.tid])
         self.frames = None; self.k = 0; self.playing = False; self.extra = []; self._dark = True; self.n_played = 0
+        self.pic = None                 # (w, h) texels: the frame shown as a picture of that size in the face's middle (None: the face filled)
+        self.hold = False               # True: the frame it shows stays (the clip paused), the next not taken
 
     def play(self, frames):
         self.frames = np.ascontiguousarray(frames, dtype=np.uint8); self.k = 0; self.playing = bool(len(self.frames))
 
     def stop(self):
-        self.playing = False; self.frames = None; self.k = 0
+        self.playing = False; self.frames = None; self.k = 0; self.hold = False; self.pic = None
+
+    def framed(self, img):
+        """the frame as the panel shows it: the whole face (pic None), or a picture pic = (w, h) texels in the face's middle, the rest the
+        panel's dark (demo_screen SHOW_FOVEA_DEG)"""
+        if self.pic is None:
+            return img
+        pw, ph = int(min(self.w, max(2, round(self.pic[0])))), int(min(self.h, max(2, round(self.pic[1]))))
+        try:
+            import cv2
+            p_ = cv2.resize(np.ascontiguousarray(img[:, :, :3]), (pw, ph), interpolation=cv2.INTER_AREA)
+        except ImportError:
+            from PIL import Image
+            p_ = np.asarray(Image.fromarray(np.ascontiguousarray(img[:, :, :3])).resize((pw, ph), Image.BOX))
+        out = np.full((self.h, self.w, 3), 5, np.uint8)
+        y0, x0 = (self.h - ph) // 2, (self.w - pw) // 2
+        out[y0:y0 + ph, x0:x0 + pw] = p_
+        return out
 
     def write(self, img):
         """the image into the model's texture (no upload)"""
@@ -294,7 +342,11 @@ class ScreenPlayer:
     def tick(self, contexts):
         """the frame of this tick (or dark) into the texture, uploaded to the contexts; -> True while the clip plays"""
         if self.playing and self.frames is not None and self.k < len(self.frames):
-            img = self.frames[self.k]; self.k += 1; self._dark = False; self.n_played += 1
+            if self.hold:                                                   # (paused: the frame it showed stays; the first, before any)
+                img = self.frames[max(0, self.k - 1)]
+            else:
+                img = self.frames[self.k]; self.k += 1; self.n_played += 1
+            self._dark = False; img = self.framed(img)
         else:
             if self.playing:
                 self.stop()
@@ -307,12 +359,52 @@ class ScreenPlayer:
         return self.playing
 
 
-def clip_frames(path, h=SCREEN_H, w=SCREEN_W, start_s=0.0, dur_s=None, fps=None):
+def clip_frames(path, h=SCREEN_H, w=SCREEN_W, start_s=0.0, dur_s=None, fps=None, crop=None):
     """a film's frames (tools/harness/demo_film.py's film.mp4, or any video) resized to the panel through ffmpeg, from start_s for dur_s
-    seconds, at fps a second when given (the sim's tick is 6 a second) -> [n, h, w, 3] uint8"""
+    seconds, at fps a second when given (the sim's tick is 6 a second); crop (x0, y0, cw, ch) in the film's pixels first, when given
+    (a closer shot of the same film) -> [n, h, w, 3] uint8"""
     import subprocess
+    pre_ = f"crop={int(crop[2])}:{int(crop[3])}:{int(crop[0])}:{int(crop[1])}," if crop else ""
     cmd = ["ffmpeg", "-loglevel", "error", "-ss", str(float(start_s)), "-i", str(path)] + (["-t", str(float(dur_s))] if dur_s else []) + \
-          ["-vf", f"scale={w}:{h}" + (f",fps={float(fps)}" if fps else ""), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+          ["-vf", pre_ + f"scale={w}:{h}" + (f",fps={float(fps)}" if fps else ""), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     raw = subprocess.run(cmd, capture_output=True).stdout
     n = len(raw) // (w * h * 3)
     return np.frombuffer(raw[:n * w * h * 3], np.uint8).reshape(n, h, w, 3).copy() if n else np.zeros((0, h, w, 3), np.uint8)
+
+
+# ================================================================== THE BARE WORLD (the owner's word 2026-10-21 22:50: 'get rid of the room and the
+# teacher model, a clean environment'): the floor alone (no walls, ceiling, hall, furniture, mat), and her body kept in the physics (her
+# position, her voice, her pushes, the lever are the teacher) but invisible to its eyes (every geom of hers at alpha 0)
+def add_bare():
+    def extra(spec):
+        room = next((b for b in spec.bodies if b.name == "room"), None)
+        if room is not None:
+            for g in list(room.geoms):
+                nm = g.name or ""
+                if nm == "floor":
+                    continue
+                if nm.startswith(("wall", "hall", "ceiling", "door")):     # the bounds kept in the physics, unseen (it cannot wander off; the
+                    g.material = ""; g.rgba = [0.0, 0.0, 0.0, 0.0]          # lane and the world still find them by name); a material's colour
+                else:
+                    spec.delete(g)                                         # the furniture, the mat, the window and the rest: gone
+            for b in list(room.bodies):                                    # (bodies hung under the room, the door's leaf among them: unseen)
+                for g in b.geoms:
+                    g.material = ""; g.rgba = [0.0, 0.0, 0.0, 0.0]
+        for b in spec.bodies:
+            if b.name.startswith("parent_"):                               # her body: in the physics, out of sight (her skin's material gone,
+                for g in b.geoms:                                          # or its colour would show through an alpha of zero)
+                    g.material = ""; g.rgba = [0.0, 0.0, 0.0, 0.0]
+    return extra
+
+
+def hide_parent(m):
+    """THE BARE WORLD on the compiled model (G1World adds her body after the extras ran, and a spec's alpha did not hold for the hall):
+    her geoms, the sibling figure's, the second room's and the room's but the floor moved to render group 5, which every renderer's options leave off (the eyes' and the
+    film's: groups 0 to 2), and made colourless besides: in the physics, out of sight. Call it after the world is built"""
+    import numpy as np
+    n = 0
+    for i in range(m.ngeom):
+        b = m.body(int(m.geom_bodyid[i])).name
+        if b.startswith(("parent_", "sibling")) or b == "room2" or (b == "room" and (m.geom(i).name or "") != "floor"):   # her, the
+            m.geom_group[i] = 5; m.geom_matid[i] = -1; m.geom_rgba[i] = np.array([0.0, 0.0, 0.0, 0.0], dtype=m.geom_rgba.dtype); n += 1
+    return n

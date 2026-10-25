@@ -10,6 +10,6 @@ CFG="own_words=1 own_words_split=1 approach=0 eye_dino=1 orient_earned=1 place_c
 mkdir -p "$O"
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') P6 born from $D/student7 (wt_next $(git -C $N rev-parse --short HEAD)); cfg $CFG" >> "$O.log"
 (cd $N && nohup nice -n 5 python3 tools/harness/demo_test.py --student $D/student7 --out "$O" --ticks $T --seed $SEED --threads 3 --cfg $CFG \
-  --learn --guide --lever --families come,look --screen "$D/clips_body/tasks10_s*" --screen-fams come,look --screen-rung 2 --screen-probe come \
-  --save-every 2000 --film "$O/film" --film-every 2 >> "$O.log" 2>&1 &)
+  --learn --guide --lever --families come,look --screen "$D/clips_body/tasks10_s*" --screen-fams come,look --screen-rung 2 \
+  --save-every 2000 --film "$O/film" --film-every 2 --snap-every 10 >> "$O.log" 2>&1 &)
 sleep 2; pgrep -fl "demo_test.py --student $D/student7 --out $O " | cut -c1-80

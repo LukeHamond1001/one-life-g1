@@ -327,6 +327,13 @@ class NightMixin:
         finally:
             self._night_home()                                         # a failed night never leaves the day on the night's device
             self.asleep = False
+            w_ = getattr(self, "world", None)                          # 2026-10-22: nor the WORLD at night (P7's night 6: the dawn's carry
+            if w_ is not None and getattr(w_, "night", False):          # raised, the light stayed out, its eyes and ears off, the parent
+                try:                                                    # asleep, through a whole day the tester kept teaching)
+                    w_.dawn()
+                except Exception as e2_:
+                    print(f"[body] the dawn after a failed night failed too: {e2_!r}"[:200], flush=True)
+                    w_.night = False
         return rep
 
     def _night_words(self, rep):

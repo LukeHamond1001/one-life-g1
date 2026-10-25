@@ -399,8 +399,11 @@ class WorldLoop:
         self.lived = 0; self.lapsed = 0                       # the ticks the body lived through the loop, and those that went by without it
         self._base = None; self._next = 0                     # the deadline's clock: its start, and the world tick the body lives next
 
-    def step(self):
-        """one pass; returns the tick's acts"""
+    def step(self, frame=None):
+        """one pass; returns the tick's acts. `frame` (2026-10-22, the double frame): the world's frame the caller has already taken this
+        tick, lived on as it stands (life.tick(frame)); None: the life takes its own at its senses' phase, as always. A sim world's frame
+        renders the eyes, reads the ears and advances the screen's clip, so a caller that took one and let the life take a second paid
+        the eyes twice a tick and played every clip at twice its speed"""
         life, world = self.life, self.world
         if life.world is not world:
             raise RuntimeError("WorldLoop: the life's world is no longer the loop's")
@@ -415,7 +418,7 @@ class WorldLoop:
                 self.sleep(max(0.0, self._base + self._next * self.period - t0))
                 t0 = self.clock()
         dusk = life.last_night
-        acts = life.tick()
+        acts = life.tick(frame) if frame is not None else life.tick()
         try:
             world.apply(acts)
         except RuntimeError as e:                             # W6: a sim world's fault (WorldFault) lived again once with the parent's

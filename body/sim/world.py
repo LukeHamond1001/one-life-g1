@@ -733,6 +733,7 @@ class G1World(SimWorld):
         self.carried = []                                               # A110: the child carried to the mat at a dawn (tick, from, to)
         self.tidied = []                                                # A117 (B8): the lost toys put back at a dawn (tick, toy, from, to)
         self.pinned = {}                                                # T3: the toys the environment holds in place: name -> (pos, quat, until tick)
+        self.pin_follow = {}; self.pin_offset = {}                      # T3c: a pin's hand to ride (name -> h) and its offset from the grasp centre
         self.light_day = {f: getattr(m, f).copy() for f in ("light_diffuse", "light_ambient", "light_specular")}
         self._below_n = 0                                                    # sub-steps called this life (an instrument)
         # birth
@@ -1044,7 +1045,10 @@ class G1World(SimWorld):
                 i_h = 0 if hand == "hand_l" else 1
                 a, ev = R.grasp(hand, acts.get(hand), float(self._sensed["palm_log"][i_h]),   # A171: the palm's side (its face and the
                                 self._grasp_hab.setdefault(hand, [0, 0]),   # A162: the reflex habituates under a constant pressure   # fingers'
-                                float(self._sensed["palm_onset"][i_h]))     # A164: and a new press wakes it                           # insides)
+                                float(self._sensed["palm_onset"][i_h]),     # A164: and a new press wakes it                           # insides)
+                                whole=bool(getattr(self, "grasp_whole", False)),   # A160b: the grasp yields to a whole opening (the switch)
+                                offset=float(self._sensed.get("palm_offset", np.zeros(2))[i_h]),   # A164b: and a slip (the push falling)
+                                fall=bool(getattr(self, "grasp_fall", False)))                       # wakes it too (the switch)
                 if ev is not None:
                     spinal[hand] = ev
                     if a is not None:                                       # (habituated at rest: no act of the hand's this tick)
@@ -1540,9 +1544,9 @@ class G1World(SimWorld):
         planner found no spot to kneel ("no path on the floor") and she counted as away (lane.ROOM_EDGE_X): no reach, no lesson,
         no judgment of its acts for two days. Nothing here reaches the body but the morning's new view. Logged in `carried`
         (the tick, from, to). -> whether it was carried"""
+        from body.sim import extras as X
         m, d = self.m, self.d
-        g = m.geom("mat").id
-        c, h = m.geom_pos[g][:2].copy(), m.geom_size[g][:2]
+        c, h = X.mat_rect(m)                                            # (the bare world has no mat: its place on the floor stands for it)
         xy = d.qpos[:2].copy()                                          # its pelvis (the floating base) on the floor plan
         on_mat = abs(xy[0] - c[0]) <= h[0] and abs(xy[1] - c[1]) <= h[1]
         supine = float(d.xmat[m.body("torso_link").id].reshape(3, 3)[2, 0]) > 0.6   # its chest's normal up: on its back (the posture
@@ -1612,10 +1616,13 @@ class G1World(SimWorld):
     def dawn(self):
         """THE MORNING (5.4, A46): the light returns over the wake's first DAWN_TICKS ticks, the eyes and ears on, the parent awake;
         the world goes on from wherever the night left it, the child carried back onto the mat if it rolled off (A110)"""
-        self.carry_to_mat(to=((4.1, -1.5) if getattr(self, "door_open", False) and float(self.d.qpos[0]) > 2.75 else None))   # (the door stage: a child in the second room sleeps on its rug)
-        self.tidy_toys()
-        self.toys_far_back()                                                # C311: the toys of the other room brought to its side
-        self.bucket_beside()
+        try:                                                                # 2026-10-22 (P7's night 6: the carry raised on a world with no mat and
+            self.carry_to_mat(to=((4.1, -1.5) if getattr(self, "door_open", False) and float(self.d.qpos[0]) > 2.75 else None))   # (the door stage: a child in the second room sleeps on its rug)
+            self.tidy_toys()                                                # the day began at night: eyes and ears off, the parent asleep):
+            self.toys_far_back()                                            # the morning's tidying may fail, seen; the light returns regardless
+            self.bucket_beside()                                            # C311: the toys of the other room brought to its side
+        except Exception as e_:
+            print(f"[world] the dawn's tidying failed: {e_!r}"[:220], flush=True)
         self.night = False
         self.dawn_left = DAWN_TICKS
         if self.parent is not None:
@@ -1764,7 +1771,7 @@ class G1World(SimWorld):
         return moved
 
     # ---------------------------------------------------------------- T3: the environment's show
-    def pin_toy(self, toy, pos, quat=None, ticks=2):
+    def pin_toy(self, toy, pos, quat=None, ticks=2, follow=None):
         """T3 (2026-10-08; the owner's word: the scripted teacher's failures are the bottleneck): the environment holds a toy where a show
         wants it (before the child's eyes) for `ticks` ticks at most (the pin lapses if its act does not renew it): its free joint set
         to the pose and its velocity to zero before every physics step, so the child's hands meet it as they meet a held toy. An
@@ -1781,19 +1788,37 @@ class G1World(SimWorld):
         b = self.parent.toys[toy]; j = m.body_jntadr[b]; adr = m.jnt_qposadr[j]
         q = np.asarray(m.qpos0[adr + 3:adr + 7] if quat is None else quat, float)
         self.pinned[toy] = (np.asarray(pos, float).copy(), q.copy(), int(self.tick) + int(ticks))
+        if follow is not None:                                          # T3c: the pin rides that hand's palm (`_apply_pins`)
+            self.pin_follow[toy] = int(follow)
+        else:
+            self.pin_follow.pop(toy, None)
         return True
 
     def unpin_toy(self, toy):
-        self.pinned.pop(toy, None)
+        self.pinned.pop(toy, None); self.pin_follow.pop(toy, None)
 
     def _apply_pins(self):
+        """T3's pins before a physics step. T3c (2026-10-24, P8's hand-over; the world's switch pin_ride): a pin with a hand to follow
+        (`pin_toy`'s follow, the box's hand-over at the grasp centre) is set at that hand's grasp centre plus its pose's offset at
+        EVERY step, moving at the palm's velocity there: the pin's pose stood where the hand was at the tick's start, and the hand moved
+        3-10 cm through the tick's 15 steps into an object of infinite mass (measured brainless 08:4x 10-24: the car's hand-overs 6 finger
+        gears in pain in 13; live, 410 of the box trace's 595 pain rows of 10-23/24 on k 3-11 of a hand-over, the fingers whipped from
+        rest to 14-23 rad/s within a tick): the sweep, not the closing, struck them"""
         m, d = self.m, self.d
         for toy in list(self.pinned):
             pos, quat, until = self.pinned[toy]
             if int(self.tick) > until:
-                self.pinned.pop(toy); continue
+                self.pinned.pop(toy); self.pin_follow.pop(toy, None); continue
             b = self.parent.toys[toy]; j = m.body_jntadr[b]; adr = m.jnt_qposadr[j]; dof = m.jnt_dofadr[j]
-            d.qpos[adr:adr + 3] = pos; d.qpos[adr + 3:adr + 7] = quat; d.qvel[dof:dof + 6] = 0.0
+            h_ = self.pin_follow.get(toy) if getattr(self, "pin_ride", False) else None
+            if h_ is None:
+                d.qpos[adr:adr + 3] = pos; d.qpos[adr + 3:adr + 7] = quat; d.qvel[dof:dof + 6] = 0.0
+            else:
+                gc_ = self.grasp_centre(h_)
+                pb_ = int(m.geom_bodyid[self.palm_geom[h_]]); v6_ = np.zeros(6)
+                mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_BODY, pb_, v6_, 0)
+                d.qpos[adr:adr + 3] = gc_ + self.pin_offset.get(toy, np.zeros(3)); d.qpos[adr + 3:adr + 7] = quat
+                d.qvel[dof:dof + 3] = v6_[3:] + np.cross(v6_[:3], gc_ - d.xpos[pb_]); d.qvel[dof + 3:dof + 6] = 0.0
 
     def toy_within_reach(self, toy, xy):
         """T3: the shown toy set down on the floor at xy (the put's place beside its near hand), upright, still; its pin released"""
@@ -1988,6 +2013,7 @@ class G1World(SimWorld):
                         "sides": np.zeros((2, 2)) if sides is None else np.asarray(sides, float).copy(),   # A171: the tick's mean push on each hand
                                                                                                            # from things not its own [palmar, dorsal] (N)
                         "palm_log": pl, "palm_onset": np.maximum(0.0, pl - s["palm_log"]),               # A171: the grasp's stimulus, the palm's SIDE
+                        "palm_offset": np.maximum(0.0, s["palm_log"] - pl),                                # A164b: its fall (a slip)
                         "obs_j": obs_j, "obs_j_on": np.maximum(0.0, np.abs(obs_j) - np.abs(s["obs_j"])),
                         "obs_b": obs_b, "obs_b_on": np.maximum(0.0, np.abs(obs_b) - np.abs(s["obs_b"])),
                         "obs_peak": np.abs(OW[:, :J]).max(axis=0), "base_peak": float(np.linalg.norm(OW[:, J:J + 3], axis=1).max()),

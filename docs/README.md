@@ -8,8 +8,8 @@
   read it raw or clone. The ledger's table of rows is near the top of the decision log.
 - `PREREGISTRATION_LIVE.md` — the living program (2026-10-21): the lever, the corrections, the demonstrations, the screen's three
   rungs (it looks; it picks tasks up from paid examples; an unpaid clip and it just does it), what is read and what is not.
-- `PREREGISTRATION_P6.md` — the run under way: the one brain (`data/demo/student7`) living with the screen, the lever and the push;
-  its log at the bottom.
+- `PREREGISTRATION_P6.md` — the run under way: the one brain living with the screen, the lever and the push (P6 the furnished room,
+  P7 the bare world and the night-6 bug that blinded it, P8 from the clean save; the box task pre-registered at the bottom), its log.
 - `RIG_SPEC.md` — her body: the rig the teacher moves in.
 - `archive/` — the finished pre-registrations and ledgers, each with its verdict on top: P1 to P5 (the pretraining line, 2026-10-19
   to 21), claim two, W1 (the watch), the recordings' ledger (deleted 2026-10-21), the data pipeline's design, the claim card, the

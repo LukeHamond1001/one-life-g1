@@ -235,6 +235,8 @@ PHYSIOLOGY = dict(
                           # (the diary, which has no actor); the G1 sets 1 (ours)
     dopamine_adapt_tau=256,     # ... the RMS's horizon, ticks (38 s: the adaptation within a block of trials, Tobler et al. 2005; ours)
     dopamine_adapt_floor=1e-4,  # ... the mean square's floor (an RMS of 0.01 at least: a silent line amplifies nothing without bound; ours)
+    dopamine_sat=0.0,           # A172b (2026-10-24): the adapted dopamine saturates at this many RMS units (c tanh(x / c): the burst's and the
+                                # pause's bounded firing, Bayer and Glimcher 2005); 0 off (ours)
     value_forget=0,      # A146: the ladder's value heads' forgetting (1 - 1/value_forget a tick; 0 = none, the diary's)
     actor_form="add",   # "chunk" = one act per word, the letters inside not choices; "plan", "select", "add" the earlier forms
     actor_margin=4.0,

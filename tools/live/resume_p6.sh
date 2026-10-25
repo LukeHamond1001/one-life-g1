@@ -11,6 +11,6 @@ pgrep -f "demo_test.py --student .* --out $O " >/dev/null && { echo "P6 is runni
 SRC="$O/life.pt"; [ "$O/life_day.pt" -nt "$O/life.pt" ] && SRC="$O/life_day.pt"      # (the newer of the night's save and the day's)
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') P6 resumed from $SRC (wt_next $(git -C $N rev-parse --short HEAD))" >> "$O.log"
 (cd $N && nohup nice -n 5 python3 tools/harness/demo_test.py --student "$SRC" --out "$O" --ticks $T --seed $((SEED + $(date +%s) % 1000)) --threads 3 --cfg $CFG \
-  --learn --guide --lever --families come,look --screen "$D/clips_body/tasks10_s*" --screen-fams come,look --screen-rung 2 --screen-probe come \
-  --save-every 2000 --film "$O/film_$(date '+%m%d_%H%M')" --film-every 2 >> "$O.log" 2>&1 &)
+  --learn --guide --lever --families come,look --screen "$D/clips_body/tasks10_s*" --screen-fams come,look --screen-rung 2 \
+  --save-every 2000 --film "$O/film_$(date '+%m%d_%H%M')" --film-every 2 --snap-every 10 >> "$O.log" 2>&1 &)
 sleep 2; pgrep -fl "demo_test.py --student .* --out $O " | cut -c1-80

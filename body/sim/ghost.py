@@ -28,6 +28,12 @@ K_Z, C_Z, F_Z_MAX = 5000.0, 300.0, 500.0     # N/m, N s/m, N: the hold up on the
 K_R, C_R, T_R_MAX = 150.0, 30.0, 120.0       # N m/rad, N m s/rad, N m: the righting torque toward upright (ours)
 K_YAW, C_YAW, T_YAW_MAX = 30.0, 8.0, 30.0    # the turn toward the heading (ours)
 K_XY, C_XY, F_XY_MAX = 300.0, 40.0, 60.0     # the lead's spring and its cap (ours: within her lead's 33 to 116 N)
+# P8 (2026-10-23 01:20): THE STEADYING HOLD. While `steady` is set (a floor point; the tester sets it for a lesson at the table of its
+# tasks, tools/harness/demo_test.py P8_STEADY), the field holds the torso there with the lead's own spring and cap (her hands on the
+# chest, 60 N at most), the gait's stepping or not: as a parent steadies a toddler at play. WHY: the gait policy walks on at the standing
+# command (1.33 cm a tick, the median, with the command under 0.01: the lead's force is off while the gait drives), so a lesson's child
+# walked into the walls (39% of the lessons' ticks within 0.3 m of one; the clear spot set it down 194 times, the median 0.14 m from a
+# wall), the object dropped there and the box left behind
 SPEED = float(__import__('os').environ.get('GHOST_SPEED', 0.10))   # m/s: the lead's pace (ours: her held walks went 0.2 to 0.5 m in a 100-tick stand). C350 amended
                                              # (17:50): 0.05 in the first live block (day 135: 2,432 ticks, 64 steps, 10 falls caught, pain 1.1%, the
                                              # strength 1.0 to 0.95); the copy at 0.15 doubled the steps in 600 ticks (14 against 7) with 2 falls against
@@ -256,6 +262,7 @@ class Ghost:
         del d0
         self.weight = float(w.body_mass) * G
         self.on = False; self.s = 0.0; self.heading = 0.0; self.lead = np.zeros(2)
+        self.steady = None                                              # P8: THE STEADYING HOLD's floor point (None: no hold)
         self.ticks = 0; self.lower = 0; self.falls = 0; self.turns = 0; self.z_from = 0.0; self.z_to = self.z_stand
         self.last = np.zeros(6); self.last_p = np.zeros(6); self.fz_sum = 0.0; self.n = 0; self.metres = 0.0; self.pxy = None; self.win = []
         self.rec = None
@@ -419,6 +426,11 @@ class Ghost:
             n_ = float(np.linalg.norm(fxy))
             if n_ > F_XY_MAX:
                 fxy *= F_XY_MAX / n_
+        if self.steady is not None and frac >= 1.0 and self.lower == 0:
+            fxy = K_XY * (np.asarray(self.steady, float) - np.asarray(p[:2], float)) - C_XY * np.asarray(v_lin[:2], float)   # P8: THE
+            n_ = float(np.linalg.norm(fxy))                                                                               # STEADYING
+            if n_ > F_XY_MAX:                                                                                             # HOLD in
+                fxy *= F_XY_MAX / n_                                                                                      # the lead's place
         wrench = np.array([fxy[0], fxy[1], fz, 0.0, 0.0, 0.0]); wrench_p = np.array([0.0, 0.0, 0.0, tau[0], tau[1], tau[2]])
         d.xfrc_applied[b] += wrench; d.xfrc_applied[bp] += wrench_p
         self.last = wrench; self.last_p = wrench_p
