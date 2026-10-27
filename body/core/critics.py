@@ -186,11 +186,14 @@ class CriticsMixin:
                         e = getattr(self, "_vc_e", None)
                         self._vc_e = (gl_tr * lam * e if e is not None else torch.zeros_like(xa_prev)) + xa_prev
                         vf_ = float(self.cfg.get("vcrit_forget", 0) or 0); beta = (1.0 - 1.0 / vf_) if vf_ > 0 else 1.0
-                        dlt = xa_prev - gl * (nfl if not int(self.cfg.get("vcrit_diff", 0)) else 1.0) * xa_now
-                        m.vc_A.mul_(beta).addr_(self._vc_e, dlt)
+                        diff_ = bool(int(self.cfg.get("vcrit_diff", 0)))
+                        dlt = (xa_prev - xa_now) if diff_ else (xa_prev - gl * nfl * xa_now)   # (review 2026-10-26: under vcrit_diff the evidence
+                        m.vc_A.mul_(beta).addr_(self._vc_e, dlt)                              # is undiscounted, as its TD error td_long is: it read
+                                                                                              # x_prev - gamma x_now, a discounted fit beside a
+                                                                                              # differential error; no life has run vcrit_diff)
                         if beta < 1.0 and not ntau:
                             m.vc_A.diagonal().add_((1.0 - beta) * self._vc_delta)   # the constant prior inside A (the form without statistics)
-                        m.vc_b.mul_(beta).add_(self._vc_e * float(r))
+                        m.vc_b.mul_(beta).add_(self._vc_e * (float(r) - (float(self.rbar) if diff_ else 0.0)))   # (vcrit_diff: r less the rate)
                         if self.ticks % int(self.cfg.get("vcrit_rls_every", 64)) == 0:
                             m.vcrit_rls_solve(self._vc_idx, prior=(self._vc_delta if ntau else None))
                 if int(self.cfg.get("fast_rls", 0)) and (not stri or getattr(self, "_z_prev", None) is not None):
@@ -347,6 +350,7 @@ class CriticsMixin:
                         m.actor.weight.add_(float(self.cfg.get("actor_lr", 0.02)) * delta_a * self._e_actor)   # A151: no forgetting (moot under the scaling); A172: adapted
                 if int(self.cfg.get("actor", 0)):
                     slr_ = float(self.cfg.get("actor_slow_lr", 0.0))
+                    fslr_ = float(self.cfg.get("follow_slow_lr", 0.0))   # NB1: the follow gain's tag (mouth._follow_tag_step)
                     for e_, st_ in zip(self.anatomy.motors, getattr(self, "motor", ())):   # each later effector's actor, the same lesson (step R5)
                         if st_["e_actor"] is not None:
                             with torch.no_grad():
@@ -361,6 +365,12 @@ class CriticsMixin:
                                 if fg_ is None:
                                     fg_ = self._sight_fg = {}
                                 fg_[e_.name] = float(fg_.get(e_.name, 0.0)) + float(self.cfg.get("actor_lr", 0.02)) * float(delta_a) * float(ef_)
+                            ft_ = st_.get("f_tag")
+                            if ft_ is not None and fslr_ > 0.0 and abs(float(delta)) > 1e-9 and self._sight_suggest_n(e_):
+                                fg_ = getattr(self, "_sight_fg", None)          # NB1: the gain's tag captured by the same phasic dopamine
+                                if fg_ is None:                                  # (its own pay a lesson's span after the own steps)
+                                    fg_ = self._sight_fg = {}
+                                fg_[e_.name] = float(fg_.get(e_.name, 0.0)) + fslr_ * float(delta_a) * float(ft_)
                         if slr_ > 0.0 and st_.get("a_tag") is not None and abs(float(delta)) > 1e-9:
                             with torch.no_grad():                        # A142/C153: the tag captured by the same phasic dopamine
                                 upd = slr_ * delta_a * st_["a_tag"]      # (mouth._actor_tag_step: the 64-tick trace; A172: adapted)

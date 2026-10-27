@@ -2,7 +2,6 @@
 object swung forward and back, the wave's push turned onto the forward axis) meets the poke's judge within the task, and the three rhythms
 are told apart by their own judges: the poke's verdict alone fires on the poke (the wave's and the shake's do not), as each of the wave's
 and the shake's fires alone on its own push. The record carries each verdict"""
-import math
 import os
 import sys
 import tempfile

@@ -265,8 +265,14 @@ def build(out, seed, claim2=False, objects=0, screen=False, bare=False):
                                                                  # stays the room's clutter (every take of one was refused: tasks10 0 of 4))
     eyes = E.Eyes(world)
     voice = V.VoiceCache(os.path.join(out, "voice"))
+    ear_ = None                                                           # NB2 (16:3x 10-26, the owner: 'how long till ... speak'; 'level up'):
+    ear_path_ = os.path.join(out, "voice", "parent_ear.npz")              # HER EAR FOR ITS VOICE. Without it the transcriber heard its turns with
+    if int(os.environ.get("NB_EAR", "0")) and os.path.exists(ear_path_):   # no word, so no babble was ever judged, recast or smiled at: the
+        from body.sim import parent_ear as PE_                            # P3 path that shapes babble into her words was not connected.
+        ear_ = PE_.ParentEar.load(ear_path_)                              # Built before it is heard (tools/measure/sim_parent_ear.py --words
+        print(f"HER EAR for its voice: {ear_path_} (pin {ear_.pin[0][:16]})", flush=True)   # all --write-margins), fixed for the life (A27)
     lane = LN.ParentLane(world, seed=seed, voice=voice, plan=False, stage=2,   # her stage 2: the words her ear accepts are judged
-                         day_ticks=int(SIM_CFG.get("wake_ticks", 24000)))
+                         day_ticks=int(SIM_CFG.get("wake_ticks", 24000)), ear=ear_)
     anat = SimAnatomy(born_table(LX.BIRTH_WORDS), SIM_CFG, limits=[float(x) for x in world.tau_max])
     if br_ is not None:
         lane.conduct.body_still = True                                # THE BARE WORLD: her body unseen and still (conduct._request)
@@ -288,7 +294,7 @@ def intended_of(x, acts):
     return out
 
 
-def relocate_child(world, expert, rng, lane, near=None, heading_only=False):
+def relocate_child(world, expert, rng, lane, near=None, heading_only=False, dist=None):
     """D2h (and demo_test's D1d): the child set down standing COME_FROM_M from her on free floor she can plan on, at a random heading
     (heading_only: turned where it stands): the gait let go, the body moved, the gait on again, her toy tracking afresh (the child moved,
     not the toys). The room's act (her come lesson calls from across the room; a call or a greet finds it facing anywhere) -> moved"""
@@ -298,7 +304,7 @@ def relocate_child(world, expert, rng, lane, near=None, heading_only=False):
         q = np.asarray(d.qpos[0:2], float).copy()
     else:
         for _ in range(60):
-            r_ = float(rng.uniform(*COME_FROM_M)); a_ = float(rng.uniform(-math.pi, math.pi))
+            r_ = float(rng.uniform(*(COME_FROM_M if dist is None else dist))); a_ = float(rng.uniform(-math.pi, math.pi))   # (NB2 18:2x: the come's staircase)
             q = her + r_ * np.array([math.cos(a_), math.sin(a_)])
             if par._in_plan(q) and par.plan.dist[par.plan.cell(q)] >= 0.35 and in_room(world, q):
                 break
@@ -367,6 +373,28 @@ def set_child_at(world, expert, lane, q, yaw):
     m, d = world.m, world.d
     world.ghost.off_(world, at_once=True)
     d.qpos[0:2] = np.asarray(q, float); d.qpos[3:7] = [math.cos(yaw / 2), 0.0, 0.0, math.sin(yaw / 2)]; d.qvel[:] = 0.0
+    mujoco.mj_forward(m, d)
+    world.ghost.on_(world, command=True, walk=True)
+    for k, b in expert.par.toys.items():
+        if hasattr(lane, "toy_prev"):
+            lane.toy_prev[k] = np.asarray(d.xpos[b], float).copy()
+    return True
+
+
+def stand_child_at(world, expert, lane, q, yaw):
+    """NB1 (2026-10-25, the trial newborns' mornings): THE CHILD SET STANDING at floor point q facing yaw: set_child_at's move with the
+    whole body in its standing pose (the model's qpos0: the root at its standing height, every joint at its standing angle, the feet on
+    the floor) at rest, the servos' targets there, the gait's hold on again. set_child_at moves the root alone, upright: after a night that
+    laid it on its back the root stood at its lying height with its legs below the floor, and the contacts flung it and its cup 8 m and
+    10 m (two trial newborns, 10-25 01:2x and 01:4x; its morning stand's own comment had it lying there unstood before) -> True"""
+    import mujoco
+    m, d = world.m, world.d
+    world.ghost.off_(world, at_once=True)
+    qa_ = np.asarray(world.qadr)
+    d.qpos[0:2] = np.asarray(q, float); d.qpos[2] = float(m.qpos0[2])
+    d.qpos[3:7] = [math.cos(yaw / 2), 0.0, 0.0, math.sin(yaw / 2)]
+    d.qpos[qa_] = m.qpos0[qa_]; d.qvel[:] = 0.0
+    d.ctrl[np.asarray(world.aid)] = np.clip(m.qpos0[qa_], world.lo, world.hi)
     mujoco.mj_forward(m, d)
     world.ghost.on_(world, command=True, walk=True)
     for k, b in expert.par.toys.items():
@@ -1517,7 +1545,8 @@ class Generator:
                 gen._saying = True
                 try:
                     c._say(ln0, t, p, pre)
-                    gen.said_at = t
+                    if getattr(pre, "line", None) is not None:      # (the review of 10-26: a line a wrapper refused is not said: said_at
+                        gen.said_at = t                             # marks her word heard, demo_test's two-toy task)
                 except Exception as e_:
                     gen.say_errors = getattr(gen, "say_errors", 0) + 1; gen.last_say_error = repr(e_)[:120]; pre = None
                 finally:
@@ -1527,11 +1556,12 @@ class Generator:
             if pre is not None and getattr(pre, "line", None) is not None:
                 out.line, out.clip, out.acts = pre.line, pre.clip, pre.acts
             ln = gen.pending_line
-            if ln is not None and getattr(out, "line", None) is None and c.fast.voice_free(t):
-                gen._saying = True
+            if ln0 is not False and ln is not None and getattr(out, "line", None) is None and c.fast.voice_free(t):   # (the review of
+                gen._saying = True                                  # 10-26: a line that could not be composed fresh waits, not said stale)
                 try:
                     c._say(ln, t, p, out)
-                    gen.said_at = t
+                    if getattr(out, "line", None) is not None:
+                        gen.said_at = t
                 except Exception as e_:
                     gen.say_errors = getattr(gen, "say_errors", 0) + 1; gen.last_say_error = repr(e_)[:120]
                 finally:

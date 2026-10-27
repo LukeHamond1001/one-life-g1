@@ -4,9 +4,6 @@ judges within the task, and each verdict fires alone on its own swing: the diago
 or the shake (they move the object as far along both diagonals). The record carries each verdict"""
 import os
 import sys
-import tempfile
-
-import numpy as np
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "tools", "harness"))

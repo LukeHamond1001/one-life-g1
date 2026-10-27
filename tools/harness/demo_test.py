@@ -126,8 +126,8 @@ PAY_MIN = 0.25                   # response, the remedy for prompt dependence: C
                                  # a lift pushed whole in 9 ticks paid 0.83 against a whole push's 40). Why: the pay at met credited whatever the child did in the 64 ticks before it,
                                  # and in a pushed lesson that was its still arm in the prompt's delay (the shoulder's still setting drawn at 0.9 to
                                  # 0.99 there, 02:00): every lesson taught it to wait for the push
-BOX_FAMS = ("box", "shake", "lift", "wave", "out", "cross", "low", "side", "poke", "diag", "anti", "hwave", "owave")   # THE BOX TASK's families (02:5x 10-23: low and side added; 05:5x 10-24: the diagonals; 13:4x 10-24: the high wave and the wave held out)
-HELD_FAMS = BOX_FAMS[1:]                                       # (the acts done with the object held: every one but the put-in)
+BOX_FAMS = ("box", "shake", "lift", "wave", "out", "cross", "low", "side", "poke", "diag", "anti", "hwave", "owave", "box2")   # THE BOX TASK's families (02:5x 10-23: low and side added; 05:5x 10-24: the diagonals; 13:4x 10-24: the high wave and the wave held out; NB2 2026-10-25: box2, the two-toy task)
+HELD_FAMS = tuple(f_ for f_ in BOX_FAMS if f_ not in ("box", "box2"))   # (the acts done with the object held: every one but the put-ins)
 FADE_GUIDE = bool(int(os.environ.get("P8_FADE_GUIDE", "0")))   # THE GUIDANCE FADED (01:58 10-23; Baer, Peterson and Sherman 1967; graduated
 FADE_DOWN, FADE_UP, FADE_MIN, FADE_PUSHES = 0.9, 1.0 / 0.9, float(os.environ.get("P8_FADE_MIN", "0.1")), 2   # guidance, Foxx and Azrin
                                  # 1973): each act's push is its guidance level G times GUIDE_TICKS_BOX ticks (at least PUSH_MIN: a touch); a
@@ -156,6 +156,14 @@ SHAPE_PAY = float(os.environ.get("P8_SHAPE_PAY", "0"))       # THE FIRST STEP PR
                                  # 0.9375^100 of the start's eligibility; the striatal actors, which read the sight line and learn by that pay
                                  # (c0f2a506: no longer at their rails), had nothing to learn "after this clip, start this way" from. 0: off
 SHAPE_K0 = 12                                                    # (the grip sets until k 12: a move before it is the hand-over's, not a start)
+NB_SHAPE_RELEASE = float(os.environ.get("NB_SHAPE_RELEASE", "0"))   # NB2 (17:0x 10-26, the owner: 'be a perfect teacher'): THE RELEASE PRAISED. With
+NB_SHAPE_RELEASE_MAX = 5                                         # the fingers earned (A230b: their sharpness 1.2 -> 4.1) the child holds a toy
+NB_SHAPE_RELEASE_OVER_M = 0.12                                   # through a whole test, and over the box its act_pred still closes (0.75 of the
+# closing joints' steps in its own ticks there, the guide's opening 0.80): with the box under its hand (stage 0) it held the block 95 ticks
+# and the cup 248, never letting go. Shaping by successive approximation (Skinner 1953), the release's: in a lesson's wait (no push), the
+# object held within NB_SHAPE_RELEASE_OVER_M of the box's middle and the grasp habituated (k >= OVER_PROMPT_K), an own step of the
+# holding hand that opens at least two of its six closing joints presses the teacher's lever at NB_SHAPE_RELEASE, at most once each
+# SHAPE_GAP ticks and NB_SHAPE_RELEASE_MAX times a lesson; the met's own pay as before when the object lands in. Never in a test. 0: off
 SHAPE_EACH = bool(int(os.environ.get("P8_SHAPE_EACH", "0")))     # THE STEPS PRAISED (19:1x 10-23): every own step of the first wait the shown act's way,
 SHAPE_GAP = 4                                                    # not the first alone, at most one press each SHAPE_GAP ticks (a movement unit's span)
 PUSH_AFTER_K = int(os.environ.get("P8_PUSH_AFTER_K", "0"))   # THE WAIT AFTER THE HAND-OVER (09:5x 10-23; constant time delay, Touchette 1971;
@@ -206,6 +214,7 @@ def shadow_label(expert, task, t, word_of=None):
         acts[W.GAZE_NAME], _ = expert.gaze_to(expert.toy_xyz(task["toy"]))
     elif fam in BOX_FAMS and BOX["box"] is not None:            # THE BOX TASK: the put-in or the shake (tools/harness/demo_box.py)
         BOX["box"].expert_acts(acts)
+        BOX["box"].expert_acts2(acts)                           # (NB2: the two-toy task's other object kept in its hand)
     else:
         acts[W.LOCO_NAME] = expert.still(); acts[W.GAZE_NAME], _ = expert.gaze_to(expert.her_face())
     return acts
@@ -233,6 +242,92 @@ def _progress(expert, task, lane):
     if fam in ("greet", "call"):
         return 0.0 if tg == "mama" else 1.0
     return None
+
+
+NB_PAIN_LOG = bool(int(os.environ.get("NB_PAIN_LOG", "0")))   # NB1: an instrument: each tick's hurting zones to OUT/pain_log.jsonl
+OVER_PROMPT = bool(int(os.environ.get("P8_OVER_PROMPT", "0")))   # NB1 08:2x: the prompt at the release (_over_prompt_due); off by default
+OVER_PROMPT_TICKS = int(os.environ.get("P8_OVER_PROMPT_TICKS", "8"))   # ticks held over the box running before the guide helps
+OVER_PROMPT_K = int(os.environ.get("P8_OVER_PROMPT_K", "40"))         # not before the grasp reflex lets the object go to the hand (GRASP_HOLD_TICKS)
+NB_OVER_AFTER_REFLEX = bool(int(os.environ.get("NB_OVER_AFTER_REFLEX", "0")))   # NB2 (17:2x 10-26): AND ITS OWN CHANCE FIRST. With the box under
+# its hand (stage 0) the object is over the box from the hand-over, so the prompt came at k 40, the very tick the grasp let the hand rule
+# the fingers: its own releases come at k 37-62 (17:07-17:22), and its 13 lessons there were met by the help 8 times (its own 4) while
+# its taught and new-toy tests (no help) were its own 3 of 3. A constant time delay (Touchette 1971) gives the learner the delay to answer first: the prompt waits
+# OVER_PROMPT_TICKS past the reflex's end (k OVER_PROMPT_K + OVER_PROMPT_TICKS) as well
+NB_NARRATE = bool(int(os.environ.get("NB_NARRATE", "0")))   # NB1 15:2x: her lines about the box task (_narrate); off by default
+NARR = {}                                                    # (the lines composed, by intent: an instrument)
+NB_TOY = os.environ.get("NB_TOY", "") or None             # NB1 (2026-10-25): the newborn's box task hands this object (by its word), no screen
+NB_GEN_TOY = os.environ.get("NB_GEN_TOY", "") or None     # NB1: the final window's new-object tests hand this one (never handed before)
+NB_GEN_FROM = float(os.environ.get("NB_GEN_FROM", "0"))   # NB1: the final window opens at this time (epoch s; 0: never)
+NB_GEN_CYCLE = tuple(k_ for k_ in os.environ.get("NB_GEN_CYCLE", "taught,dir,taught,toy").split(",") if k_)   # the window's tests in turn
+NB_TOY2 = tuple(k_ for k_ in os.environ.get("NB_TOY2", "cup,duck").split(",") if k_)   # NB2: the two-toy task's pair (by their words)
+NB_TOY2_SIDES = os.environ.get("NB_TOY2_SIDES", "drawn")      # NB2: "fixed": the pair's first toy always in its left hand (the curriculum's first step)
+NB_INSTR_EVERY = int(os.environ.get("NB_INSTR_EVERY", "40"))   # NB2: her word in the two-toy task, said again this many ticks after the last
+NB_INSTR_EVERY_LESSON = int(os.environ.get("NB_INSTR_EVERY_LESSON", str(NB_INSTR_EVERY)))   # NB2 09:2x 10-26: in a lesson (her request at
+                                                              # its start, after a correction and as her push begins: her repeats between fell
+                                                              # with its eyes on either toy, the push's with them on the named toy 76% of ticks)
+NB_HER_FRONT = float(os.environ.get("NB_HER_FRONT", "0"))       # NB2: m before the child she walks to as a two-toy task begins (0: she does not)
+NB_MEMDEBUG = int(os.environ.get("NB_MEMDEBUG", "0"))           # (an instrument: every this many ticks, the live tensors by shape; 0 off)
+NB_WORD_HEARD = int(os.environ.get("NB_WORD_HEARD", "8"))       # NB2: ticks after her line begins before her word counts as heard (the toys let go)
+NB_CORRECT = bool(int(os.environ.get("NB_CORRECT", "0")))       # NB2: a two-toy lesson's wrong toy taken out, her word again, the push (demo_box correct2)
+NB_CORRECT_WAIT = int(os.environ.get("NB_CORRECT_WAIT", "30"))  # NB2: ticks after a correction before the push may come
+NB_PAY_PUSHED2 = bool(int(os.environ.get("NB_PAY_PUSHED2", "1")))   # NB2: a pushed two-toy lesson paid as a helped one (0: its own put-in alone
+                                                                     # paid: the pay at a push's end credited its own acts before the push)
+NB_PAY_OWN_TAIL = int(os.environ.get("NB_PAY_OWN_TAIL", "5"))   # (the review of 10-26) under NB_PAY_PUSHED2 0, a pushed two-toy lesson whose put-in came
+                                                                 # this many ticks or more after its last push let go is its own put-in, paid (by the help,
+                                                                 # under P8_DIFF_PAY). Until then NB_PAY_PUSHED2 0 with NB_LESSON_PUSH_ONLY 1 paid no two-toy
+                                                                 # lesson at all: a put-in before the push is word-blind, any after it was 'guided'
+NB_TWO_QUIET = bool(int(os.environ.get("NB_TWO_QUIET", "0")))       # NB2: while a two-toy task runs no line of hers names its other toy
+NB_FOLLOW2 = bool(int(os.environ.get("NB_FOLLOW2", "0")))           # NB2: in a two-toy lesson her own lines may name the toy she asks for
+NB_PUSH_SAYS = bool(int(os.environ.get("NB_PUSH_SAYS", "0")))       # NB2: her word again as a two-toy lesson's push begins
+NB_INSTR_HANDED = bool(int(os.environ.get("NB_INSTR_HANDED", "0")))   # NB2: her word once both toys are wholly handed (demo_box HAND_TICKS)
+NB_FOVEA_SAYS = bool(int(os.environ.get("NB_FOVEA_SAYS", "0")))     # NB2: in a two-toy lesson her request waits for its eyes on the asked-for toy
+NB_FOVEA_WAIT = int(os.environ.get("NB_FOVEA_WAIT", "40"))          # NB2: ticks past due her request waits for its eyes at most
+NB_NAME_FIRST = bool(int(os.environ.get("NB_NAME_FIRST", "0")))     # NB2: her two-toy request names the toy first ("the duck. in. the duck.")
+NB_ONE_QUIET = bool(int(os.environ.get("NB_ONE_QUIET", "0")))       # NB2: in a one-toy task no line of hers names another toy
+NB_LESSON_PUSH_ONLY = bool(int(os.environ.get("NB_LESSON_PUSH_ONLY", "0")))   # NB2 10:1x 10-26: in a two-toy lesson her request only as her
+                                                                     # push begins (its eyes then on the moving hand's toy 76% of ticks); at the
+                                                                     # lesson's start both toys just handed and its eyes on the brighter duck, and
+                                                                     # 'block' heard there (the name first, its last word weighed three times) bound
+                                                                     # the duck's yellow (10:08: cosine 0.87 with the duck, -0.56 with the block)
+NB_QUIET_GAPS = bool(int(os.environ.get("NB_QUIET_GAPS", "0")))     # NB2: between box tasks no line of hers names a toy, and a task waits for
+                                                                     # her voice to be free (NB_VOICE_WAIT ticks at most)
+NB_VOICE_WAIT = int(os.environ.get("NB_VOICE_WAIT", "40"))
+NB_SEE_IN_FRESH = int(os.environ.get("NB_SEE_IN_FRESH", "30"))   # (the review of 10-26) "in. the X." passes NB_QUIET_GAPS this many ticks after it was
+                                                                  # composed at a success: the task has ended (box.cur None) but the toy still lies in the box
+NB_TWO_MIN_STAGE = int(os.environ.get("NB_TWO_MIN_STAGE", "0"))   # NB2 (17:2x 10-26, the owner: 'be a perfect teacher'): THE PREREQUISITE
+# FIRST. The two-toy task asks the word to choose between two put-ins that each need a carry of some 0.2 m (the box between the hands);
+# the one-toy put-in succeeds only with the box under the hand (stage 0: 5 own of its first 8; stage 1-3: 0 of 30). While the one-toy
+# box stands below this stage, a two-toy task drawn is run as a one-toy box task: its turn goes to the put-in it is learning (0: off)
+NB_COME_WALK = bool(int(os.environ.get("NB_COME_WALK", "0")))   # NB2 (17:5x 10-26, the owner: 'the most developed age it can get'): THE COME ON
+# ITS OWN LEGS. While a come task is open the pose hold lets go and the brain's own walk command drives the gait (ghost.walk_block(command=
+# True); the leg layer at its kept share carries it); the guide's push (the expert's loco shadow toward her) steers it when it stalls; at
+# the task's end, or at bedtime, the pose is held again (0: off)
+NB_COME_ADAPT = bool(int(os.environ.get("NB_COME_ADAPT", "0")))   # NB2 (18:2x 10-26): THE COME CALLED FROM ITS EDGE. Its first come was called
+COME_STAGES = ((0.9, 1.1), (1.3, 1.6), (1.8, 2.2), (2.4, 2.8))    # from 2.82 m: it wandered 5.73 m, came within 1.36 m and the time ran
+# out under three pushes. A parent calls a toddler from a step away first: each come is called from its stage's distance (the child set
+# down there, a heading drawn), the stage away at 4 own of the last 5 comes (met before any push), closer at none of the last 5
+# (come_state.json beside the record)
+NB_WALK_STOP = int(os.environ.get("NB_WALK_STOP", "0"))   # NB2 (20:1x 10-26): A WALK ENDS STANDING: its gait asked to stand still this many ticks
+# (ghost.stop) before the hold takes it, a walk block's end and a come's alike (handed straight to the hold mid-stride, it fell at the hand-over:
+# one in 9 since the fall log, uncounted in the block's falls). 0: the hold at once, as before
+NB_COME_OPEN = bool(int(os.environ.get("NB_COME_OPEN", "0")))   # NB2 (19:1x 10-26): SHE CALLS FROM THE OPEN FLOOR. Every resume builds the world
+COME_OPEN_M = 1.2                                              # with her at her birth spot (1.9, -1.5), 0.75 m from the shut doorway and 0.8 m
+COME_OPEN_WAIT = 80                                            # from the south wall, and only the two-toy task walked her from it (none since
+# the 0.12 m step put it after the 0.24 m step): from 18:44 every come was called from there, 1 met of 7 (by a child set down 0.9 m off that
+# barely moved), the others wandering 5-10 m under 4-5 pushes and ending 1.0-2.4 m off; before, from spots the two-toy task left her at, 4
+# of 9. The walk's look-ahead turns it to the room's middle short of a wall or the doorway's closed side, away from a caller standing there.
+# Before a come, a caller within COME_OPEN_M of the home room's walls or its doorway side walks to a spot drawn on the floor COME_OPEN_M
+# inside them (her own walk: parent_motion's plan); the come begins when she is there, COME_OPEN_WAIT ticks at most
+NB_COME_RECALL = int(os.environ.get("NB_COME_RECALL", "0"))   # NB2 (18:5x 10-26): HER CALL AGAIN WHILE IT HAS NOT COME. In the bare world her
+# body is unseen and her voice is the only thing that tells where she is; she called 'come here' once, and the child walked a come's 300
+# ticks on a second of sound (18:4x-18:5x: 3 own of 11, the failures ending 1.5-2.0 m off from 1.0 m, walking away under 4-5 pushes). A
+# parent calling a toddler calls again ('come here!') until it comes: her come_call said again every NB_COME_RECALL ticks of an open come,
+# each a fresh cue for its ears to turn to (0: off)
+NB_CLEAR_WALK = bool(int(os.environ.get("NB_CLEAR_WALK", "0")))   # NB2 (18:1x 10-26): the floor cleared before each walk (Box.clear_floor)
+NB_WALK_EVERY = int(os.environ.get("NB_WALK_EVERY", "0"))   # NB2 (15:4x 10-26, the owner: 'instead of dragging it we should be pushing at joints
+NB_WALK_TICKS = int(os.environ.get("NB_WALK_TICKS", "200"))  # to show it it can walk'): A WALK BLOCK (body/sim/ghost.py walk_block) after every
+                                                            # NB_WALK_EVERY-th box task, NB_WALK_TICKS long: the gait's teacher walks its legs, its
+                                                            # leg layer learns; never into a night (0: none)
 
 
 def main():
@@ -292,6 +387,10 @@ def main():
     ap.add_argument("--probe-only-fams", default="", help="2026-10-22 (the owner's 'a new task on the iPad, then it does it'): act families "
                     "shown ONLY on probes: never pushed, never paid, never taught (a held-out act); comma-separated, also listed in --families")
     ap.add_argument("--probe-only-every", type=int, default=3, help="the probe-only families join one cycle of the families in this many")
+    ap.add_argument("--box-test-every", type=int, default=0, help="NB1 (2026-10-25, the newborn; no screen): every Nth box task of a family in "
+                    "the life's record (OUT/tasks_live.jsonl, across resumes) runs as a test: the hand-over and the box as in every task, no push, no "
+                    "lever (does it do it by itself); from NB_GEN_FROM (epoch s) the tests run in the cycle NB_GEN_CYCLE (taught, dir: the box at "
+                    "NB_GEN_DIR degrees from the taught side toward the front; toy: NB_GEN_TOY handed); 0: never")
     ap.add_argument("--zero-shot-probes", type=int, default=0, help="2026-10-22 (the learning set): a family's first K clip tasks in the life's "
                     "record (OUT/tasks_live.jsonl, across resumes) run as probes: what it does from the clip alone, before any push")
     ap.add_argument("--bare", action="store_true", help="THE BARE WORLD (body/sim/extras.add_bare, the owner's word 22:50): the floor alone, no "
@@ -387,6 +486,129 @@ def main():
     gen.install()
     box = DB.Box(world, expert, lane, rng, out=args.out) if any(f_ in fams for f_ in BOX_FAMS) else None   # THE BOX TASK (tools/harness/demo_box.py)
     BOX["box"] = box
+    if box is not None and DB.NB_ADAPT and not box.recent and os.path.exists(os.path.join(args.out, "tasks_live.jsonl")):
+        try:                                                          # NB2 15:5x (NB_ADAPT): the stage's count begun from the record (the one-toy
+            rs_ = [json.loads(l_) for l_ in open(os.path.join(args.out, "tasks_live.jsonl")) if l_.strip()]   # box tasks at this stage, the gen
+            bx_ = [r_ for r_ in rs_ if r_.get("fam") == "box" and (r_.get("box") or {}).get("stage") is not None]
+            k0_ = 0                                                   # (18:2x: only the tests since the box last came to this stage: a
+            for i_, r_ in enumerate(bx_):                             # reseed from its whole history at a stage it left hours ago read
+                if int((r_.get("box") or {}).get("stage")) != int(box.stage):   # stage 1 as 1 own of 18, the failures from before it
+                    k0_ = i_ + 1                                      # could let go, and would have stepped the box back at once)
+            rs_ = [r_ for r_ in bx_[k0_:] if r_.get("gen") in (None, "taught")   # tests but the taught left out)
+                   and (r_.get("unasked") or not DB.NB_ADAPT_TESTS)][-max(DB.NB_ADAPT_DOWN_N, DB.NB_ADAPT_UP_N):]
+            box.recent = [int(bool((r_.get("box") or {}).get("own_act"))) for r_ in rs_]
+            print(f"THE BOX AT THE EDGE (NB_ADAPT): stage {box.stage}, its own {sum(box.recent)} of the last {len(box.recent)} one-toy box tasks there "
+                  f"(closer under {DB.NB_ADAPT_LOW:.0%} of {DB.NB_ADAPT_DOWN_N}, away at {DB.NB_ADAPT_HIGH:.0%} of {DB.NB_ADAPT_UP_N})", flush=True)
+        except (OSError, ValueError) as e_:
+            print(f"THE BOX AT THE EDGE: the record not read ({e_!r})"[:200], flush=True)
+    see_in_at = [-10 ** 9]                                         # (the review of 10-26: the tick "in. the X." was composed, _narrate)
+    if NB_TWO_QUIET and box is not None and getattr(lane, "conduct", None) is not None:
+        # NB2 (04:1x 10-26, the frames of 03:44-03:59): WHILE SHE ASKS FOR ONE OF TWO TOYS SHE NEVER NAMES THE OTHER. The label gate of
+        # 18:4x held her follow-ins, yet in 5 of 20 two-toy tasks the other toy's name was said between her words: "you see the duck."
+        # and "oh. the duck." (the duck squeaks in its grip) in a lesson asking for the block. A parent asking for the block says
+        # "block"; the duck stays unnamed until the task is over. Every line she says passes her _say (the plan's and her own): one
+        # naming the task's other toy is not said there (her refusal recorded), whatever composed it
+        _say0_ = lane.conduct._say
+
+        toy_words_ = {str(k_).split("_")[0] for k_ in expert.par.toys if str(k_).split("_")[0] not in ("bucket", "bucket2", "screen")}
+
+        def _say_two(line, t_, p_, out_, in_set=False):
+            c_ = box.cur
+            if NB_QUIET_GAPS and c_ is None and line is not None and not (
+                    getattr(line, "intent", None) == "see_in" and int(t_) - see_in_at[0] <= NB_SEE_IN_FRESH):
+                # (the review of 10-26: "in. the cup." is composed after box.end(), so box.cur is already None here; refused as a gap's
+                # label, it was said after 0 of 12 successes in the 20:22 run. Fresh, it names the toy lying in the box: it passes)
+                # NB2 (07:4x 10-26): BETWEEN TASKS SHE NAMES NO TOY. The frames of 07:27-07:38: her labels between tasks ("you see the
+                # duck.", "oh. the block.", "oh. the cup.") fell on the named toy's look 10 of 23 times for 'duck', 2 of 18 for 'block'
+                # (its eyes on the box, the floor, a toy in the box): the grounding organ bound the rest. Between tasks the toys are put
+                # away or in the box and nothing is handed: her words then are about what it does, not a toy's name
+                ws0_ = str(getattr(line, "text", "")).replace(".", " ").replace("!", " ").replace("?", " ").replace(",", " ").split()
+                named0_ = ({str(r_).split("_")[0] for r_ in (getattr(line, "refs", ()) or ())} | set(ws0_)) & toy_words_
+                if named0_:
+                    lane.conduct.fast.refused.append((int(t_), str(getattr(line, "intent", "")), "between tasks: no toy named"))
+                    NARR["unnamed_gap"] = NARR.get("unnamed_gap", 0) + 1
+                    return None
+            if NB_ONE_QUIET and c_ is not None and c_.get("act") != "in2" and line is not None and c_.get("toy"):
+                # NB2 (06:0x 10-26): IN A ONE-TOY TASK SHE NAMES ITS TOY, NO OTHER. Under A202t (the held toy the look) the frames of
+                # 05:49-05:59 had 'block' said 15 times and 'duck' 10 in the one-toy cup task (her labels of the toys lying near): with
+                # the cup in its hand its green was bound to them ('block' green 6 of 15). While she hands it one toy and asks for it,
+                # the other toys go unnamed
+                ws1_ = str(getattr(line, "text", "")).replace(".", " ").replace("!", " ").replace("?", " ").replace(",", " ").split()
+                own_ = str(c_["toy"]).split("_")[0]
+                named_ = ({str(r_).split("_")[0] for r_ in (getattr(line, "refs", ()) or ())} | set(ws1_)) & toy_words_
+                if named_ - {own_}:
+                    lane.conduct.fast.refused.append((int(t_), str(getattr(line, "intent", "")), "the one-toy task: other toys unnamed"))
+                    NARR["unnamed1"] = NARR.get("unnamed1", 0) + 1
+                    return None
+            if c_ is not None and c_.get("act") == "in2" and line is not None and c_.get("toy2"):
+                o2_ = str(c_["toy2"])
+                ws_ = str(getattr(line, "text", "")).replace(".", " ").replace("!", " ").replace("?", " ").replace(",", " ").split()
+                if o2_ in tuple(getattr(line, "refs", ()) or ()) or o2_.split("_")[0] in ws_:
+                    lane.conduct.fast.refused.append((int(t_), str(getattr(line, "intent", "")), "the two-toy task: its other toy unnamed"))
+                    NARR["unnamed2"] = NARR.get("unnamed2", 0) + 1
+                    return None
+                o1_ = str(c_.get("toy") or "")
+                if (c_.get("probe") or not NB_FOLLOW2) and o1_ and str(getattr(line, "intent", "")) not in ("put_in", "put_in2", "see_in") and \
+                        (o1_ in tuple(getattr(line, "refs", ()) or ()) or o1_.split("_")[0] in ws_):
+                    # (04:2x: IN A TEST HER WORD ALONE. The 18:4x gate's just-named marks did not hold "you see the duck." in the first test
+                    # after the deploy: a naming that follows its eyes to the asked-for toy tells it which one. In a test she names the toy
+                    # in her request and as it lies in the box, nowhere else)
+                    lane.conduct.fast.refused.append((int(t_), str(getattr(line, "intent", "")), "the two-toy test: her request alone"))
+                    NARR["test_quiet2"] = NARR.get("test_quiet2", 0) + 1
+                    return None
+            return _say0_(line, t_, p_, out_, in_set=in_set)
+        lane.conduct._say = _say_two
+    nb_count = {}                                                   # NB1: THE BOX TASK'S OWN TESTS (no screen): the box tasks of each family in the
+    nb_win = [0]                                                    # life's record so far (across resumes), and the final window's tests so far
+    try:
+        for l_ in open(os.path.join(args.out, "tasks_live.jsonl")):
+            try:
+                r_ = json.loads(l_)
+            except ValueError:
+                continue
+            if r_.get("fam") in BOX_FAMS:
+                nb_count[r_["fam"]] = nb_count.get(r_["fam"], 0) + 1
+            if r_.get("gen"):
+                nb_win[0] += 1
+    except OSError:
+        pass
+
+    def _nb_test(fam_):
+        """NB1: -> (a test?, its kind in the final window or None): every --box-test-every'th box task of the family is a test; from
+        NB_GEN_FROM the tests take NB_GEN_CYCLE's kinds in turn (the taught spot and object beside the new ones, in the same window)"""
+        n_ = nb_count.get(fam_, 0); nb_count[fam_] = n_ + 1
+        k_ = int(args.box_test_every or 0)
+        test_ = bool(k_) and n_ % k_ == k_ - 1
+        if not test_ or NB_GEN_FROM <= 0.0 or time.time() < NB_GEN_FROM or fam_ == "box2":   # (NB2: the two-toy task's tests have no kinds)
+            return test_, None
+        kind_ = NB_GEN_CYCLE[nb_win[0] % len(NB_GEN_CYCLE)]; nb_win[0] += 1
+        return test_, kind_
+
+    box2_cycle = {}                                                 # NB2: the two-toy task's counterbalanced draws (tests, lessons)
+
+    def _nb_pair():
+        """NB2: the two-toy task's objects (NB_TOY2's words, the first object of each in the room), or None"""
+        ks_ = []
+        for w_ in NB_TOY2[:2]:
+            k_ = sorted(k_ for k_ in expert.par.toys if k_.split("_")[0] == w_)
+            if not k_:
+                return None
+            ks_.append(k_[0])
+        return ks_ if len(ks_) == 2 and ks_[0] != ks_[1] else None
+
+    nb_toy_turn = [0]
+
+    def _nb_toy(kind_):
+        """NB1: the object handed: NB_GEN_TOY on a new-object test, else NB_TOY (None: the draw as before). NB2 (05:0x 10-26): NB_TOY a
+        list ("cup,duck,block"): the one-toy task's object in turn, each toy's name heard while it alone lies in its hand"""
+        if kind_ == "toy":
+            want_ = NB_GEN_TOY
+        else:
+            ts_ = tuple(k_.strip() for k_ in (NB_TOY or "").split(",") if k_.strip())
+            want_ = ts_[nb_toy_turn[0] % len(ts_)] if ts_ else None
+            nb_toy_turn[0] += 1
+        ks_ = sorted(k_ for k_ in expert.par.toys if want_ and k_.split("_")[0] == want_)
+        return ks_[0] if ks_ else None
     if box is not None:
         print(f"THE BOX TASK: stage {box.stage} ({DB.STAGES[box.stage]:.2f} m before the hand), {box.own_at_stage} own successes at it; feet found {len(box.feet)}", flush=True)
         try:                                                        # THE BOX CLEAR OF THE WAKING CHILD (01:35 10-23): a run begins with the child
@@ -482,6 +704,118 @@ def main():
             out_["dA"] = round(float(da_[0]), 3); out_["dAn"] = int(da_[2]); da_[0] = 0.0; da_[2] = 0
         return out_
     post_end = [None]; post_arm = [None]                            # (03:45 10-23: the 30 ticks after a box task's end, for box_post.jsonl)
+
+    def _narrate(intent_, toy_, t_):
+        """NB1 (15:2x 10-25, the owner's word: "while teaching these tasks talk to it ... then it can correlate language with things"):
+        HER LINE ABOUT THE TASK NOW, said on her first free tick: "here. a cup." at the hand-over, "in. the cup." as it lies in the box.
+        Plain lines only (no approval register: a smile is a reward, and the pay stays the lever's); none where she does not see the toy
+        (her own check) or a line is already waiting. Off without NB_NARRATE"""
+        if not NB_NARRATE or toy_ is None or gen.pending_line is not None:
+            return
+        p_ = getattr(lane, "_p", None)
+        if p_ is None:
+            return
+        try:
+            o_ = p_.obj(toy_)
+            ln_ = lane.conduct.fast.compose(intent_, t_, p_, o=o_) if o_ is not None else None
+        except Exception as e_:
+            ln_ = None; print(f"narrate {intent_}: {e_!r}"[:160], flush=True)
+        if ln_ is not None:
+            gen.pending_line = ln_; NARR[intent_] = NARR.get(intent_, 0) + 1
+            if intent_ == "see_in":
+                see_in_at[0] = int(t_)
+
+    def _save_legs():
+        """NB2 16:3x: THE LEG LAYER KEPT WITH THE SAVE. The world is built afresh at every resume (its state is not in life.pt), so the
+        body's leg layer was born again untrained at each restart (16:32: three walk blocks' learning, its error 0.0945 -> 0.0064, gone)
+        and the teacher's share back at 1. (The review of 10-26: kept at the night's save too, not only every --save-every ticks)"""
+        if NB_WALK_EVERY <= 0 or getattr(world, "legs", None) is None:
+            return
+        try:
+            gh_ = world.ghost
+            lp_ = os.path.join(args.out, "legs_state.pt")
+            torch.save(dict(legs=world.legs.state(),
+                            walk_s=float(gh_.s if not gh_.pose_hold else gh_.walk_s), turn_s=float(getattr(gh_, "turn_s", 0.0))), lp_ + ".tmp")
+            os.replace(lp_ + ".tmp", lp_)
+        except Exception as e_:
+            print(f"THE LEG LAYER not kept: {e_!r}"[:200], flush=True)
+
+    def _fill_cycle():
+        """D1h: the families in shuffled cycles, each its share of the test (a weighted draw left a 1,500-tick test with no come, look or
+        greet). THE HELD-OUT ACTS: a probe-only family joins one cycle in probe_only_every. Drawn when the cycle is empty (NB2 19:1x: from
+        the task's start and from the come's prelude, which reads the next family before it begins)"""
+        if not getattr(gen, "_cycle", None):
+            po_ = set(f_.strip() for f_ in (args.probe_only_fams or "").split(",") if f_.strip())
+            gen._n_cycles = int(getattr(gen, "_n_cycles", 0)) + 1
+            fc_ = [f_ for f_ in fams if f_ not in po_ or gen._n_cycles % max(1, args.probe_only_every) == 0]
+            gen._cycle = [str(f_) for f_ in rng.permutation(fc_)]
+
+    def _recall_come(t_):
+        """NB2 (18:5x 10-26, NB_COME_RECALL): her come_call again while a come is open (said on her first free tick, composed fresh as the
+        task's own request, gen._compose_now; REPEATED_CALLS lets the same call stand within SAME_LINE)"""
+        if gen.pending_line is not None:
+            return
+        p_ = getattr(lane, "_p", None)
+        if p_ is None:
+            return
+        try:
+            ln_ = lane.conduct.fast.compose("come_call", t_, p_)
+        except Exception as e_:
+            ln_ = None; print(f"recall come: {e_!r}"[:160], flush=True)
+        if ln_ is not None:
+            gen.pending_line = ln_; NARR["come_recall"] = NARR.get("come_recall", 0) + 1
+
+    def _fovea_on(toy_):
+        """NB2 (04:4x 10-26): the child's fovea holds this toy now: its centre within the window's half-width of where its eyes point, on
+        both axes (as her gaze cue reads a thing's direction from the fovea's centre, eyes.gaze_cue): where its eyes are, as a parent
+        sees where a child looks"""
+        try:
+            from body.sim import eyes as E_
+            from body.sim.anatomy import FOVEA_HALF as FH_
+            ga_ = E_.gaze_at(world.m, world.d, expert.toy_xyz(toy_)); g_ = world.gaze
+            return abs(float(ga_[0]) - float(g_[0])) <= FH_ and abs(float(ga_[1]) - float(g_[1])) <= FH_
+        except Exception:
+            return False
+
+    def _request_eyes_ok(task_, c_, t_):
+        """NB2 (04:4x 10-26, NB_FOVEA_SAYS): HER REQUEST IN A LESSON WHEN ITS EYES ARE ON THE TOY SHE ASKS FOR. The grounding organ binds
+        a word to the look in its fovea, and she spoke whatever its eyes held (both toys in its hands, her reading of its attention
+        counting both held toys as attended): 'duck' fell from consistency 0.97 to 0.24 in the 40 minutes her own namings were let be
+        (04:16-04:28), 'block' stayed yellowish (0.58). A parent asking for one of two toys catches the child's look on it first, then
+        says its name (the words said over what the child attends are the words learned: Tomasello and Farrar 1986): in a lesson her
+        request waits, from when it is due, for its fovea on the asked-for toy, NB_FOVEA_WAIT ticks at most; the push's word at once;
+        a test's request as before (her word alone, whatever its eyes hold) -> True when she may say it now"""
+        if not NB_FOVEA_SAYS or task_.get("unasked") or c_.get("push_says"):
+            c_.pop("push_says", None); c_.pop("eyes_due_t", None)
+            return True
+        c_.setdefault("eyes_due_t", int(t_))
+        if _fovea_on(c_["toy"]):
+            c_["eyes_said"] = int(c_.get("eyes_said", 0)) + 1; c_.pop("eyes_due_t", None)
+            return True
+        if int(t_) - int(c_["eyes_due_t"]) >= NB_FOVEA_WAIT:
+            c_["eyes_late"] = int(c_.get("eyes_late", 0)) + 1; c_.pop("eyes_due_t", None)
+            return True
+        return False
+
+    def _object_loose(task_):
+        """NB1 (10:5x 10-25, a teacher's error fixed): A BOX TASK'S OBJECT OUT OF ITS HAND (falling, or on the floor before it is handed
+        again): no push begins then. Its own releases over the box at the wait's 78th and 79th ticks were taken by a push begun at the 80th
+        while the cup fell in: the lesson read guided, its pay cut, its own release the guide's"""
+        if task_.get("fam") not in BOX_FAMS or BOX["box"] is None or BOX["box"].cur is None:
+            return False
+        return BOX["box"].cur.get("toy") not in expert.holds()
+
+    def _over_prompt_due(task_):
+        """NB1 (08:2x 10-25, P8_OVER_PROMPT): THE PROMPT AT THE RELEASE. A box lesson whose child has brought the object over the box itself
+        (held within OVER_PROMPT_M of its middle OVER_PROMPT_TICKS ticks running) past the grasp reflex's hold (the box's k at least
+        OVER_PROMPT_K) and has not let go: the guide helps now, before the wait's end (least-to-most prompting: the help it needs, where it
+        is stuck). Why: in 52 of 71 stage-1 tests its own arm brought the cup over the box, 13% of its held time, and it let go in 5; in the
+        lessons the push came only at the wait's end and carried the cup itself. The pay is the task's, as ever"""
+        if not OVER_PROMPT or task_.get("fam") not in BOX_FAMS or task_.get("unasked") or BOX["box"] is None or BOX["box"].cur is None:
+            return False
+        c0_ = BOX["box"].cur
+        k_min_ = OVER_PROMPT_K + (OVER_PROMPT_TICKS if NB_OVER_AFTER_REFLEX else 0)   # NB2 17:2x: its own chance after the reflex fades
+        return int(c0_.get("k", 0)) >= k_min_ and int(c0_.get("over_n", 0)) >= OVER_PROMPT_TICKS
 
     def _first_push_due(task_):
         """THE FIRST PUSH AT THE HAND-OVER (FIRST_PUSH): a box-family lesson with no push yet whose object has been in the holding hand
@@ -580,6 +914,14 @@ def main():
     last_shadow = None                                   # P8 12:47: the expert's shadow of the last tick (the box trace's 'exp')
     clear_n = [0]; clear_rng = np.random.default_rng([args.seed, 7717])   # THE CLEAR SPOT's count and its own draws (the tasks' stream untouched)
     clear_due = [False]                                                   # (SETTLE_CLEAR: a set-down owed once the last task's acts have faded)
+    walk_n = [0]; walk_due = [False]; walk_until = [None]; walk_m0 = [0.0, 0]   # NB2 15:4x: the walk blocks (NB_WALK_EVERY)
+    her_open = [None]                                                     # NB2 19:1x: her walk to the open floor before a come (NB_COME_OPEN)
+    walk_stopping = [False]; come_off_at = [None]                         # NB2 20:1x: a walk's stop under way; a come's walk to end at this tick
+    come_state = {"stage": 0, "recent": []}                              # NB2 18:2x: THE COME'S STAIRCASE (NB_COME_ADAPT)
+    try:
+        come_state.update(json.load(open(os.path.join(args.out, "come_state.json"))))
+    except (OSError, ValueError):
+        pass
     steady_from = [None]                                                  # THE STEADYING HOLD: the tick it takes its point (None: no hold pending)
 
     def _clear_spot(t_, why_):
@@ -609,6 +951,52 @@ def main():
         except Exception as e_:
             print(f"THE CLEAR SPOT failed: {e_!r}"[:200], flush=True)
             return False
+    def _walk_start(t_):
+        """NB2 (15:4x 10-26): A WALK BLOCK BEGINS between box tasks (body/sim/ghost.py walk_block) -> True when begun"""
+        walk_due[0] = False
+        gh_ = getattr(world, "ghost", None)
+        if box is not None and NB_CLEAR_WALK:
+            box.clear_floor()                                              # NB2 18:1x: THE FLOOR CLEARED FOR A WALK (the box and the toys away)
+        if gh_ is None or not gh_.walk_block(world, True):
+            print(f"THE WALK BLOCK not begun at tick {t_} (the ghost off or walking, or no teacher)", flush=True)
+            return False
+        walk_until[0] = int(t_) + NB_WALK_TICKS; walk_m0[:] = [float(gh_.metres), int(gh_.falls)]
+        print(f"THE WALK BLOCK begins at tick {t_}: the teacher walks its legs for {NB_WALK_TICKS} ticks, its share {gh_.s:.3f}, "
+              f"the hold carrying {gh_.carry_share:.2f} of its weight", flush=True)
+        return True
+
+    def _walk_end(t_, now=False):
+        """NB2 (15:4x 10-26): the walk block's end: the pose held again; its numbers to the log. NB2 20:1x (NB_WALK_STOP): first its
+        stop (the gait asked to stand still NB_WALK_STOP ticks; walk_until moved on by them) unless `now` (a night near, a task begun)
+        -> True when the walk has ended, False while it stops"""
+        gh_ = world.ghost
+        if NB_WALK_STOP > 0 and not now and not walk_stopping[0]:
+            gh_.stop(NB_WALK_STOP); walk_stopping[0] = True; walk_until[0] = int(t_) + NB_WALK_STOP
+            return False
+        walk_stopping[0] = False
+        walk_until[0] = None
+        lg_ = getattr(world, "legs", None)
+        err_ = None if lg_ is None or not np.isfinite(float(lg_.err)) else float(lg_.err)
+        gh_.walk_block(world, False)
+        print(f"THE WALK BLOCK ends at tick {t_}: walked {gh_.metres - walk_m0[0]:.2f} m, falls {gh_.falls - walk_m0[1]}, the teacher's share "
+              f"{gh_.walk_s:.3f}, the leg layer's error {'n/a' if err_ is None else f'{err_:.5f}'} (it may lay off under 0.01), ticks alone best "
+              f"{int(gh_.alone_best)}", flush=True)
+        return True
+
+    if NB_WALK_EVERY > 0 and getattr(world, "legs", None) is not None and os.path.exists(os.path.join(args.out, "legs_state.pt")):
+        try:                                                           # NB2 16:3x: the leg layer and the walk's teacher share the last save kept
+            st_ = torch.load(os.path.join(args.out, "legs_state.pt"), map_location="cpu", weights_only=False)
+            world.legs.load_state(st_["legs"]); world.ghost.walk_s = float(st_.get("walk_s", 1.0))
+            if st_.get("turn_s") is not None:
+                world.ghost.turn_s = float(st_["turn_s"])                 # (NB2 20:3x: the turns' help kept with the leg layer)
+            print(f"THE LEG LAYER restored from the last save: its error {float(world.legs.err):.5f}, the walk's teacher share "
+                  f"{world.ghost.walk_s:.3f}, {int(getattr(world.legs, 'lessons', 0))} lessons", flush=True)
+        except Exception as e_:
+            print(f"THE LEG LAYER not restored ({e_!r}): born again"[:200], flush=True)
+    if NB_WALK_EVERY > 0 and getattr(world, "ghost", None) is not None and getattr(world.ghost, "walk_room", False) \
+            and not getattr(world.ghost, "pose_hold", True):
+        world.ghost.walk_block(world, False)                           # (a walk block the last life left under way: the pose held again)
+        print("THE WALK BLOCK the save left under way: ended at the start (its timer was the last life's)", flush=True)
     stuck_pain = []; stands = []; stand_after = 0               # THE STAND's window, its ticks, its refractory
     slow_at = [time.time(), 0.0]                         # (2026-10-20: a DAgger run stalled at several seconds a tick from tick ~1,500)
     for k in range(args.ticks):
@@ -722,6 +1110,54 @@ def main():
                                                                             # handed again (and the box set by the hand), a child at a wall is
                                                                             # set down clear (`_clear_spot`)
             box.step(t)                                                     # THE BOX TASK: the hand-over's pin, the box set, the re-hand
+            if box.cur is not None and box.cur.get("act") == "in2":
+                box.step2(t)                                                # NB2: the two-toy task's other object (its hand-over, re-hand,
+                c2_ = box.cur                                               # which lay in the box first); HER WORD: "in. the duck." once both
+                f2_ = getattr(getattr(lane, "conduct", None), "fast", None)
+                if f2_ is not None:                                         # HER OWN LABELS OF THE TWO WAIT (18:4x 10-25, the smoke's ledger:
+                    # NB2 (04:1x 10-26, NB_FOLLOW2): IN A LESSON SHE MAY NAME THE ONE SHE ASKS FOR AS IT ATTENDS IT. 'block' had bound half
+                    # to the duck's yellow (its look's consistency 0.52, under the cue's 0.75; the cue fired for it on 7% of its hearings and
+                    # pointed at the duck): its hearings came with the duck the brighter thing in view. Words said over the thing the child
+                    # attends are the words learned (follow-in labelling, Tomasello and Farrar 1986): in a lesson her follow-in naming of
+                    # the asked-for toy is let be; in a test her word alone (no naming that follows its eyes to the right toy)
+                    for k2_ in ((c2_["toy2"],) if (NB_FOLLOW2 and not task.get("unasked")) else (c2_["toy"], c2_["toy2"])):   # "your duck.", "you see the cup?" between her words naming the
+                        f2_.last_set[k2_] = int(t); f2_.last_named[k2_] = int(t)   # other one): while she asks for one, her follow-in naming of
+                                                                            # either toy waits (her SAME_OBJECT and SET_PER_OBJECT gates read
+                                                                            # them as just named): the task's word names the one she asks for
+                if c2_.get("instr_t0") is not None and not c2_.get("word_heard"):   # HER WORD HEARD (20:3x: the toys held in its hands
+                    sa_ = gen.said_at                                               # until then, demo_box WORD_PIN_MAX): her line begun
+                    if sa_ is not None and int(sa_) >= int(c2_["instr_t0"]):        # and NB_WORD_HEARD ticks of it past
+                        c2_.setdefault("said_t0", int(sa_))
+                        if t >= int(c2_["said_t0"]) + NB_WORD_HEARD:
+                            c2_["word_heard"] = True
+                kh_ = DB.HAND_TICKS - 1 if NB_INSTR_HANDED else 2           # (NB_INSTR_HANDED, 04:1x 10-26: her word once both lie wholly in
+                                                                            # its hands, each pin at the tick it holds for her word (k at
+                                                                            # HAND_TICKS - 1: demo_box step/step2); at a correction it came while
+                                                                            # the wrong toy was being handed again, the name heard over the other
+                                                                            # toy moving)
+                if c2_.get("first_in") is None and int(c2_["k"]) >= kh_ and int(c2_["k2"]) >= kh_ and \
+                        (task.get("instr_t") is None or t - int(task["instr_t"]) >= (NB_INSTR_EVERY if task.get("unasked") else NB_INSTR_EVERY_LESSON)) and \
+                        _request_eyes_ok(task, c2_, t) and \
+                        (task.get("unasked") or not NB_LESSON_PUSH_ONLY or task.get("push0_t") is not None):   # are in its hands, and again every
+                    pl0_ = gen.pending_line                                 # NB_INSTR_EVERY ticks while neither lies in the box
+                    if pl0_ is not None and getattr(pl0_, "intent", None) in ("see_in", "hand_over"):
+                        gen.pending_line = None; pl0_ = None                # (a narration line still waiting gives way to her word: 18:4x
+                                                                            # 10-25, a lesson of 78 ticks with her word never said)
+                    _narrate("put_in2" if NB_NAME_FIRST else "put_in", c2_["toy"], t)
+                    if gen.pending_line is not None and gen.pending_line is not pl0_:
+                        task["instr_t"] = int(t); c2_["instr_n"] = int(c2_.get("instr_n", 0)) + 1
+                        c2_.setdefault("instr_t0", int(t))                  # (her first word's tick: the toys held until it is heard)
+                    else:                                                   # WHY HER WORD WAITS (an instrument): her queue held another
+                        p2_ = getattr(lane, "_p", None)                     # line, she did not see the named toy, or her check refused
+                        why_ = "queue" if pl0_ is not None else ("unseen" if (p2_ is None or p2_.obj(c2_["toy"]) is None) else "refused")
+                        mz_ = c2_.setdefault("instr_miss", {}); mz_[why_] = int(mz_.get(why_, 0)) + 1
+                        if why_ == "unseen" and "her_rel" not in c2_:      # (where she stood, in its own frame: metres before it, to its left)
+                            try:
+                                cx_, cy_ = (float(v_) for v_ in expert.pose()[0][:2]); yaw_h_ = float(expert.pose()[1])
+                                hx_, hy_ = (float(v_) - w_ for v_, w_ in zip(expert.her_xy()[:2], (cx_, cy_)))
+                                c2_["her_rel"] = [round(math.cos(yaw_h_) * hx_ + math.sin(yaw_h_) * hy_, 2), round(-math.sin(yaw_h_) * hx_ + math.cos(yaw_h_) * hy_, 2)]
+                            except Exception:
+                                pass
             if SHAPE_PAY > 0.0 and args.lever and L is not None and not task.get("unasked") and ("_shaped" not in task or SHAPE_EACH) \
                     and int(box.cur.get("hands", 1)) <= 1 and SHAPE_K0 <= int(box.cur.get("k", 0)) < max(PUSH_AFTER_K, SHAPE_K0 + 1) \
                     and guide["left"] <= 0:                                 # THE FIRST STEP PRAISED (SHAPE_PAY): the last tick's own act
@@ -744,6 +1180,24 @@ def main():
                                 task["shape_ok"] = int(task.get("shape_ok", 0)) + 1
                 except Exception as e_:
                     print(f"shape: {e_!r}"[:200], flush=True)
+            if NB_SHAPE_RELEASE > 0.0 and args.lever and L is not None and not task.get("unasked") and box.cur.get("act") == "in" \
+                    and guide["left"] <= 0 and int(box.cur.get("k", 0)) >= OVER_PROMPT_K \
+                    and int(task.get("release_shape", 0)) < NB_SHAPE_RELEASE_MAX:   # NB2 17:0x: THE RELEASE PRAISED (NB_SHAPE_RELEASE)
+                try:
+                    c_ = box.cur
+                    if c_["toy"] in expert.holds():
+                        tp_ = np.asarray(expert.toy_xyz(c_["toy"]), float); bp_ = np.asarray(expert.toy_xyz("bucket"), float)
+                        if float(np.linalg.norm(tp_[:2] - bp_[:2])) <= NB_SHAPE_RELEASE_OVER_M:
+                            nm_ = [e_.name for e_ in L.anatomy.motors]; i_h = nm_.index(c_["hand"]); nh_ = L.motor[i_h]["now"]
+                            if nh_ is not None and nh_.get("acted") and not nh_.get("guided") and nh_.get("digits") is not None:
+                                from body.sim import reflexes as RF_
+                                js_ = list(RF_._JOINTS[c_["hand"]]); cl_ = RF_.CLOSING[c_["hand"]]
+                                opened_ = sum(1 for j_, d_ in zip(js_, nh_["digits"]) if j_ in cl_ and (int(d_) - 2) * cl_[j_] < 0)
+                                if opened_ >= 2 and t - int(task.get("_rshape_t", -10 ** 9)) >= SHAPE_GAP:
+                                    world.press_lever(NB_SHAPE_RELEASE); task["_rshape_t"] = int(t)
+                                    task["release_shape"] = int(task.get("release_shape", 0)) + 1
+                except Exception as e_:
+                    print(f"release shape: {e_!r}"[:200], flush=True)
             if t % 3 == 0:                                                  # THE BOX TRACE (02:10, for the reader of the strips): every third
                 try:                                                        # tick, where the object is against the box, held or not, the push
                     c_ = box.cur; tp_ = expert.toy_xyz(c_["toy"]); bp_ = expert.toy_xyz("bucket")
@@ -753,6 +1207,20 @@ def main():
                         tab_ = L.m.get_submodule(L.anatomy.motors[i_a].organ); sh_ = (last_shadow or {}).get(c_["arm"])
                         ex_ = dict(own=nw_.get("digits"), guess=nw_.get("guess"), gd=bool(nw_.get("guided")), ha=c_["arm"],   # (ha: the holding arm)
                                    exp=([int(x_) for x_ in tab_.digits(torch.tensor(int(sh_))).tolist()] if sh_ is not None else None))
+                        try:                                        # NB1 09:3x: AND THE HOLDING HAND's (the release is what it lacks): its act,
+                            i_h = nm_.index(c_["hand"]); nh_ = L.motor[i_h]["now"]   # act_pred's guess, its gate's chance, the guide's shadow
+                            tabh_ = L.m.get_submodule(L.anatomy.motors[i_h].organ); shh_ = (last_shadow or {}).get(c_["hand"])
+                            ex_.update(hown=nh_.get("digits"), hguess=nh_.get("guess"), hgp=round(float(nh_.get("p_act", 0.0)), 3),
+                                       hexp=([int(x_) for x_ in tabh_.digits(torch.tensor(int(shh_))).tolist()] if shh_ is not None else None))
+                        except Exception:
+                            pass
+                        if c_.get("act") == "in2":                  # NB2 04:2x 10-26: AND THE OTHER SIDE'S (does her word choose the arm: the
+                            try:                                    # other arm's and hand's own acts and act_pred's guesses beside the named
+                                i_a2 = nm_.index(c_["arm2"]); nw2_ = L.motor[i_a2]["now"]   # side's; the record's chunks are a ring of 16)
+                                i_h2 = nm_.index(c_["hand2"]); nh2_ = L.motor[i_h2]["now"]
+                                ex_.update(own2=nw2_.get("digits"), guess2=nw2_.get("guess"), hown2=nh2_.get("digits"), hguess2=nh2_.get("guess"))
+                            except Exception:
+                                pass
                         try:                                        # (01:58 10-23: WHY THE ARM STAYS STILL: the gate's chance to act, and each
                             pr_ = nw_.get("probs")                  # joint's chance of its still setting under the act's draw)
                             ex_["gp"] = round(float(nw_.get("p_act", 0.0)), 3)
@@ -797,6 +1265,9 @@ def main():
                                                   put=c_["put"]["phase"], probe=bool(task.get("unasked")), stage=int(c_["stage"]),
                                                   c=[round(float(v_), 2) for v_ in world.d.xpos[world.pelvis_id][:2]],   # (20:45: where it stands; the walls)
                                                   fam=task.get("fam"),                   # (21:25: the act shown, for the habit's guess by clip)
+                                                  **({"dxy2": round(float(np.linalg.norm(np.asarray(expert.toy_xyz(c_["toy2"]), float)[:2] - bp_[:2])), 3),
+                                                      "held2": bool(c_["toy2"] in expert.holds()), "hand2": c_.get("hand2"), "named": c_["toy"].split("_")[0]}
+                                                     if c_.get("act") == "in2" else {}),   # (NB2: the two-toy task's other object, its distance to the box)
                                                   **({"ik": round(float(expert.arm_ik(c_["arm"], np.asarray(c_["put"]["goal"], float))[1]), 3), "goal": c_["put"]["goal"],
                                                       "gc": c_["put"].get("gc"), "v": c_["put"].get("v"), "arm": c_["arm"]} if guide["left"] > 0 and c_["put"].get("goal") else {}),
                                                   **ex_)) + "\n")
@@ -822,16 +1293,48 @@ def main():
             if _clear_spot(t, "between tasks"):
                 next_at = t + DT.MOVE_SETTLE_TICKS
         bed_ = bool(BEDTIME > 0 and L is not None and int(getattr(L, "sleep_pressure", 0)) + BEDTIME >= int(L.cfg.get("wake_ticks", 10 ** 9)))   # (BEDTIME)
-        if task is None and t >= next_at and not bed_ and (claim_fam is not None or not args.claim2):
+        if NB_COME_WALK and bed_ and task is not None and task.get("come_walk") and getattr(world, "ghost", None) is not None:
+            world.ghost.walk_block(world, False); task["come_walk"] = False   # NB2 17:5x: never into a night on its own legs
+        if come_off_at[0] is not None and (t >= come_off_at[0] or bed_ or task is not None) and getattr(world, "ghost", None) is not None:
+            world.ghost.walk_block(world, False); come_off_at[0] = None       # NB2 20:1x: the come's walk ends after its stop (NB_WALK_STOP)
+        if walk_until[0] is not None and (t >= walk_until[0] or bed_ or task is not None):
+            if _walk_end(t, now=bool(bed_ or task is not None)):            # NB2 15:4x: THE WALK BLOCK's end (its time, or the night near)
+                clear_due[0] = bool(KEEP_CLEAR and SETTLE_CLEAR); next_at = max(next_at, t + DT.MOVE_SETTLE_TICKS)
+            else:
+                next_at = max(next_at, int(walk_until[0]) + DT.MOVE_SETTLE_TICKS)   # (NB_WALK_STOP: no task while it stops)
+        elif NB_WALK_EVERY > 0 and walk_due[0] and task is None and t >= next_at and not clear_due[0] and not bed_:
+            if _walk_start(t):                                              # NB2 15:4x: THE WALK BLOCK between box tasks
+                next_at = max(next_at, int(walk_until[0]) + DT.MOVE_SETTLE_TICKS)
+        if NB_COME_OPEN and task is None and t >= next_at and not bed_ and claim_fam is None and getattr(world, "parent", None) is not None:
+            _fill_cycle()                                                   # (the next family read before its task begins)
+        if NB_COME_OPEN and task is None and t >= next_at and not bed_ and claim_fam is None and getattr(gen, "_cycle", None) \
+                and gen._cycle[0] == "come" and getattr(world, "parent", None) is not None:
+            if her_open[0] is None:                                         # NB2 19:1x: SHE CALLS FROM THE OPEN FLOOR (NB_COME_OPEN)
+                hx_, hy_ = (float(v_) for v_ in expert.her_xy()[:2])
+                x0_, x1_ = -2.6 + COME_OPEN_M, DT.HOME_X1 - COME_OPEN_M; y0_, y1_ = -2.3 + COME_OPEN_M, 2.3 - COME_OPEN_M
+                her_open[0] = dict(t=int(t), to=None)
+                if not (x0_ <= hx_ <= x1_ and y0_ <= hy_ <= y1_):
+                    pt_ = [float(rng.uniform(x0_, x1_)), float(rng.uniform(y0_, y1_))]
+                    try:
+                        from body.sim.parent_motion import _Plain as _PlainCO
+                        world.parent.request(_PlainCO("walk", pt_)); her_open[0]["to"] = [round(v_, 2) for v_ in pt_]
+                        next_at = t + 1
+                    except Exception as e_:
+                        print(f"her walk to the open floor: {e_!r}"[:160], flush=True)
+            elif her_open[0].get("to") is not None and world.parent.busy() and t - int(her_open[0]["t"]) < COME_OPEN_WAIT:
+                next_at = t + 1                                             # (on her way: the come waits for her)
+        voice_wait_ = bool(NB_QUIET_GAPS and box is not None and getattr(lane, "conduct", None) is not None
+                           and not lane.conduct.fast.voice_free(t) and t < int(next_at) + NB_VOICE_WAIT)   # (NB2 07:4x 10-26: a task begins
+                                                                    # once her line is over, NB_VOICE_WAIT ticks at most: her line about the last
+                                                                    # task's toy, "in. the duck.", ran into the next task asking for the cup)
+        if task is None and t >= next_at and not bed_ and not voice_wait_ and (claim_fam is not None or not args.claim2):
             if claim_fam is not None:
                 fam = claim_fam
             else:
-                if not getattr(gen, "_cycle", None):               # D1h: the families in shuffled cycles, each its share of the test (a
-                    po_ = set(f_.strip() for f_ in (args.probe_only_fams or "").split(",") if f_.strip())   # weighted draw left a 1,500-tick test with no
-                    gen._n_cycles = int(getattr(gen, "_n_cycles", 0)) + 1                              # come, look or greet). THE HELD-OUT ACTS: a
-                    fc_ = [f_ for f_ in fams if f_ not in po_ or gen._n_cycles % max(1, args.probe_only_every) == 0]   # probe-only family joins
-                    gen._cycle = [str(f_) for f_ in rng.permutation(fc_)]                                   # one cycle in probe_only_every
+                _fill_cycle()                                      # D1h: the families in shuffled cycles (_fill_cycle)
                 fam = gen._cycle.pop(0)
+                if fam == "box2" and NB_TWO_MIN_STAGE > 0 and box is not None and int(box.stage) < NB_TWO_MIN_STAGE and "box" in fams:
+                    fam = "box"                                    # NB2 17:2x: THE PREREQUISITE FIRST (NB_TWO_MIN_STAGE)
             if (gen.n_tasks + 1) % DT.SCATTER_EVERY == 0:
                 gen.scatter()                                     # (D2l: before the toy is drawn: a scatter after it moved it from view)
             seen = gen.toys_seen()                                # a toy she sees, else any toy of its table in the room: her own check
@@ -843,7 +1346,11 @@ def main():
                 toy = gen.hl.parked["toy"]
             if fam in ("look", "where", "what", "echo") and toy is None:                              # until now no toy seen made the
                 fam = "come" if "come" in fams else fams[0]                                           # task a come (look, where gone)
-            if fam == "come" and float(np.linalg.norm(expert.her_xy() - expert.pose()[0])) < 1.2:
+            her_open_was_ = her_open[0]; her_open[0] = None              # (NB_COME_OPEN: her walk for this come done or not asked)
+            if fam == "come" and NB_COME_ADAPT:
+                relocate_child(world, expert, rng, lane, dist=COME_STAGES[min(int(come_state["stage"]), len(COME_STAGES) - 1)])
+                settle_to = t + DT.MOVE_SETTLE_TICKS              # NB2 18:2x: called from its stage's distance
+            elif fam == "come" and float(np.linalg.norm(expert.her_xy() - expert.pose()[0])) < 1.2:
                 relocate_child(world, expert, rng, lane)          # D1d: called from across the room
                 settle_to = t + DT.MOVE_SETTLE_TICKS              # D1y: a DAgger run records none of the drop (D2ae: the generator's neither)
             shown_ = fam == "shown"
@@ -912,6 +1419,12 @@ def main():
                     gen._request(t)
             task = dict(fam=fam, toy=toy, name=gen.task["name"], t0=t, heard=None, ok=False, why=None, hold=0,
                         c0=[float(v_) for v_ in expert.pose()[0]], h0=[float(v_) for v_ in expert.her_xy()], cpath=0.0, hpath=0.0)
+            if fam == "come" and her_open_was_ is not None:
+                task["her_open"] = dict(her_open_was_, waited=int(t) - int(her_open_was_["t"]))
+            if NB_COME_WALK and fam == "come" and getattr(world, "ghost", None) is not None and not bed_:
+                if box is not None and NB_CLEAR_WALK:
+                    box.clear_floor()                                      # NB2 18:1x: the floor cleared for the come's walk too
+                task["come_walk"] = bool(world.ghost.walk_block(world, True, command=True))   # NB2 17:5x: THE COME ON ITS OWN LEGS
             if fam == "hide_later":
                 pk_ = gen.hl.parked
                 task.update(place=pk_["place"], hid_t=pk_["hid_t"], view=pk_.get("view"), fovea=pk_.get("fovea"), rel=pk_.get("rel"),
@@ -922,7 +1435,47 @@ def main():
             if gen.task.get("phase") == "screen":
                 task["clip"] = gen.task.get("clip")
             if fam in BOX_FAMS and box is not None and gen.task.get("phase") == "wait":   # (no screen: the box task begins at once)
-                task["heard"] = t; task["noask"] = True; box.begin(t, toy, probe=False, act=(fam if fam in HELD_FAMS else "in"))
+                task["heard"] = t; task["noask"] = True
+                test_, kind_ = _nb_test(fam)                               # NB1: its own tests (no push, no lever) and the final window's kinds
+                if test_:
+                    task["unasked"] = True
+                if kind_:
+                    task["gen"] = kind_
+                if fam == "box2":                                          # NB2: THE TWO-TOY TASK: the pair handed, one named (drawn)
+                    pair_ = _nb_pair()
+                    if pair_ is not None:
+                        # COUNTERBALANCED (23:5x 10-25): which toy is named and its hand drawn in shuffled blocks of the four (toy, hand) pairs,
+                        # the tests' blocks apart from the lessons': 30 tests drawn 50/50 each had named the duck 20 times to the block's 10
+                        cyc_ = box2_cycle.setdefault("test" if test_ else "lesson", [])
+                        if not cyc_:
+                            cyc_.extend([(a__, h__) for a__ in (0, 1) for h__ in ("hand_l", "hand_r")]); rng.shuffle(cyc_)
+                        a_, h_named_ = cyc_.pop()
+                        if NB_TOY2_SIDES == "fixed":
+                            # THE SIDES FIXED (00:5x 10-26, the curriculum's first step, docs/PREREGISTRATION_NB2.md): the pair's first toy always
+                            # into its left hand, the second into its right, the named one still drawn in counterbalanced blocks (chance 0.5):
+                            # her word alone then says which hand; with the sides drawn (37 tests at chance) the word must find which hand
+                            # holds the toy it names, through the look of each, a chain a newborn's three hours had not learned
+                            h_named_ = "hand_l" if a_ == 0 else "hand_r"
+                        box.begin2(t, pair_[a_], pair_[1 - a_], probe=test_, gen=kind_, hand_named=h_named_)
+                    task["instr_t"] = None                                     # (her word comes once both are in its hands)
+                    if NB_HER_FRONT and getattr(world, "parent", None) is not None and box.cur is not None:
+                        # SHE COMES BEFORE IT TO ASK (19:2x 10-25, the smoke's record: where her word waited 57 and 121 ticks she stood
+                        # 0.7-1.0 m behind it and 1.1 m to its left, its body between her eyes and its hands): a parent about to ask for
+                        # one of two toys comes round to the child's front. Her own walk to a point NB_HER_FRONT m before it (her
+                        # motion plans the way; the bare world shows her nowhere: its eyes see none of it, its ears her voice move)
+                        try:
+                            from body.sim.parent_motion import _Plain as _PlainHF
+                            cp_, yaw_hf_, _ = expert.pose()
+                            pt_ = [float(cp_[0]) + NB_HER_FRONT * math.cos(float(yaw_hf_)), float(cp_[1]) + NB_HER_FRONT * math.sin(float(yaw_hf_))]
+                            if float(np.linalg.norm(np.asarray(expert.her_xy()[:2], float) - np.asarray(pt_, float))) > 0.30:
+                                world.parent.request(_PlainHF("walk", pt_))
+                                box.cur["her_walk"] = [round(v_, 2) for v_ in pt_]
+                        except Exception as e_:
+                            print(f"her walk before it: {e_!r}"[:160], flush=True)
+                else:
+                    box.begin(t, _nb_toy(kind_) or toy, probe=test_, act=(fam if fam in HELD_FAMS else "in"), gen=kind_)
+                    if box.cur is not None:
+                        _narrate("hand_over", box.cur["toy"], t)               # NB1: "here. a cup." as she hands it over
                 if box.cur is not None:
                     task["toy"] = box.cur["toy"]; task["name"] = box.cur["toy"].split("_")[0]
         # the expert's act in its shadow (the label, not applied): its skills read the state and change nothing
@@ -936,11 +1489,13 @@ def main():
                 best_ = task.get("best")
                 if best_ is None or pr_ < best_ - (PROGRESS_M if task["fam"] in ("come", "where") else (BOX_PROGRESS_M if task["fam"] in BOX_FAMS else 0.5)):
                     task["best"] = pr_; task["best_t"] = t
-                elif guide["left"] == 0 and (t - task.get("best_t", t) >= (STUCK_FAMS.get(task["fam"], STUCK_TICKS_BOX) if task["fam"] in BOX_FAMS else STUCK_TICKS)
+                elif guide["left"] == 0 and not _object_loose(task) and (_over_prompt_due(task) or ((t - task.get("best_t", t) >= (STUCK_FAMS.get(task["fam"], STUCK_TICKS_BOX) if task["fam"] in BOX_FAMS else STUCK_TICKS)
                                              or _first_push_due(task)) \
                         and not (PUSH_AFTER_K > 0 and task["fam"] in BOX_FAMS and BOX["box"] is not None and BOX["box"].cur is not None
                                  and int(BOX["box"].cur.get("k", 0)) < PUSH_AFTER_K
-                                 and int(BOX["box"].cur.get("hands", 1)) <= 1):   # (THE WAIT AFTER THE HAND-OVER: PUSH_AFTER_K, the
+                                 and int(BOX["box"].cur.get("hands", 1)) <= 1 and not task.get("corrected"))
+                        and not (task.get("corrected") and t < int(task["corrected_t"]) + NB_CORRECT_WAIT))):   # (NB2: after a correction the
+                                                                                                         # push NB_CORRECT_WAIT ticks on)   # (THE WAIT AFTER THE HAND-OVER: PUSH_AFTER_K, the
                                                                                   # first hand-over alone, 11:3x: a re-hand's wait made
                                                                                   # a lesson of drops 6 x 40 ticks long and it timed out)
                     gt_ = GUIDE_TICKS_BOX if task["fam"] in BOX_FAMS else GUIDE_TICKS
@@ -950,6 +1505,13 @@ def main():
                     task["pushes"] = int(task.get("pushes", 0)) + 1
                     task.setdefault("push0_t", int(t))                    # (THE PAY BY THE HELP: the act's own time runs from its first push)
                     guide["left"] = gt_; guide["takes"] += 1; task["guided"] = True; task["best_t"] = t + gt_
+                    if NB_PUSH_SAYS and task["fam"] == "box2" and BOX["box"] is not None and BOX["box"].cur is not None \
+                            and BOX["box"].cur.get("act") == "in2" and (task.get("instr_t") is None or t - int(task["instr_t"]) >= 12):
+                        # NB2 (04:1x 10-26): HER WORD AS HER HAND GUIDES ITS ARM. Its own arms moved alike whichever toy she named (03:44-03:59:
+                        # 2.84 and 2.90 joint steps a tick, named and other): the push showed which arm, her word came up to 40 ticks before it,
+                        # and the window's recency let the name fade by the push. A parent says "the duck, in" as she guides the hand: her word
+                        # is due now (said on her next free tick)
+                        task["instr_t"] = None; BOX["box"].cur["push_says"] = True
         if BR is not None:                             # the baseline's acts (its voice silent in a DAgger run, as the student's)
             acts = Acts(BR.step(frame)); acts.vor = dict(expert.vor)
             if args.rest_unlabelled:                       # L1 (P3): what no teacher taught it rests
@@ -1001,6 +1563,15 @@ def main():
             if args.teach:                                      # L1: THE TEACHER, EVERY TICK: the expert's act on the child's own state
                 L._label_acts = ({k_: int(shadow[k_]) for k_ in (W.LOCO_NAME, W.GAZE_NAME) if k_ in shadow} if shadow is not None else {})
             acts = run.step(frame if ONE_FRAME else None)   # THE ONE FRAME (P8_ONE_FRAME, 2026-10-22): the life lives on the frame taken above
+            if NB_PAIN_LOG:                                         # NB1 (an instrument, read only): which zones hurt this tick
+                try:
+                    sn_ = world._sensed; jp_ = [W.JOINTS[i_] for i_ in np.nonzero(sn_["bd_peak"] > world.tau_hold)[0]]
+                    if jp_ or float(sn_["base_peak"]) > float(world.f_pain):
+                        with open(os.path.join(args.out, "pain_log.jsonl"), "a") as fp_:
+                            fp_.write(json.dumps(dict(t=int(t), joints=jp_, base=bool(float(sn_["base_peak"]) > float(world.f_pain)),
+                                                      task=(task or {}).get("fam"), push=bool((task or {}).get("guided")))) + "\n")
+                except Exception as e_:
+                    print(f"pain log: {e_!r}"[:160], flush=True)
                                                              # (its eyes rendered once a tick, the clip at its own speed; the lever's press reaches the next tick's frame)
         # the student's word and her reading of its target
         wo = getattr(world, "words_out", None)
@@ -1029,6 +1600,9 @@ def main():
                 if on_:                                                          # asked of (the toy; her face for come, call, greet)
                     task["on_n"] = task.get("on_n", 0) + 1
                     task.setdefault("on_lat", t - task["heard"])
+                if fam == "come" and NB_COME_RECALL > 0 and task.get("heard") is not None and t > int(task["heard"]) \
+                        and (t - int(task["heard"])) % NB_COME_RECALL == 0:
+                    _recall_come(t)                                              # (NB_COME_RECALL: her call again while it has not come)
                 if fam == "come" and float(np.linalg.norm(expert.her_xy() - pos)) <= NEAR_M:
                     task["ok"] = True
                 elif fam == "where" and task["toy"] is not None and float(np.linalg.norm(expert.toy_xyz(task["toy"])[:2] - pos)) <= NEAR_M:
@@ -1042,8 +1616,14 @@ def main():
                     if gen.sh.judge(t, set(expert.holds()), getattr(lane, "_in_bucket", None)) == "met":   # let go at the spot)
                         task["ok"] = True; task["end"] = t
                 elif fam in BOX_FAMS and box is not None:                 # THE BOX TASK: the act done (the lane's reading; the shake tracker)
-                    if box.judge(t) == "met":
+                    j_ = box.judge(t)
+                    if j_ == "met":
                         task["ok"] = True; task["end"] = t
+                    elif j_ == "wrong":                                      # NB2: the two-toy task's other object in the box first
+                        if NB_CORRECT and not task.get("unasked") and not task.get("corrected") and box.correct2(t):
+                            task["corrected"] = True; task["corrected_t"] = int(t); task["instr_t"] = None; task["guided"] = True   # (a lesson: the correction,
+                        else:                                                                                  # demo_box `correct2`)
+                            task["why"] = "the other toy in"; task["end"] = t
                     elif fam in HELD_FAMS and box.cur is not None and box.cur.get("in_met"):   # a shake task's object put in the box: the
                         task["why"] = "in_box"; task["end"] = t                   # other act done and the task over (an object in the box
                 elif fam == "look":                                              # (D2r: LOOK_HOLD ticks running, as the doc says: a
@@ -1094,10 +1674,19 @@ def main():
                         task["said_owed"] = owed_ in (task.get("words") or [])
                 if task.get("why") != "her request unsaid":
                     score[task["fam"]][0] += int(task["ok"]); score[task["fam"]][1] += 1
-                    if args.lever and task["ok"] and not task.get("unasked") and \
-                            (task.get("fam") != "box" or task.get("guided") or (task.get("box") or {}).get("own_act")):
+                    if args.lever and task["ok"] and not task.get("unasked") and not task.get("corrected") and \
+                            not (task.get("fam") == "box2" and task.get("guided") and not NB_PAY_PUSHED2
+                                 and not (guide["left"] == 0 and int(t) - int(task.get("push_end_t", t)) >= NB_PAY_OWN_TAIL)) and \
+                            not (task.get("fam") == "box2" and NB_LESSON_PUSH_ONLY and task.get("push0_t") is None) and \
+                            (task.get("fam") not in ("box", "box2") or task.get("guided") or (task.get("box") or {}).get("own_act")):
+                        # (NB2 10:1x 10-26, NB_LESSON_PUSH_ONLY: a two-toy lesson's put-in before her push heard no word of hers: not paid, as
+                        # a word-blind act; the lesson's teaching is her word with her hand)
+                        # (NB2 01:2x 10-26: A CORRECTED LESSON IS NOT PAID. Its pay came 30 to 100 ticks after its wrong toy's drop, within the
+                        # reach of dopamine's credit (the actor's tag 64 ticks, the follow tag's 256): the correction paid its error. The
+                        # correction still shows the named toy put in, its push's acts taught as any guided act's)
                         pay_ = 1.0
-                        if DIFF_PAY and task.get("guided") and task.get("fam") in BOX_FAMS:
+                        if DIFF_PAY and task.get("guided") and (task.get("fam") in BOX_FAMS or task.get("fam") == "come"):   # (the review of
+                                                                                        # 10-26: a come walked by the guide was paid 1.0)
                             pt_ = float(task.get("pushed_ticks", 1))                   # THE PAY BY THE HELP: the pushes' ticks against those
                             tail_ = 0.0 if guide["left"] > 0 else float(max(0, int(t) - int(task.get("push_end_t", t))))   # and the child's own
                             help_ = min(1.0, pt_ / max(1.0, pt_ + tail_))                  # finish after its last push let go (02:45: per 40 ticks,
@@ -1139,10 +1728,37 @@ def main():
                     post_end[0] = dict(end=int(t), fam=task.get("fam"), ok=bool(task.get("ok")), probe=bool(task.get("unasked")),
                                        arm=post_arm[0], guided=bool(task.get("guided")))
                 post_arm[0] = None
+                fin_ = (task.get("fam"), bool(task.get("ok")), task.get("toy"))
+                if task.get("come_walk") and getattr(world, "ghost", None) is not None:
+                    if NB_WALK_STOP > 0 and not bed_:                         # NB2 20:1x: the come's walk stops first (NB_WALK_STOP), then
+                        world.ghost.stop(NB_WALK_STOP); come_off_at[0] = int(t) + NB_WALK_STOP   # the hold (come_off_at, above)
+                    else:
+                        world.ghost.walk_block(world, False)                  # NB2 17:5x: the come ended: the pose held again
+                if NB_COME_ADAPT and task.get("fam") == "come":            # NB2 18:2x: THE COME'S STAIRCASE
+                    own_c_ = int(bool(task.get("ok")) and not task.get("guided"))
+                    come_state["recent"] = (list(come_state.get("recent") or []) + [own_c_])[-5:]
+                    rc_ = come_state["recent"]; st_c_ = int(come_state["stage"])
+                    if len(rc_) >= 4 and sum(rc_) >= 4 and st_c_ < len(COME_STAGES) - 1:
+                        come_state["stage"] = st_c_ + 1; come_state["recent"] = []
+                        print(f"THE COME steps away: called from {COME_STAGES[st_c_ + 1]} m (its own {sum(rc_)} of the last {len(rc_)})", flush=True)
+                    elif len(rc_) >= 5 and sum(rc_) == 0 and st_c_ > 0:
+                        come_state["stage"] = st_c_ - 1; come_state["recent"] = []
+                        print(f"THE COME steps CLOSER: called from {COME_STAGES[st_c_ - 1]} m (its own 0 of the last 5)", flush=True)
+                    try:
+                        json.dump(come_state, open(os.path.join(args.out, "come_state.json"), "w"))
+                    except OSError:
+                        pass
                 task = None; gen.task = None; gen.pending_line = None; guide["left"] = 0
+                if fin_[0] in BOX_FAMS and fin_[1]:
+                    _narrate("see_in", fin_[2], t)                         # NB1: "in. the cup." as it lies in the box
                 if STEADY and getattr(world, "ghost", None) is not None:
                     world.ghost.steady = None; steady_from[0] = None           # (THE STEADYING HOLD lets go between lessons)
                 next_at = t + int(rng.integers(*DT.PAUSE))
+                if come_off_at[0] is not None:
+                    next_at = max(next_at, int(come_off_at[0]) + DT.MOVE_SETTLE_TICKS)   # (NB_WALK_STOP: the next task after the come's stop)
+                if NB_WALK_EVERY > 0 and fin_[0] in BOX_FAMS:
+                    walk_n[0] += 1
+                    walk_due[0] = walk_due[0] or walk_n[0] % NB_WALK_EVERY == 0   # NB2 15:4x: a walk block owed after this task
                 if KEEP_CLEAR and SETTLE_CLEAR:
                     # THE CLEAR SPOT BETWEEN TASKS (19:0x 10-23, the teacher's fault the pain's record showed): set down at a lesson's start,
                     # the child was in pain through the clip that followed (the run of 16:47-17:58: 309 of its 316 pain ticks within 30 ticks
@@ -1186,6 +1802,33 @@ def main():
             rec.add(frame, shadow if shadow is not None else acts, {"task": None if task is None else task["fam"], "word": word, "target": target,
                                                                      "own": own, "labelled": shadow is not None}, t, lane, world)
         film_on_ = not FILM_AT or any(a_ <= t <= b_ for a_, b_ in FILM_AT)
+        if NB_MEMDEBUG and t % NB_MEMDEBUG == 0:                    # (an instrument: what holds the memory, every NB_MEMDEBUG ticks)
+            try:
+                import gc, collections as _co
+                byshape_ = _co.Counter(); nb_ = 0; n_ = 0
+                for o_ in gc.get_objects():
+                    if isinstance(o_, torch.Tensor):
+                        try:
+                            b_ = o_.element_size() * o_.nelement(); nb_ += b_; n_ += 1
+                            byshape_[(tuple(o_.shape), str(o_.dtype))] += b_
+                        except Exception:
+                            pass
+                top_ = ", ".join(f"{k_[0]} {k_[1].replace('torch.', '')} {v_ / 1e6:.1f}MB" for k_, v_ in byshape_.most_common(6))
+                big_ = sorted(((len(v_), k_) for k_, v_ in vars(L).items() if isinstance(v_, (list, dict, _co.deque))), reverse=True)[:6] if L is not None else []
+                print(f"MEMDEBUG t {t}: {n_} tensors {nb_ / 1e6:.0f} MB; by shape {top_}; the life's longest containers {big_}", flush=True)
+                import tracemalloc as _tm
+                if _tm.is_tracing():                                   # (python -X tracemalloc: the allocation sites that grew since last)
+                    sn_ = _tm.take_snapshot().filter_traces((_tm.Filter(False, "<frozen importlib._bootstrap>"), _tm.Filter(False, "<unknown>")))
+                    prev_ = globals().get("_MEM_SNAP")
+                    if prev_ is not None:
+                        for st_ in sn_.compare_to(prev_, "lineno")[:8]:
+                            print(f"MEMDEBUG grew: {st_}"[:240], flush=True)
+                        for st_ in sn_.compare_to(prev_, "traceback")[:2]:   # (the largest growth's whole call chain)
+                            print("MEMDEBUG chain: " + " <- ".join(f"{fr_.filename.split('/')[-1]}:{fr_.lineno}" for fr_ in reversed(st_.traceback)) + f" (+{st_.size_diff / 1e6:.1f} MB)", flush=True)
+                    globals()["_MEM_SNAP"] = sn_
+                    print(f"MEMDEBUG traced now {sum(x_.size for x_ in sn_.statistics('filename')) / 1e6:.0f} MB", flush=True)
+            except Exception as e_:
+                print(f"MEMDEBUG failed: {e_!r}"[:160], flush=True)
         if film is not None and film_on_:
             film.tick(t, task, score, word)
         if args.snap_every and (k + 1) % args.snap_every == 0 and eyes is not None and film_on_:   # a screenshot: what it sees, and the room
@@ -1266,16 +1909,18 @@ def main():
                     score={f_: list(v_) for f_, v_ in score.items()}, guided=dict(guide), at=time.strftime("%Y-%m-%d %H:%M"))) + "\n")
                 LIVE["log"].flush(); LIVE["agree"] = {}
         if L is not None and args.learn and LIVE is None and int(L.nights) != nights_seen:   # P6: a night slept in a living run without
-            nights_seen = int(L.nights); L.save()                                            # --teach: the night's save and its line (the
+            nights_seen = int(L.nights); L.save(); _save_legs()                              # --teach: the night's save and its line (the
             with open(os.path.join(args.out, "nights.jsonl"), "a") as fn_:                  # --teach branch above does the same)
                 fn_.write(json.dumps(dict(getattr(L, "last_night", None) or {}, night=nights_seen, ticks=int(L.ticks),
                                           at=time.strftime("%Y-%m-%d %H:%M")), default=str) + "\n")
             try:                                            # THE MORNING STAND (2026-10-22 01:45, P8's first dawn, frame by frame): the dawn lays
                 _, yaw_ = expert.pose()[:2]                 # it on its back and the gait is off since dusk; in this world nothing stood it up until a
-                DT.set_child_at(world, expert, lane, np.asarray(world.d.qpos[:2], float), float(yaw_))   # come task near her (relocate_child), so it
-                print(f"the morning: it stands where it woke (tick {t})", flush=True)   # lay through the morning's tasks. The world's act, as the
-                if MORNING_SETTLE > 0:
-                    next_at = max(next_at, t + MORNING_SETTLE)  # (MORNING_SETTLE: no task until the stand has settled)
+                DT.stand_child_at(world, expert, lane, np.asarray(world.d.qpos[:2], float), float(yaw_))   # come task near her (relocate_child), so it
+                tw_ = int(world.tick)                       # NB1 (2026-10-25): the world's tick after the night (its live night advanced the
+                print(f"the morning: it stands where it woke (tick {tw_}; the night began at {t})", flush=True)   # lay through the morning's tasks. The world's act, as the
+                if MORNING_SETTLE > 0:                      # world inside this loop's tick t: counted from t, the settle had passed before the
+                    next_at = max(next_at, tw_ + MORNING_SETTLE)  # next tick and a task began during the stand's lift: the hand-over and the box
+                                                            # pinned into a body still rising, the trial newborn and its cup flung 8 m and 10 m)
             except Exception as e_:                         # relocation is: set standing where it lies, facing as it lay, the gait on again
                 print(f"the morning stand failed: {e_!r}"[:200], flush=True)
         if L is not None and args.save_every and args.learn and (k + 1) % args.save_every == 0:
@@ -1283,6 +1928,7 @@ def main():
                 L.save(os.path.join(args.out, "life_day.pt"))   # L1: the day's save apart (life.pt: each night's, the curve's to test)
             else:
                 L.save()
+            _save_legs()
     if film is not None:
         film.close()
     rec.flush()

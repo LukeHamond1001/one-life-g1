@@ -535,6 +535,8 @@ INTENTS = {
     "see_down": Intent("plain", False, None, (EYES,)),
     "see_up": Intent("plain", False, None, (EYES,)),
     "see_in": Intent("plain", False, None, (EYES,)),
+    "put_in": Intent("plain", False, None, (EYES,)),                # NB2: the two-toy task's word (which object goes in; templates)
+    "put_in2": Intent("plain", False, None, (EYES,)),               # NB2: the two-toy request, the toy named first (templates)
     "ask_give": Intent("plain", True, "act", (Act("open_hand", "child"), EYES)),    # her hand held out to the child, never
                                                                                      # toward the toy (A51)
     "confirm": Intent("approval", False, None, (Act("lean_in", "child_line"), EYES)),      # her face ONTO its line of sight as she
@@ -986,6 +988,26 @@ ASKS_NEEDING_O = {"ask_where", "ask_give", "ask_what"}                # asks abo
 
 
 ONE_PENDING = ("come_call", "come_again")   # C359: intents queued at most once (a repeat of a call needs no backlog)
+import os as _os                                 # (NB2's switches below, read once at import)
+TOKEN_TURNS = bool(int(_os.environ.get("NB_TOKEN_TURNS", "0")))   # NB2 (19:3x 10-26): A TOKEN SAID OVER HER LINE IS ANSWERED, NOT JUDGED. Its
+# token output, read from its forecast of her words (own_words 0), said her lines along with her (a copy of NB2: 279 tokens in 800 ticks,
+# most on the tick she said the same word), and each token made while she spoke was read at her line's end as begun in her pause and
+# smiled at as an echo: her smile paid the chant. Under TOKEN_TURNS a token said over her line (the transcriber's in_pause False) is
+# answered as a tract turn that talked over her is (C233: a reply, no judgment); its words in her pause are judged as before (an echo
+# said after her line, a right name, a met ask)
+TOKEN_SMILE_EVERY = 600                          # (TOKEN_TURNS) ticks between her smiles for its tokens (right names, met asks, echoes in her pause;
+TOKEN_REPLY_EVERY = 60                           # a word naming nothing she reads it attending: no smile), and between her replies to its token turns.
+# A copy at full worth (19:3x): her judged worth 81.9 in 800 ticks, her face up on 628 of them (NB2 then: 10.7 felt in 3,000 ticks, the
+# lever's 6.25): her smile would have stood for nothing, and her replies to a child talking on 30% of the ticks would have taken her voice
+BABBLE_SHAPE = bool(int(_os.environ.get("NB_BABBLE_SHAPE", "0")))   # NB2 (19:3x 10-26, the owner: 'rush it'): HER ANSWER TO ITS BETTER BABBLE.
+BABBLE_SHAPE_N = 100                             # Her ear accepts a sound nearer a word she expects than babble by its margin; its babble passed
+BABBLE_SHAPE_Q = 0.9                             # 3 times in 16,000 ticks, so its voice was answered almost never. A parent answers the
+BABBLE_SHAPE_EVERY = 300                         # infant's more speech-like sounds and says the word they were nearest (Goldstein and
+WORTH_BABBLE = 0.5                               # Schwade 2008; Gros-Louis et al. 2014): a percentile schedule of shaping (Platt 1973;
+# Galbicka 1994) on her ear's own scale. Each tract turn begun in her pause whose sound her ear scored against the words she expected
+# (g = its distance to the babble bank less its distance to the nearest of them: larger nearer a word) is ranked among its last
+# BABBLE_SHAPE_N; at or above their BABBLE_SHAPE_Q quantile (and BABBLE_SHAPE_EVERY ticks since the last) she smiles WORTH_BABBLE and says
+# that word (a recast): the bar rises as its babble comes nearer her words. Never a turn over her line; never during a trial
 REPEATED_CALLS = ("come_call", "come_again")   # C376 (2026-10-19): her calls from across the room are said again as they were (the same line
                                                # within SAME_LINE ticks): with four frames and a repeat every COME_REPEAT (12) ticks, one repeat
                                                # in five found every line said within 60 ticks and went unsaid ('no line passes the check')
@@ -2091,6 +2113,8 @@ class Conduct:
             self.ledger.withdraw(t, pd["trial"], f"{w!r} begun before the question was heard")
             self.pending = None
         over = cw.channel == "tract" and self.turn is not None and self.turn.get("over") and self.stage >= 2
+        if TOKEN_TURNS and cw.channel == "token" and not cw.in_pause:
+            over = True                                        # (TOKEN_TURNS: said over her line: not judged; below, not answered)
         if over:
             # C233 (2026-10-02): A TURN THAT TALKED OVER HER IS ANSWERED, NOT SCOLDED. Until C233 it was answered "no." and nothing else
             # (its word unanswered): life day 65 to its tick 17,300, "no." 152 of her 787 lines and 'no' the child's fourth word (351 of its
@@ -2155,12 +2179,41 @@ class Conduct:
                 kind = "echo"                                  # heard in context: echoed, no smile
             else:
                 kind, w, obj = "reply", None, tgt              # an approximation out of context: answered as a vocal turn
+        elif BABBLE_SHAPE and cw.channel == "tract" and cw.in_pause and not hold:
+            dt_ = cw.detail or {}                              # BABBLE_SHAPE: its better babble answered with the word it was nearest
+            d_, db_, nr_ = dt_.get("d"), dt_.get("d_bank"), dt_.get("nearest")
+            if d_ is not None and db_ is not None and nr_ is not None and math.isfinite(float(d_)) and math.isfinite(float(db_)):
+                g_ = float(db_) - float(d_)
+                hist_ = getattr(self, "_babble_g", None)
+                if hist_ is None:
+                    hist_ = self._babble_g = []
+                if len(hist_) >= 20 and g_ >= float(np.quantile(np.asarray(hist_, float), BABBLE_SHAPE_Q)) \
+                        and t - int(getattr(self, "_babble_t", -10 ** 9)) >= BABBLE_SHAPE_EVERY:
+                    out.judgments.append((WORTH_BABBLE, "babble_near", nr_))
+                    self._babble_t = int(t)
+                    kind, w = "recast", nr_
+                    obj = next((s_ for s_ in p.seen if s_.name == nr_), None) or tgt
+                hist_.append(g_); del hist_[:-BABBLE_SHAPE_N]
         if not over and not hold and self.stage == 1 and cw.channel == "tract" and self.turn is not None and \
                 self.turn["in_pause"] and self.turn["looked"] and t - self.last_vocal_smile >= K.VOCAL_TURN_EVERY:
             out.judgments.append((K.WORTH_VOCAL_TURN, "vocal_turn", None))
             self.last_vocal_smile = t
         after = self._latency()
         missed = self.imperfect and self.imp.random() < K.MISS_TURN   # drawn for every turn, so a replay is exact
+        if TOKEN_TURNS and cw.channel == "token":
+            if not cw.in_pause:                                # (TOKEN_TURNS: a token over her line: neither judged nor answered)
+                self.token_over = int(getattr(self, "token_over", 0)) + 1
+                return
+            new_ = out.judgments[n_judg:]
+            keep_ = [j_ for j_ in new_ if j_[1] in ("right_name", "met_ask", "echo")]
+            if keep_ and t - int(getattr(self, "_token_smile_t", -10 ** 9)) >= TOKEN_SMILE_EVERY:
+                self._token_smile_t = int(t); keep_ = keep_[:1]
+            else:
+                keep_ = [j_ for j_ in keep_ if j_[1] == "met_ask"]   # (her test answered pays whatever the ration)
+            del out.judgments[n_judg:]; out.judgments.extend(keep_)
+            if len(out.judgments) == n_judg and t - int(getattr(self, "_token_reply_t", -10 ** 9)) < TOKEN_REPLY_EVERY:
+                return                                         # (her replies to its token turns rationed too)
+            self._token_reply_t = int(t)
         if len(out.judgments) == n_judg and not over:
             self.turns[1 if missed else 0] += 1
             if missed:                                         # she missed it: no reply to it (A52); a reply she owes a

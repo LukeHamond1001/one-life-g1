@@ -553,3 +553,10 @@ now read the cues they choose on) moved the organs (8a52ec4c0a4c to ac7e78be3d9e
 optimizers (cde381985263 to 32ae709f94d0), its summary unchanged (store 60, episodes 12, dreams 64, tagged 11, twitches 4); 38ab8923
 (act_nlms: the act lesson's step kept within its stability) the work section alone (to 25ed80543dca); 34d30f60 (A172b dopamine_sat)
 the work and cfg sections alone (to dd578e058ba9 and 2c359b22d0c9). The bisects found no other section moved.
+NB2's night (2026-10-25, the lead, on main's acece494 + the work tree): night_self_imitate and night_draw_tire are switches, off by their
+absence; cortex_lr absent (the day's Adam at live_lr as before). The night's report gains the held-out gauge (gauge_held, an instrument,
+always on, no gradient and no draw): the sim pin MOVES in its work section alone: threaded 880475fecdb6bed21a5dbb58 (was
+755c51ec2826bdfa4b50c2e0; work ed8da520b871, was dd578e058ba9; organs ac7e78be3d9e, store a3a706da3969, optim 32ae709f94d0, rng
+066195ecb1e4 and cfg 2c359b22d0c9 unchanged), one-thread 042585dc688fdaa108b0ddfe (was 7768236df6818f0bf388b830), consts ed20f0327da0
+unchanged. Checked: the same tree with the report's gauge_held entry removed gives the threaded 755c51ec2826bdfa4b50c2e0 exactly. The
+language default re-run: 7c54199e3c72cf77d45a8e94 (kept).

@@ -618,6 +618,182 @@ def test_the_grasp_habituates():
           f"{R.GRASP_RECOVER_TICKS} ticks re-armed it (a shorter gap not); the state saved and an older save loads fresh")
 
 
+def test_a_reflex_replaced_act_shows_driven():
+    """A230b (2026-10-26, NB2): A230's law for the cord. The ball in the left palm, the grasp firing: the next frame shows 'hand_l_driven'
+    1 after a tick whose act the grasp replaced (the hand at rest; under A160b, its own act opening one closing joint), 0 where its act
+    went through as given (the grasp's own closing act; its release, every closing joint opened); the tuple travels with a save. The
+    brain's act_inv takes no lesson from a driven tick (timing `_sense_driven`; the night's '@driven')"""
+    w = _ball_in_palm()
+    ball = w.m.body_mocapid[w.m.body("rig_ball").id]
+    w._grasp_hab["hand_l"] = [0, 0]
+    def shown(f_):                                                                  # (the right hand driven only where a reflex of its own fired)
+        assert float(f_.obs["hand_r_driven"][0]) == 0.0 or "hand_r" in f_.truth["spinal"], (f_.obs["hand_r_driven"], f_.truth["spinal"])
+        return float(f_.obs["hand_l_driven"][0]), f_.truth["spinal"].get("hand_l")
+    w.d.mocap_pos[ball] = _ball_spot(w); w.frame(); w.apply({})                    # at rest: the grasp's closing act in place of none
+    assert shown(w.frame()) == (1.0, "grasp"), shown(w.frame())
+    w.d.mocap_pos[ball] = _ball_spot(w); w.apply({"hand_l": R.closing_act("hand_l")})   # its own act the grasp's: carried out as given
+    assert shown(w.frame()) == (0.0, "grasp"), shown(w.frame())
+    w.grasp_whole = True                                                            # A160b: a partial opening is closed over
+    dig = W.act_digits(R.closing_act("hand_l"), len(R._JOINTS["hand_l"]))
+    j0 = [i for i, j in enumerate(R._JOINTS["hand_l"]) if j in R.CLOSING["hand_l"]][0]
+    dig[j0] = R._SMALL[-R.CLOSING["hand_l"][R._JOINTS["hand_l"][j0]]]
+    w.d.mocap_pos[ball] = _ball_spot(w); w.apply({"hand_l": W.act_flat(dig)})
+    assert shown(w.frame()) == (1.0, "grasp"), shown(w.frame())
+    w2 = _ball_in_palm(); w2.load_state(w.save_state())                            # (the tuple travels with a save)
+    assert "hand_l" in w2._reflexed and float(w2.frame().obs["hand_l_driven"][0]) == 1.0, w2._reflexed
+    dig = W.act_digits(R.closing_act("hand_l"), len(R._JOINTS["hand_l"]))       # its release, every closing joint opened: carried out as
+    for i, j in enumerate(R._JOINTS["hand_l"]):                                     # given ('overridden'), its own act's lesson kept
+        if j in R.CLOSING["hand_l"]:
+            dig[i] = R._SMALL[-R.CLOSING["hand_l"][j]]
+    w.d.mocap_pos[ball] = _ball_spot(w); w.apply({"hand_l": W.act_flat(dig)})
+    assert shown(w.frame()) == (0.0, "overridden"), shown(w.frame())
+    print("world 9b2: a tick whose act the grasp replaced shows the hand driven in the next frame; an act carried out as given does not")
+
+
+def test_the_held_newborn_is_not_led():
+    """NB2 (15:3x 10-26, the owner: 'why in clip look like leaning forward and being dragged'): under POSE_HOLD (the legs held at the
+    standing pose, the weight carried: the arms-only newborn) the ghost holds the body where it was set; its lead no longer walks on at
+    SPEED. Past the lift, with no acts, the torso stays within a few cm; with a steadying point set, the lead is that point"""
+    from body.sim import ghost as GH
+    old_ = GH.POSE_HOLD, GH.CARRY_SHARE
+    GH.POSE_HOLD, GH.CARRY_SHARE = True, 1.0
+    try:
+        w = G1World(seed=1)
+        w.ghost.use_expert = False                                              # (NB2's GHOST_EXPERT=0: no gait policy)
+        w.ghost.on_(w, command=True, walk=True)                                 # (as the tasks' set_child_at)
+        for _ in range(GH.LIFT_TICKS + 5):
+            w.frame(); w.apply({})
+        assert w.ghost.holds_pose()
+        p0 = np.asarray(w.d.xipos[w.ghost.b][:2], float).copy(); lead0 = w.ghost.lead.copy()
+        for _ in range(120):                                                    # 18 s: a walk's lead would be 1.8 m ahead by now
+            w.frame(); w.apply({})
+        p1 = np.asarray(w.d.xipos[w.ghost.b][:2], float)
+        assert float(np.linalg.norm(p1 - p0)) < 0.08 and np.allclose(w.ghost.lead, lead0), (p0, p1, lead0, w.ghost.lead)
+        w.ghost.steady = p1 + np.array([0.05, 0.0])                              # a task's steadying point: the lead follows it
+        w.frame(); w.apply({})
+        assert np.allclose(w.ghost.lead, w.ghost.steady), (w.ghost.lead, w.ghost.steady)
+    finally:
+        GH.POSE_HOLD, GH.CARRY_SHARE = old_
+    print(f"world 9h: the held newborn moved {float(np.linalg.norm(p1 - p0)) * 100:.1f} cm in 120 ticks past the lift (its lead held)")
+
+
+def test_the_held_newborn_walks_a_block():
+    """NB2 (15:4x 10-26, the owner: 'instead of dragging it we should be pushing at joints to show it it can walk'): the held newborn
+    (POSE_HOLD, its whole weight carried, no teacher at launch: NB2's GHOST_EXPERT=0) takes a WALK BLOCK (ghost.walk_block): the pose
+    hold lets go, the gait's teacher walks its legs at the room's pace with half its weight carried, and its leg layer learns from
+    the steps; it walks over the floor without a fall. Ended, the pose is held again at the standing pose, the newborn's carry and
+    command back, the walk's share kept, and the body stands upright and still. A save mid-walk carries the block's switches"""
+    from body.sim import ghost as GH
+    old_ = GH.POSE_HOLD, GH.CARRY_SHARE
+    GH.POSE_HOLD, GH.CARRY_SHARE = True, 1.0
+    try:
+        w = G1World(seed=1)
+        g = w.ghost
+        g.use_expert = False                                                    # (NB2's launch: no teacher)
+        g.on_(w, command=True, walk=True)
+        for _ in range(GH.LIFT_TICKS + 10):
+            w.frame(); w.apply({})
+        assert g.holds_pose() and not g.walk_room
+        n0 = int(getattr(w.legs, "n_lessons", 0)) if hasattr(w.legs, "n_lessons") else None
+        assert g.walk_block(w, True) and not g.holds_pose() and g.use_expert and g.carry_share == GH.WALK_CARRY and g.walk_room
+        assert not g.walk_block(w, True)                                         # (already walking)
+        p0 = np.asarray(w.d.xpos[w.pelvis_id][:2], float).copy(); f0 = int(g.falls)
+        for _ in range(160):
+            w.frame(); w.apply({})
+        p1 = np.asarray(w.d.xpos[w.pelvis_id][:2], float).copy()
+        assert int(g.falls) == f0, g.falls
+        assert float(np.linalg.norm(p1 - p0)) > 0.2, (p0, p1)
+        assert np.isfinite(float(w.legs.err)), w.legs.err
+        import pickle as _pk
+        blob = w.save_state()
+        assert g.walk_block(w, False) and g.holds_pose() and not g.use_expert and g.carry_share == 1.0 and g.command and not g.walk_room
+        for _ in range(60):
+            w.frame(); w.apply({})
+        up = float(w.d.xmat[w.pelvis_id].reshape(3, 3)[2, 2])
+        p2 = np.asarray(w.d.xpos[w.pelvis_id][:2], float).copy()
+        for _ in range(40):
+            w.frame(); w.apply({})
+        p3 = np.asarray(w.d.xpos[w.pelvis_id][:2], float)
+        assert up > 0.9 and float(np.linalg.norm(p3 - p2)) < 0.05, (up, p2, p3)
+        w2 = G1World(seed=1); w2.load_state(blob)
+        assert not w2.ghost.pose_hold and w2.ghost.walk_room and w2.ghost.carry_share == GH.WALK_CARRY, (w2.ghost.pose_hold, w2.ghost.walk_room)
+    finally:
+        GH.POSE_HOLD, GH.CARRY_SHARE = old_
+    print(f"world 9i: the walk block walked {float(np.linalg.norm(p1 - p0)):.2f} m in 160 ticks with no fall (the leg layer's error "
+          f"{float(w.legs.err):.4f}); held again, upright {up:.2f}, {float(np.linalg.norm(p3 - p2)) * 100:.1f} cm in 40 ticks")
+
+
+def test_a_walk_stops_standing_before_the_hold():
+    """NB2 (20:1x 10-26): a walk block ends standing (ghost.stop): its gait asked to stand still for n ticks before the hold takes it.
+    While it stops the gait keeps the legs (no hold yet) and the body slows to standing; the stop's count runs down; ended, the hold takes
+    an upright body, and no fall in the stop or the hand-over"""
+    from body.sim import ghost as GH
+    old_ = GH.POSE_HOLD, GH.CARRY_SHARE
+    GH.POSE_HOLD, GH.CARRY_SHARE = True, 1.0
+    try:
+        w = G1World(seed=1)
+        g = w.ghost
+        g.use_expert = False
+        g.on_(w, command=True, walk=True)
+        for _ in range(GH.LIFT_TICKS + 10):
+            w.frame(); w.apply({})
+        assert g.walk_block(w, True)
+        for _ in range(120):
+            w.frame(); w.apply({})
+        f0 = int(g.falls)
+        g.stop(15)
+        assert g.stop_left == 15 and not g.holds_pose() and g.use_expert
+        pa = np.asarray(w.d.xpos[w.pelvis_id][:2], float).copy()
+        for _ in range(15):
+            w.frame(); w.apply({})
+        assert g.stop_left == 0, g.stop_left
+        pb = np.asarray(w.d.xpos[w.pelvis_id][:2], float).copy()
+        for _ in range(6):
+            w.frame(); w.apply({})
+        pc = np.asarray(w.d.xpos[w.pelvis_id][:2], float).copy()
+        assert g.walk_block(w, False) and g.holds_pose()
+        for _ in range(40):
+            w.frame(); w.apply({})
+        up = float(w.d.xmat[w.pelvis_id].reshape(3, 3)[2, 2])
+        assert int(g.falls) == f0 and up > 0.9, (g.falls, f0, up)
+    finally:
+        GH.POSE_HOLD, GH.CARRY_SHARE = old_
+    print(f"world 9l: the walk's stop: {float(np.linalg.norm(pb - pa)):.2f} m in its 15 ticks, {float(np.linalg.norm(pc - pb)) * 100:.1f} cm in the "
+          f"6 after; held, upright {up:.2f}, no fall")
+
+
+def test_the_held_newborn_walks_on_its_own_command():
+    """NB2 (17:5x 10-26, the come): a walk block under the brain's own command (walk_block(command=True)): the gait takes the walk
+    command (command_step: the loco effector's go and turn), not the room's pace. A steady 'go' walks the body over the floor with no
+    fall (which way is the brain's to steer: the gait's own drift is not corrected); the command obeyed; ended, the pose held again"""
+    from body.sim import ghost as GH
+    old_ = GH.POSE_HOLD, GH.CARRY_SHARE
+    GH.POSE_HOLD, GH.CARRY_SHARE = True, 1.0
+    try:
+        w = G1World(seed=1)
+        g = w.ghost; g.use_expert = False
+        g.on_(w, command=True, walk=True)
+        for _ in range(GH.LIFT_TICKS + 10):
+            w.frame(); w.apply({})
+        assert g.walk_block(w, True, command=True) and g.command and g.obeys_command() and not g.holds_pose()
+        R0 = w.d.xmat[w.pelvis_id].reshape(3, 3); fwd = np.array([R0[0, 0], R0[1, 0]]); p0 = np.asarray(w.d.xpos[w.pelvis_id][:2], float).copy()
+        f0 = int(g.falls)
+        for k in range(150):
+            if k < 25:
+                g.command_step(GH.COMMAND_V_MAX / 25.0, 0.0)              # (the brain's go, held: the command rises toward its top)
+            else:
+                g.command_step(0.004, 0.0)
+            w.frame(); w.apply({})
+        p1 = np.asarray(w.d.xpos[w.pelvis_id][:2], float)
+        assert int(g.falls) == f0, g.falls
+        ahead = float(np.linalg.norm(p1 - p0))                                 # (its way is the brain's to steer: the gait's own drift is
+        assert ahead > 0.3, (p0, p1, fwd, g.cmd_v)                             # not corrected in a command walk; the come's push steers it)
+        assert g.walk_block(w, False) and g.holds_pose()
+    finally:
+        GH.POSE_HOLD, GH.CARRY_SHARE = old_
+    print(f"world 9j: the brain's command walked it {ahead:.2f} m in 150 ticks, no fall")
+
+
 def test_the_dorsal_touch_opens_the_hand():
     """world 9c (A171): the left hand raised and closed into a fist on nothing by its own acts; a ball set against the BACK of the
     hand: the cord's dorsal response opens it (the event 'dorsal', the closure falling), while a ball on the palm's face is the
@@ -954,7 +1130,8 @@ def test_the_night():
     assert w.night and np.allclose(w.m.light_diffuse, day_light * W.NIGHT_LIGHT) and w.parent.asleep
     f = w.frame()
     assert set(f.obs) == {"body", "touch", "pain", "strain", "vestibular", "imu_torso", "loco_cmd", "loco_cmd_push", "leg_l_driven", "leg_r_driven",
-                          "waist_driven", "loco_engaged", "leg_l_engaged", "leg_r_engaged", "waist_engaged", "loco_blocked"}, set(f.obs)   # (A231: the engaged; A232)   # the body's own senses alone (the strain since A88; the walk command's own drive since A224, the cord's push on it since A228b; whether the gait drove the legs and the waist since A230)
+                          "waist_driven", "loco_engaged", "leg_l_engaged", "leg_r_engaged", "waist_engaged", "loco_blocked",
+                          "arm_l_driven", "arm_r_driven", "hand_l_driven", "hand_r_driven"}, set(f.obs)   # (A231: the engaged; A232; A230b: the reflexes' drive)   # the body's own senses alone (the strain since A88; the walk command's own drive since A224, the cord's push on it since A228b; whether the gait drove the legs and the waist since A230)
     blob = w.save_state()
     w.apply({})
     night_acts = [b1.acts() for _ in range(4)]
@@ -2418,7 +2595,6 @@ def test_the_born_breath():
     from body.core.world import Acts, WorldLoop
     from body.core import physiology as PH
     from body.sim import anatomy as AN
-    from body.sim.voice.synth import PA_PER_UNIT
     assert int(PH.REFLEX.get("breath", 0)) == 0 and int(AN.SIM_CFG.get("breath", 0)) == 2      # the physiology's default off, the G1's steady (A238)
     E, I, amp = int(AN.SIM_CFG.get("breath_expire", PH.REFLEX["breath_expire"])), int(AN.SIM_CFG.get("breath_inspire", PH.REFLEX["breath_inspire"])), float(AN.SIM_CFG.get("breath_amp", PH.REFLEX["breath_amp"]))
     n_art = len(AN.TRACT); lungs, glottis = AN.TRACT.index("lungs"), AN.TRACT.index("glottis")

@@ -528,6 +528,9 @@ REFLEX = dict(
     # angle, which under the command's decay (0.97 a tick, 0.15 s a tick: a pulse integrates to 5 times itself in radians) turns the body
     # by about the angle heard, as a head turns to a sound; at most approach_sound_max, the command's extreme. On the day-139 copy the
     # slewed pulse (0.05) turned it a quarter radian an onset and the ears' read flipped sign between onsets, so the body never came round
+    voice_hold_cues=0,              # (the review of 10-26) 1: the voice's side is kept for its hold by the cue lines themselves (cord `_actor_cues`,
+                                    # `_cue_line`); 0, every body before it: kept only inside the born approach (`_approach_step`), so under
+                                    # approach 0 (A239, NB2) the actors' line, documented as holding it, never held her side between her sounds
     voice_hold=20,                  # A222 (2026-10-16): the voice's side is held this many ticks after the sound (3 s: C353's repeat gap), the
                                     # colliculus's sensory memory: a head keeps turning toward where the voice was between the words
     approach_sound_gain=0.2,

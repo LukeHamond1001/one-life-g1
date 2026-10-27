@@ -345,7 +345,7 @@ class ParentLane:
                                    + np.linalg.norm([0.13, 0.06, 0.0])) for s in ("left", "right")}
 
     # ------------------------------------------------------------------ what she sees
-    def _visible(self, m, d, face, tt, at):
+    def _visible(self, m, d, face, tt, at, held_by=()):
         """tt in her line of sight from her face: the ray to its body's origin meets it first. An open container's origin is its floor
         plate (extras.add_bucket), so a toy lying in it took the ray and the bucket went unseen at the moment it held a toy (C129: day
         30's hides, her look at the bucket done 30 times and the telling refused "unseen: 'bucket'"): for a container the ray goes to
@@ -362,7 +362,38 @@ class ParentLane:
             return bool(max(abs(rel[0]), abs(rel[1])) <= X.BUCKET_IN + 0.03 and rel[2] < X.BUCKET_H + 0.15)   # of the box on the book
                                                                         # hidden before) took the ray: a thing lying in the bucket is the
                                                                         # bucket seen, with what is in it
+        if held_by:
+            # NB2 (18:5x 10-25): A TOY IN THE CHILD'S HAND IS SEEN IN THE HAND. The ray to the toy's origin met the fingers closed on it
+            # first, and she read a duck held before the child's chest as unseen: her word in the two-toy task waited 39 and 43 ticks of
+            # a lesson for her to "see" the toy she had just handed ("unseen", the task's instr_miss). Where the ray's first body is a
+            # hand that holds the toy (its palm, fingers or wrist: the hand sets of _geom), she sees the toy in that hand, as a person
+            # sees what a baby holds; the child's arm, torso or head in the way still hide it
+            hb_ = self._ray_first_body(m, d, face, at)
+            if hb_ is not None and any(hb_ in self.hand[s_] for s_ in held_by if s_ in self.hand):
+                return True
         return self._ray_first(m, d, face, at) == root
+
+    def _ray_first_body(self, m, d, a, b):
+        """the body (not its root) a ray from a to b meets first past her own body, or None when it meets nothing before b"""
+        v = np.asarray(b, float) - np.asarray(a, float)
+        dist = float(np.linalg.norm(v))
+        if dist < 1e-9:
+            return None
+        u = v / dist
+        p = np.asarray(a, float).copy()
+        gid = np.array([-1], dtype=np.int32)
+        gone = 0.0
+        for _ in range(6):
+            h = mujoco.mj_ray(m, d, p, u, EY.EYE_GROUPS, 1, -1, gid)
+            if h < 0 or gone + h > dist + 0.02:
+                return None
+            body = int(m.geom_bodyid[int(gid[0])])
+            if body in self.parent_bodies:
+                p = p + u * (h + 1e-3)
+                gone += h + 1e-3
+                continue
+            return body
+        return None
 
     def _ray_first(self, m, d, a, b):
         """the root body a ray from a to b meets first past her own body, or None when it meets nothing before b"""
@@ -423,12 +454,12 @@ class ParentLane:
         in_view = self._ray_first(m, d, face, d.xpos[m.body("torso_link").id]) == self.g1_root
         ang = PC._angles(face - head, axes)
         seen_by_child = ang is not None and abs(ang[0]) <= K.CAMERA_FIELD_DEG[0] / 2 and abs(ang[1]) <= K.CAMERA_FIELD_DEG[1] / 2
-        visible = [tt for tt in self.toys if self._visible(m, d, face, tt, pos[tt])]
+        touch = self._contacts(m, d)                                       # (first: a toy in its hand is seen in the hand, _visible)
+        visible = [tt for tt in self.toys if self._visible(m, d, face, tt, pos[tt], held_by=tuple(touch[tt]["child"]))]
         things = [(tt, pos[tt]) for tt in visible] + [("mama", face)]
         rd = self.conduct.reader
         target, before = rd.look(head, axes, things)
         self._before = before                                              # C158: what stands before the child's camera this tick
-        touch = self._contacts(m, d)
         holds = tuple(tt for tt in self.toys if touch[tt]["child"])
         ch = PM_child(world)
         grasp = {"left": ch.grasp["L"], "right": ch.grasp["R"]}

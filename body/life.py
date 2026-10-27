@@ -81,7 +81,7 @@ __all__ = ["collections", "math", "os", "time", "torch", "F", "Organs", "Store",
 # change retired (a save's constants keep them). The unknown-key warning (review 2026-09-06) named the first at every load of the life
 # (actor_cues, actor_sense, actor_norm_tau, shape_bands, stress_slow, read and in force) beside the retired vte_adapt (A192): a warning
 # that names keys in force teaches its reader to ignore it. body/tests/test_cfg_keys.py holds this list to the code's reads
-INLINE_KEYS = frozenset(("act_stream_gain", "guided_credit", "imagine_emulator", "sight_line", "sight_tau", "sight_norm_tau", "sight_actor", "sight_suggest", "sight_prep", "sight_hold", "sight_hold_z", "sight_hold_refr", "sight_hold_tau", "sight_mix", "cue_adapt", "cue_adapt_tau", "prep_ahead", "sight_demo", "sight_demo_fx", "sight_demo_mix", "sight_demo_gain", "shape_own_h", "sight_ladder", "sight_ladder_lr", "sight_ladder_u0", "act_nlms", "inv_rest_pairs", "actor_cues", "cue_line", "eye_dino", "orient_earned", "place_channels", "actor_norm_tau", "actor_sense", "forecast_scaling", "fwd_scale", "guided_rest_detached", "own_words", "own_words_balance", "own_words_lr", "own_words_split", "shape_bands", "speak_std", "shape_tau", "store_off", "stress_slow", "teach_own", "efference_stream", "lever"))   # (D1j: own_words, own_words_lr; D1o: own_words_split; D1r: own_words_balance; D1s: fwd_scale; D4a: cue_line; D4b: orient_earned; D4c: place_channels; L1: teach_own; R1: efference_stream)
+INLINE_KEYS = frozenset(("act_stream_gain", "guided_credit", "imagine_emulator", "sight_line", "sight_tau", "sight_norm_tau", "sight_actor", "sight_suggest", "sight_prep", "sight_hold", "sight_hold_z", "sight_hold_refr", "sight_hold_tau", "sight_mix", "cue_adapt", "cue_adapt_tau", "prep_ahead", "sight_demo", "sight_demo_fx", "sight_demo_mix", "sight_demo_gain", "shape_own_h", "sight_ladder", "sight_ladder_lr", "sight_ladder_u0", "act_nlms", "inv_rest_pairs", "actor_cues", "cue_line", "eye_dino", "orient_earned", "place_channels", "actor_norm_tau", "actor_sense", "forecast_scaling", "fwd_scale", "guided_rest_detached", "own_words", "own_words_balance", "own_words_lr", "own_words_split", "shape_bands", "speak_std", "shape_tau", "store_off", "stress_slow", "teach_own", "efference_stream", "lever", "follow_slow_lr", "follow_reach", "sight_src", "cortex_recency", "night_self_imitate", "cortex_lr", "night_draw_tire", "night_held_out"))   # (D1j: own_words, own_words_lr; D1o: own_words_split; D1r: own_words_balance; D1s: fwd_scale; D4a: cue_line; D4b: orient_earned; D4c: place_channels; L1: teach_own; R1: efference_stream)
 RETIRED_KEYS = {"vte_adapt": "A192"}
 
 
@@ -98,6 +98,8 @@ class Life(LedgerMixin, SensesMixin, MemoryMixin, CortexMixin, MouthMixin, Criti
         self.m = organs.to(device); self.m.eval()
         self.dev = device
         self.cfg = dict(PHYSIOLOGY); self.cfg.update(cfg or {})
+        if hasattr(self.m, "set_recency"):
+            self.m.set_recency(bool(int(self.cfg.get("cortex_recency", 0))))   # NB1: the attention's sense of time (model.Organs.set_recency)
         # THE BODY'S ANATOMY (the core refactor's step R2, docs/SIM_DESIGN.md 8.4): what it senses, how it acts, what it feels as reward
         # (body/core/anatomy.py). `tok` is what the callers always passed: a tokenizer builds the diary's LanguageAnatomy under this
         # life's constants; an anatomy may stand in its place. The tokenizer stays inside the language anatomy, for text only.
@@ -374,7 +376,11 @@ class Life(LedgerMixin, SensesMixin, MemoryMixin, CortexMixin, MouthMixin, Criti
         wp_ = list(self.m.word_pred.parameters()) if hasattr(self.m, "word_pred") else []   # D1j: the own-word forecast's own optimizer (below)
         wp_ += list(self.m.speak_pred.parameters()) if hasattr(self.m, "speak_pred") else []   # (D1o: its speaking's head with it)
         gated_ = gated_ | {id(p_) for p_ in wp_}
-        self.opt_day = torch.optim.Adam([p_ for p_ in self.m.parameters() if id(p_) not in gated_] if gated_ else self.m.parameters(), lr=float(self.cfg["live_lr"]))
+        # NB2 (2026-10-25): THE CORTEX'S OWN RATE (cortex_lr; absent or 0: live_lr, as always). live_lr is also act_pred's plain step
+        # (GatedDescent: lr_motor = 2 sqrt(d) x live_lr, stable to about 8 times 1e-5 at d 512), so the cortex's Adam could not be raised
+        # past that without the motor proposal's step; this rate is the day's Adam's alone (the stream, the forecast heads, the encoders)
+        self.opt_day = torch.optim.Adam([p_ for p_ in self.m.parameters() if id(p_) not in gated_] if gated_ else self.m.parameters(),
+                                        lr=float(self.cfg.get("cortex_lr") or self.cfg["live_lr"]))
         if wp_:
             self.opt_words = torch.optim.Adam(wp_, lr=float(self.cfg.get("own_words_lr", 3e-4)))   # D1j: its rate its own (not saved: its
                                                                                                   # moments rebuild); no attribute without it

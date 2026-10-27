@@ -1071,6 +1071,25 @@ class MouthMixin:
         else:
             tag.add_(e_new)                                                 # (the tick's decay came first, above)
 
+    def _follow_tag_step(self, st, ef_new):
+        """NB1 (2026-10-25, before the newborn's birth): THE FOLLOW GAIN'S TAG. D5e's follow gain learns from the actors' dopamine on its
+        own eligibility, which fades at dopamine's horizon (0.9375 a tick: 16 ticks). In P8 (a push earning no striatal credit,
+        guided_credit 0) the lesson's pay came 100 ticks or more after the child's own first steps (the wait before the push), so the
+        steps that went the line's way had faded below 1% when the pay arrived and the gains walked at random about 0 (10-24, the saved
+        gains and their eligibility in the live snaps). As the actor's synapses have A142's tag beside their fast trace, the gain's
+        eligibility is also summed into a tag that fades at follow_reach (1 - 1/follow_reach a tick) and is captured each tick by the
+        same phasic dopamine (critics: gain += follow_slow_lr x dopamine x tag): TD(lambda)'s trace at a lesson's span, so a pay at the
+        lesson's end reaches the own steps of its wait. ef_new None: the decay alone. Off (follow_slow_lr 0): nothing kept"""
+        if float(self.cfg.get("follow_slow_lr", 0.0)) <= 0.0:
+            return
+        g_f = 1.0 - 1.0 / float(self.cfg.get("follow_reach", 256))
+        ft = st.get("f_tag")
+        if ef_new is None:
+            if ft is not None:
+                st["f_tag"] = g_f * float(ft)
+            return
+        st["f_tag"] = (float(ft) if ft is not None else 0.0) + float(ef_new)   # (the tick's decay came first, above)
+
     def _motor_sharp(self, e, st):
         return self._motor_read(e, st)[0]
 
@@ -1120,7 +1139,7 @@ class MouthMixin:
             return out, g_
         kappa = float(st.get("inv_gain", 0.0) or 0.0)
         rel = max(0.0, min(1.0, (kappa - KAPPA_FAIR) / (KAPPA_ALMOST_PERFECT - KAPPA_FAIR)))
-        return (s ** rel, rel) if True else None                                                      # A104: the temperature's own (geometric) scale, on kappa's
+        return s ** rel, rel                                                # A104: the temperature's own (geometric) scale, on kappa's
                                                                             # established one: nothing below "fair" agreement, the
                                                                             # mouth's at "almost perfect" (Landis and Koch 1977). A97's
                                                                             # 1 + (s - 1) kappa gave sharpness 3-5 at kappa 0.1 ("slight"),
@@ -1299,6 +1318,7 @@ class MouthMixin:
             if tick_tr and st_.get("e_follow") is not None:
                 st_["e_follow"] = g_ * float(st_["e_follow"])                # (D5e: at the same horizon)
             self._actor_tag_step(st_, None)                          # A142: the tag decays at the long critic's horizon every tick
+            self._follow_tag_step(st_, None)                         # NB1: the follow gain's tag decays at its reach every tick
             if now["acted"]:
                 self.ledger_act(e_, now)                                 # I1: the vote for the act taken, the lean's following
                 self._vte_credit(e_, now)                                # A219: the lean's credit (the share that followed, the reward after)
@@ -1329,6 +1349,7 @@ class MouthMixin:
                                                                                  # live gains walked 0.06 -> 0.49 in 300 ticks on pain at the
                                                                                  # set-downs, ten times the actor synapses' noise, no pull back)
                         st_["e_follow"] = ((1.0 if tick_tr else g_) * float(ef_) if ef_ is not None else 0.0) + ef_new
+                        self._follow_tag_step(st_, ef_new)               # NB1: and the gain's tag takes it
                     self._actor_tag_step(st_, e_new)                 # A142: and takes this act's eligibility
                     if int(self.cfg.get("sight_ladder", 0)):
                         ec_ = self._sight_ladder_credit(e_, now)         # D6: and the ladder control's, its own act on the rungs' reading

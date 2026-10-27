@@ -108,6 +108,7 @@ from .memory import GOAL_TAU                                        # A138: the 
 
 from .amygdala import episode_entries, night_draw  # noqa: F401  (night_draw: R8b's)
 from .physiology import FRAMES, SLEEP
+from .swallow import swallowed as _I5                                   # (I5: no error swallowed unseen)
 
 IMAG_SEED = 3                                # A138: the tape's rows the waking imagination starts from (REM's k: the window's first 3)
 VTE_GAIN_N = 64                              # A219: the prior's weight on the lean's gain, in leans (born at 1; ours)
@@ -576,7 +577,23 @@ class SleepMixin:
         if load > 0.0:
             n = int(min(int(self.cfg.get("night_starts_max", 192)), max(int(self.cfg["night_starts"]), round(load * max(0, n_new)))))
         firsts = [float(ep["T_e"]) if int(ep["day"]) == day else 0.0 for ep in eps]   # the day's tagged come first (7.4 item 2)
-        draw = night_draw([float(ep["entry"]) for ep in eps], firsts, n, self.gen) if eps else []
+        ent_ = [float(ep["entry"]) for ep in eps]
+        hold_ = set()
+        k_held_ = int(self.cfg.get("night_held_out", 0))
+        if k_held_ > 0:
+            # NB2 (2026-10-25): THE HELD-OUT EPISODES SET ASIDE BEFORE THE DRAW (night_held_out, 0 off): k of the day's episodes, spread
+            # evenly over its order, are not dreamt this night, so the held-out gauge (below) reads them on every night; without it the
+            # gauge reads the day's episodes the draw happened to leave, and a day with fewer episodes than dreams leaves none (a
+            # newborn's 1,500-tick day under night_draw_tire: 69 episodes, 1,024 dreams, every one dreamt)
+            day_i_ = [i for i, ep in enumerate(eps) if int(ep["day"]) == day]
+            if len(day_i_) > k_held_:
+                hold_ = {day_i_[(k * len(day_i_)) // k_held_] for k in range(k_held_)}
+                ent_ = [0.0 if i in hold_ else e_ for i, e_ in enumerate(ent_)]
+                firsts = [0.0 if i in hold_ else f_ for i, f_ in enumerate(firsts)]
+        if int(self.cfg.get("night_draw_tire", 0)):
+            draw = night_draw(ent_, firsts, n, self.gen, tire=True) if eps else []   # NB2: a dreamt episode tires (amygdala.night_draw)
+        else:
+            draw = night_draw(ent_, firsts, n, self.gen) if eps else []
         n_first = min(sum(1 for f_ in firsts if f_ >= 1.0), n // 2)   # night_draw's: every one once, at most half the night
         rep.update({"dreams": len(draw), "new_slots": int(n_new), "tagged_first": n_first,
                     "draw_serials": [int(eps[i]["serial"]) for i in draw],
@@ -589,6 +606,18 @@ class SleepMixin:
         self._night_away()                                        # the night's lessons on night_dev (the draw made at home)
         g_dreams = dreams[:32]                                    # the gauge's windows: the night's first (the tagged first among them)
         before = self._frames_gauge(g_dreams)
+        # NB2 (2026-10-25): THE HELD-OUT GAUGE (an instrument; nothing drawn, nothing learned): the same gauge on up to 32 of the day's
+        # episodes the night does not dream (spread evenly over the day's order), before NREM, after it and after the night. The gauge
+        # above reads windows the night then learns 6 rounds over (NB1's: the channels 2.31 -> 0.62 on night 10, and back at 1.3 to 3.0
+        # on every next night's own windows): what the night fitted, not whether the cortex foresees experience it did not replay
+        drawn_ = set(draw)
+        if hold_:
+            held_ = [eps[i] for i in sorted(hold_)]                # (night_held_out: the episodes set aside before the draw)
+        else:
+            held_ = [ep for i, ep in enumerate(eps) if int(ep["day"]) == day and i not in drawn_]
+            if len(held_) > 32:
+                held_ = [held_[(k * len(held_)) // 32] for k in range(32)]
+        held_before = self._frames_gauge(held_) if held_ else None
         warm_ = int(self.cfg.get("night_warm", 0)); base_lr_ = float(self.cfg["night_lr"]); nstep_ = 0
         m.train()
         nb = max(1, int(self.cfg.get("night_batch", 0)))          # night_batch 0: a dream a batch (THE BUILDER'S READING: windows of frames
@@ -627,6 +656,7 @@ class SleepMixin:
         if parts_n:
             rep["nrem_parts"] = {k_: round(v_ / parts_n, 4) for k_, v_ in sorted(parts_sum.items())}   # the last round's mean per part
         mid = self._frames_gauge(g_dreams)
+        held_mid = self._frames_gauge(held_) if held_ else None
         # --- REM on frames (REM stays on: the owner's ruling): the cortex runs free from each dream's first positions, the words drawn from
         # its readout and every other channel's code its head's forecast, and the prefrontal forecast heads learn along the free run ---
         rem_cos = []; rem_steps = 0; self._rem_limb_n = 0                # A132: the imagined acts of the limbs this night, counted
@@ -656,6 +686,7 @@ class SleepMixin:
             sd = torch.load(self.save_path, map_location="cpu", weights_only=False)
             m.load_state_dict(sd["organs"]); m.to(self.dev)
             after = self._frames_gauge(g_dreams)
+        held_after = self._frames_gauge(held_) if held_ else None
         pos = max(1, wstats[0])
         rep.update({"nrem_steps": nrem, "nrem_loss": losses[:3] + (["..."] if len(losses) > 6 else []) + losses[-3:],
                     "nrem_curve": [round(float(x), 4) for x in losses], "rem_steps": rem_steps,
@@ -669,7 +700,8 @@ class SleepMixin:
                                         **({"guided": round(wstats[3] / pos, 4), "against_taught": round(wstats[4] / pos, 4)}
                                            if wstats[3] else {})},
                     "act_inv_pairs": inv_pairs,
-                    "gauge": {"before": before, "after_nrem": mid, "after": after}})
+                    "gauge": {"before": before, "after_nrem": mid, "after": after},
+                    "gauge_held": ({"n": len(held_), "before": held_before, "after_nrem": held_mid, "after": held_after} if held_ else None)})
         return opt, params
 
     def _frames_batch(self, batch):
@@ -862,6 +894,22 @@ class SleepMixin:
                 ll = ll + lc_
                 lp_["ch:" + str(c_.name)] = float(lc_.detach())
         W_ = G.clamp(-1.0, 1.0); WL_ = (1.0 + G).clamp(0.0, 1.0)  # act_pred_night_weight (A152: the own acts' by dopamine's credit alone) and the labels' (R8's)
+        if int(self.cfg.get("night_self_imitate", 0)):
+            # NB2 (2026-10-25, the owner's word: "make changes to sleep to make better"): THE NIGHT REPLAYS WHAT WENT BETTER THAN EXPECTED,
+            # AND NEVER TEACHES AGAINST. Under A152 the night taught each own act toward or against by its replayed credit, clip(G, -1, 1).
+            # NB1's ten nights taught against on 53-57% of the replayed positions (the reports' against_taught), and on the 24,000 rows its
+            # nights kept (life.pt, 17:27 10-25) the credit was negative on 74% (mean -0.08, median -0.06): the own acts' lesson summed
+            # 2,673 against to 857 toward, the guided acts' 3,713 at 1 beside them. Over the whole day the same credit is balanced (its
+            # last day's 22,000 rows: mean +0.002, 51% negative, 987 toward to 970 against): the skew is the night's own choice of what to
+            # keep and dream, by entry (surprise x (1 + |dopamine|)), the drops and the pains the most. So each night turned the motor
+            # proposal away from its worst moments by the opposite act (A153's hinge, which no replayed experience showed). Replay in
+            # sleep strengthens the sequences it replays, the rewarded more (Ambrose, Pfeiffer and Foster 2016: reverse replay rises with
+            # the reward and falls when it is cut, it does not turn negative; Singer and Frank 2009; Lansink et al. 2009, the ventral
+            # striatum's reward cells replaying with the hippocampus); the harm a habit does is unlearned by day (A150, the day's lesson
+            # keeps clip(G, -1, 1)). So at night an own act is taught toward by its credit where that is above zero, and not at all where
+            # it is not: the machine learning form is self-imitation (Oh et al. 2018: imitate the agent's own past acts where the return
+            # passed the value; max(R - V, 0)). The guided acts (the demonstration, 1) and act_inv's labels (clip(1 + G, 0, 1)) unchanged
+            W_ = G.clamp(0.0, 1.0)
         if W_.device != C.device:                                  # (the night on its own device, night_dev: the credit is the tape's, kept at
             W_ = W_.to(device=C.device, dtype=torch.float32); WL_ = WL_.to(device=C.device, dtype=torch.float32)   # home in float64)
         wst = [0, 0, 0, 0, 0]
@@ -1346,8 +1394,8 @@ class SleepMixin:
             ld = [int(x_) for x_ in tab.digits(torch.tensor(int(v[e.name][0]))).tolist()]
             share = sum(int(a_) == int(b_) for a_, b_ in zip(now["digits"], ld)) / max(1, len(ld))
             self._vte_pending.append([self.ticks, e.name, float(share), 0.0])
-        except Exception:
-            pass
+        except Exception as e_i5:
+            _I5("sleep.py:_vte_credit", e_i5)                              # (the review of 10-26: I5, no error swallowed unseen)
 
     def _vte_moments(self, name, share, g):
         """A219: the moments of (share, the reward after), at the actors' horizon (actor_tau)"""

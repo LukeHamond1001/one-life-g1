@@ -282,6 +282,17 @@ def act_flat(digits):
 
 GAIT_DRIVEN = ("leg_l", "leg_r", "waist")   # A230 (2026-10-17): the effectors whose joints the gait sets in a walk (ghost.py _expert_step: the
                                            # leg layer's targets on the twelve leg joints and the waist's): their own acts move nothing then
+VOICE_MUTE_PA = 2e-4                        # NB2 (19:4x 10-26): THE TRACT'S MUTE TICK, the frame's "voice_mute": its sound in the tick before under 20 dB
+                                            # SPL at 1 m (RMS, Pa). Its inverse model reads the ears (sense "ears"), and an own act that sounded nothing
+                                            # changed nothing the ears heard but her voice or the room: such a pair teaches it nothing (body/core/
+                                            # timing.py `_sense_mute`, as A230's driven act); its rest pairs (her voice heard while it is silent: the
+                                            # imitation road, act_inv's label at its reliability) are kept
+REFLEX_DRIVEN = ("arm_l", "arm_r", "hand_l", "hand_r")   # A230b (2026-10-26, NB2): the effectors whose act a spinal reflex can replace (the
+                                           # palmar grasp and the dorsal opening on the hands, the traction response and the prone pattern on the
+                                           # arms; the prone pattern's waist is GAIT_DRIVEN's key): A230's law for the cord. NB2's holding hand's
+                                           # own finger steps followed act_pred's guess on 46% of joints (the guess the guide's on 93%), its
+                                           # draw at sharpness 1.0-1.7 (the arms' 3-7): act_inv's kappa on the six closing joints 0.20-0.37,
+                                           # taught on every tick of a hold's first 40 that the grasp stepped the fingers closed over its act
 LOCO_NAME, LOCO_JOINTS = "loco", ("go", "turn")   # W8 (2026-10-09, 22:30): THE LOCOMOTION EFFECTOR: the brain's command to the body's gait circuit (the
                                                     # expert gait held in the ghost's command blocks, body/sim/ghost.py): two channels of five settings,
                                                     # a step on the commanded speed and on the commanded turn, as the gaze's acts step its windows. The
@@ -720,6 +731,7 @@ class G1World(SimWorld):
         self._loco_err = None; self._loco_cmd = None   # A227: the last tick's turn error and commanded turn (rad/s), the readout's teacher
         self._loco_push = [0.0, 0.0]                   # A228b: the cord's push on the walk command in the last tick (the next frame shows it)
         self._driven = ()                              # A230: the effectors whose joints the gait set in the last tick (the next frame shows it)
+        self._reflexed = ()                            # A230b: the effectors whose act a spinal reflex replaced in the last tick (the same)
         self._vor_slip = None; self._vor_turn = None   # A174: the last tick's retinal slip and head turn (yaw, pitch; rad), the flocculus's teacher
         cl_, cr_, cc_ = m.camera("eye_L").id, m.camera("eye_R").id, m.camera("eye_C").id   # A174: the eyes' separation and the cameras' lever
         self.eye_ipd = float(np.linalg.norm(m.cam_pos[cl_] - m.cam_pos[cr_]))                # about the trunk's yaw axis (the parallax of a near
@@ -854,7 +866,9 @@ class G1World(SimWorld):
         obs = {"body": body, "touch": touch, "pain": pain, "strain": strain, "vestibular": s["vestibular"].copy(), "imu_torso": s["imu_torso"].copy(),
                "loco_cmd": np.array([float(self.ghost.cmd_v), float(self.ghost.cmd_w)], float),   # A224: the walk command's own drive (the command before this tick's act)
                "loco_cmd_push": np.array([float(x) for x in getattr(self, "_loco_push", (0.0, 0.0))], float),   # A228b: the part of it the cord's
-               **{n_ + "_driven": np.array([1.0 if n_ in getattr(self, "_driven", ()) else 0.0]) for n_ in GAIT_DRIVEN},   # A230: the gait set its
+               **{n_ + "_driven": np.array([1.0 if (n_ in getattr(self, "_driven", ()) or n_ in getattr(self, "_reflexed", ())) else 0.0])
+                  for n_ in GAIT_DRIVEN + REFLEX_DRIVEN},   # A230: the gait set its joints (A230b: or a reflex replaced its act)
+               "voice_mute": np.array([1.0 if float(np.sqrt(np.mean(np.square(np.asarray(self.tract_pa, float))))) < VOICE_MUTE_PA else 0.0]),   # NB2 19:4x
                "loco_engaged": np.array([1.0 if self.ghost.obeys_command() else 0.0]),   # A231: whether the actuators will carry these effectors'
                "loco_blocked": np.array(self._loco_blocked(), float),   # A232: the walk command's settings its integrator cannot carry out now
                **{n_ + "_engaged": np.array([0.0 if self.ghost.owns_legs() else 1.0]) for n_ in GAIT_DRIVEN}}   # acts this tick (the gait's)
@@ -1039,6 +1053,7 @@ class G1World(SimWorld):
         else:                                                           # a plain dict of acts (an instrument's, a test's): the born VOR
             vora = {GAZE_NAME: {"axes": [0, 1], "gain": VOR_GAIN, "quick": 0.5}}
         acts = dict(acts or {})
+        given_ = dict(acts)                                             # A230b: the acts as the body gave them, before the cord's reflexes
         spinal = {}
         if self.spinal:                                                 # THE SPINAL CORD: the palmar grasp on each hand's own act
             for hand, z in self.palm_of_hand.items():
@@ -1070,6 +1085,8 @@ class G1World(SimWorld):
                         acts[arm] = a3
             if self.righting:                                           # and the prone pattern: face down, the arms flex under, the
                 spinal.update(R.prone(acts, self._sensed["imu_torso"]))   # trunk yaws toward the side that is up (A92)
+        self._reflexed = tuple(sorted(n_ for n_ in spinal if n_ in REFLEX_DRIVEN + ("waist",) and acts.get(n_) != given_.get(n_)))   # A230b: the
+                                                                        # effectors whose act a reflex replaced this tick (the next frame shows them)
         if self.tone:                                                   # A185: THE RESTING TONE: each arm's proximal joints drawn toward
             q_ = d.qpos[self.qadr]                                      # their born resting angles by a saturating step, summed with the
             for limb in R.TONE_REST:                                    # cord's other patterns and the own act (reflexes.tone)
@@ -2067,7 +2084,8 @@ class G1World(SimWorld):
     def press_lever(self, x=1.0):
         """THE LEVER pressed for the next frame (+1 or -1; the generator's judge at a task met, a living test's, a person's button):
         felt by anatomy.LeverReward where the body has the switch; `lever_on` marks a world whose frames carry it (0 when unpressed)"""
-        self.lever_on = True; self.lever_now = float(x)
+        self.lever_on = True; self.lever_now = float(getattr(self, "lever_now", 0.0)) + float(x)   # (the review of 10-26: two presses in a
+                                                                                                    # tick add; the second overwrote the first)
 
     def _truth(self):
         """world truth for the parent and the instruments (never the body)"""
@@ -2118,6 +2136,7 @@ class G1World(SimWorld):
                                        None if self._loco_cmd is None else [float(x) for x in self._loco_cmd]],   # A227
                               "loco_push": [float(x) for x in getattr(self, "_loco_push", (0.0, 0.0))],   # A228b: the cord's push the next frame shows
                               "driven": [str(x) for x in getattr(self, "_driven", ())],   # A230: the effectors the gait drove (the next frame shows them)
+                              "reflexed": [str(x) for x in getattr(self, "_reflexed", ())],   # A230b: the effectors whose act a reflex replaced
                               "vor_slip": ([] if self._vor_slip is None else list(map(float, self._vor_slip))),        # A174 (empty: none)
                               "vor_turn": ([] if self._vor_turn is None else list(map(float, self._vor_turn))),
                               "observer": self.observer.state(), "sounds": self.sounds.state(),
@@ -2196,6 +2215,7 @@ class G1World(SimWorld):
         if s5.get("reach_hand") is not None:                               # E2 (a save before it: no reach seen)
             self.reach_hand.load_state(s5["reach_hand"])
         self._driven = tuple(str(x) for x in s5.get("driven", ()))   # A230 (an older save: none)
+        self._reflexed = tuple(str(x) for x in s5.get("reflexed", ()))   # A230b (an older save: none)
         vs_, vt_ = s5.get("vor_slip"), s5.get("vor_turn")               # (A174; older saves or an empty pair: none)
         self._vor_slip = None if not vs_ else np.asarray(vs_, float).copy()
         self._vor_turn = None if not vt_ else np.asarray(vt_, float).copy()

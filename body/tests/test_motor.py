@@ -2123,7 +2123,6 @@ def test_the_striatum_reads_the_body():
     rms = float(m.stri_Ws.pow(2).mean().sqrt()); want = 1.0 / _m.sqrt(k_)                      # one event's weight at unit norm
     assert abs(rms - want) / want < 0.1, (rms, want)
     # the rows before the sense line are born as without it
-    from body.model import Organs as _O
     seen = []
     run = WorldLoop(L)
     for _ in range(30):

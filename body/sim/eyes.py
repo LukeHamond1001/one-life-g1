@@ -343,6 +343,8 @@ GROUND_SAL_FLOOR = 0.06 # A202h: the least colour contrast of a periphery cell a
 HER_MIN_CELLS = 16      # A217: the window's cells not covered by her body for the window to be read (a quarter of 64; ours)
 FACE_EXCL_RAD = math.radians(8.0)   # A202p: the periphery cells within this of her face's direction are hers, not a thing's (ours: a face's half-width at arm's length)
 GROUND_FIG = 0.02       # A202m: the least departure of a fovea window cell from the window's mean for the window to hold a figure (ours)
+GROUND_HELD_FLOOR = 0.25    # A202t: with its own hand in the window, the least departure of a window cell from the scene to be a held thing's colour
+                            # (ours: NB2's frames, 0.05-0.15 its grey hand and the floor, 0.3-0.45 a toy)
 
 
 def _local_contrast(c):
@@ -400,6 +402,19 @@ def ground_appearance(eye_f, eye_p=None, face=None, gaze=None, own=None, her=Non
         own_win = bool(own_ is not None and own_.size == rows * cols + 1 and own_[-1] > 0)
         if face is None and not own_win and fig > GROUND_FIG and float(np.linalg.norm(win)) > GROUND_FLOOR_WIN:   # the fovea holds a figure: its look against the room
             return win                                                      # (two toys in view: the one its eyes are on, not the brighter)
+        if face is None and own_win and fig >= 0.0:
+            # A202t (2026-10-26): A THING IN ITS OWN HAND IS A THING. A202s dropped the whole window whenever a link of its own lay in it,
+            # and the periphery's cells its own links lie in: a toy held in its own hand was never the look. NB2's frames of 03:44-03:54:
+            # its hand in the window on 53% of them; the look then the brightest thing elsewhere, the duck (yellow 38% of all looks, blue
+            # 7%); 'block' bound to the duck's yellow (consistency 0.58) and 'cup' to nothing (0.24). Its hand is part of itself, but what
+            # it holds is a thing, and a toddler's own held toys, large in its view, are where names are learned (Yu and Smith 2012). Its
+            # links are grey (silver 0.7, black 0.2: no opponent colour), so beside its hand the window's cell that stands out most from
+            # the scene past GROUND_HELD_FLOOR is the held thing's colour: the look (the frames: that cell at 0.05-0.15 with no coloured
+            # thing in the window, the room's own code 0.11, and at 0.3-0.45 with one; few between)
+            dv_ = np.linalg.norm(cw - scene, axis=1)
+            j_ = int(np.argmax(dv_))
+            if float(dv_[j_]) > GROUND_HELD_FLOOR:
+                return cw[j_] - scene
         loc = _local_contrast(cells_.reshape(rows, cols, GROUND_K))
         loc = np.minimum(loc, np.linalg.norm(cells_ - scene, axis=1))     # (A202p: a cell stands out when it differs from its neighbours AND
         if face is not None:                                                #  from the room: the floor beside a red cell lights up against its neighbours too)

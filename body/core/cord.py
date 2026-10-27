@@ -91,7 +91,8 @@ def sight_source(cfg):
     sight_src "dino" (the default, every body before it): the pretrained eye's colour-window code, eye_d[384:768]; "fovea": THE BORN EYE'S
     OWN FOVEA, eye_f whole (both grey foveae through the born bank, the colour window's opponent cells: the same 21 degrees at the gaze the
     DINO window reads, coded by the body's own early visual system, Hubel and Wiesel's cells, nothing pretrained). -> (channel, from, to)"""
-    if str((cfg or {}).get("sight_src", "dino")) == "fovea":
+    cfg = cfg or {}
+    if str(cfg.get("sight_src", "dino")) == "fovea":
         return "eye_f", 0, FOVEA_SIZE
     return "eye_d", SIGHT_FROM, SIGHT_TO
 
@@ -380,6 +381,8 @@ class CordMixin:
             if o_ is not None:
                 y_ = float(o_[int(c.yaw)]) if c.yaw is not None else 0.0
                 f_ = 1.0 if (float(o_[int(c.fired)]) > 0.0 or (c.side_only and y_ != 0.0)) else 0.0
+                if c.side_only and y_ != 0.0 and int(self._reflex_const("voice_hold_cues")):
+                    self._voice_hold = (int(self.ticks), float(y_))     # (voice_hold_cues: the side kept here, not by the born approach alone)
             if c.side_only and y_ == 0.0:
                 vh_ = getattr(self, "_voice_hold", None)
                 if vh_ is not None and 0 < int(self.ticks) - int(vh_[0]) <= int(self._reflex_const("voice_hold")):
@@ -414,6 +417,8 @@ class CordMixin:
                 y_ = float(o_[int(c.yaw)]) if c.yaw is not None else 0.0
                 p_ = float(o_[int(c.pitch)]) if c.pitch is not None else 0.0
                 f_ = 1.0 if (float(o_[int(c.fired)]) > 0.0 or (c.side_only and y_ != 0.0)) else 0.0
+                if c.side_only and y_ != 0.0 and int(self._reflex_const("voice_hold_cues")):
+                    self._voice_hold = (int(self.ticks), float(y_))     # (voice_hold_cues, as `_actor_cues`)
             if c.side_only and y_ == 0.0:
                 vh_ = getattr(self, "_voice_hold", None)
                 if vh_ is not None and 0 < int(self.ticks) - int(vh_[0]) <= int(self._reflex_const("voice_hold")):

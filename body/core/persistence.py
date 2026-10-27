@@ -266,6 +266,11 @@ class PersistenceMixin:
                             or (k_ == "stri_eline" and not anatomy.events)])
         if dropped:
             print("load: the save holds organs of channels or effectors this anatomy does not declare (not loaded):", dropped, flush=True)
+        said_ = set(dropped)
+        unread_ = sorted({k_.split(".")[0] for k_ in missing.unexpected_keys if k_ not in said_})
+        if unread_:                                                  # (the review of 10-26: own_words 1 -> 0 at the 19:45 resume of 10-26 dropped
+            print("load: the save holds organs this body does not build (NOT loaded; the next save drops them for good):",   # word_pred and
+                  unread_, flush=True)                                                                                       # speak_pred unsaid)
         if [k_ for k_ in missing.missing_keys if not (k_.startswith("vc_") or k_.startswith("vf_") or k_.startswith("stri_") or k_.startswith("vfast.") or k_.startswith("actor.") or k_.startswith("actors.") or k_.startswith("wm_") or k_.endswith(".inv_mu") or k_.endswith(".inv_sd") or k_.endswith(".inv_m1") or k_.endswith(".inv_m2") or k_.endswith(".inv_c"))]:
             print("load: organs without", [k_ for k_ in missing.missing_keys if not (k_.startswith("vc_") or k_.startswith("vf_") or k_.startswith("stri_") or k_.startswith("vfast.") or k_.startswith("actor.") or k_.startswith("actors.") or k_.startswith("wm_") or k_.endswith(".inv_mu") or k_.endswith(".inv_sd") or k_.endswith(".inv_m1") or k_.endswith(".inv_m2") or k_.endswith(".inv_c"))], "(an older recipe; born fresh where missing)")
         if any(k_.endswith(".inv_mu") for k_ in missing.missing_keys):

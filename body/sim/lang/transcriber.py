@@ -154,7 +154,7 @@ class Transcriber:
                     self.held.append((t, int(token)))
             else:
                 for tk, s in self.held:
-                    out += self._symbol(tk, s, t, vocab, p, said_word, expected)
+                    out += self._symbol(tk, s, t, vocab, p, said_word, expected, over=True)
                 self.held = []
                 out += self._symbol(t, LX.ID[LX.REST] if token is None else int(token), t, vocab, p, said_word, expected)
         return out
@@ -181,19 +181,23 @@ class Transcriber:
     def _echo(self, word, start, said_word):
         return word is not None and word in said_word and abs(start - said_word[word]) <= K.ECHO_WINDOW
 
-    def _symbol(self, tk, s, t, vocab, p, said_word, expected=()):
+    def _symbol(self, tk, s, t, vocab, p, said_word, expected=(), over=False):
+        """over (NB2 19:3x 10-26): the symbol was made while she spoke (held, read at her line's end): its ChildWord's in_pause is
+        False (a token said over her line; until then every token read as begun in her pause, the chant along her line among them)"""
         out = []
         if s < LX.N_BIRTH:                                                   # a word token
             out += self._close(t, vocab, p, said_word, expected)
             w = LX.TABLE[s]
             if w in vocab:
-                out.append(ChildWord(t, "token", w, True, tk, tk, tuple(expected), self._echo(w, tk, said_word), True,
+                out.append(ChildWord(t, "token", w, True, tk, tk, tuple(expected), self._echo(w, tk, said_word), not over,
                                      dict(symbols=[w])))
             self.rests = 0
         elif s in LX.LETTER_ID.values():
             if not self.letters:
                 self.letters_start = tk
+                self.letters_over = False
             self.letters += LX.TABLE[s]
+            self.letters_over = bool(getattr(self, "letters_over", False) or over)
             self.rests = 0
         elif s == LX.ID[LX.REST]:
             self.rests += 1
@@ -216,7 +220,8 @@ class Transcriber:
                     near.add(o.name)
             near |= {o.name for o in p.attended()}
         w, exact, how = read_letters(s, vocab, near)
-        return [ChildWord(t, "token", w, exact, start, t, tuple(expected), self._echo(w, start, said_word), True,
+        over_, self.letters_over = bool(getattr(self, "letters_over", False)), False
+        return [ChildWord(t, "token", w, exact, start, t, tuple(expected), self._echo(w, start, said_word), not over_,
                           dict(letters=s, read=how))]
 
     # ------------------------------------------------------------------ save

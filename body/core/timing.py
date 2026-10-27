@@ -410,10 +410,11 @@ class TimingMixin:
         every_ = int(self._motor_const("act_inv_every")); chance_ = int(self._motor_const("act_inv_chance"))
         push_ = self._sense_push(e) if prev is not None else None                 # A228b: what the cord's push made of the move
         drv_ = self._sense_driven(e) if prev is not None else None                # A230: the world drove its joints itself (its own act moved nothing)
+        mute_ = bool(self._sense_mute(e)) if prev is not None else False          # NB2 19:4x: its own act sounded nothing its ears could hear
         keep_ = None if push_ is not None else (self._inv_keep(e, prev) if prev is not None else None)   # A228: else the joints its act alone moved
         s_own_ = s_now if push_ is None else s_now - push_                        # A228b: the move its own act made
         if e.inverse and st["sense"] is not None and prev is not None and prev["acted"] and (keep_ is None or any(keep_)) and not drv_ \
-                and not getattr(self, "_watch_now", False):                # W1: while watching no pair is learned or gathered (the act was
+                and not mute_ and not getattr(self, "_watch_now", False):                # W1: while watching no pair is learned or gathered (the act was
             if every_ <= 1 and not chance_:                                 # this model's own reading: it must not teach itself its readings)
                 if keep_ is None:
                     self._inverse_lesson(i, st["sense"], s_own_, int(prev["act"]))   # R6's: a step a tick, its reliability Cohen's kappa
@@ -589,6 +590,20 @@ class TimingMixin:
                 return o_, int(w_)
             o_ += int(w_)
         return None
+
+    def _sense_mute(self, e):
+        """NB2 (19:4x 10-26): AN OWN ACT THE EARS NEVER HEARD TEACHES THE EARS' INVERSE NOTHING. For an effector whose sense is the ears
+        (the tract), the frame's "voice_mute" (body/sim/world.py VOICE_MUTE_PA: the tract's sound in the tick before under 20 dB SPL at 1 m)
+        marks an own act that radiated nothing: the change its ears heard was her voice's or the room's, and the pair (its act the label)
+        taught act_inv to read her sounds as its moves and its reliability stood at 0.01-0.27 (NB2, 99,090 lessons). Only its own acts'
+        pairs are skipped; the rest pairs (her voice heard while it is silent) are kept. -> True / False (None where the frame shows none)"""
+        if getattr(e, "sense", None) != "ears":
+            return None
+        f_ = getattr(getattr(self, "world", None), "now", None)
+        v_ = None if f_ is None else f_.obs.get("voice_mute")
+        if v_ is None:
+            return None
+        return bool(float(torch.as_tensor(v_, dtype=torch.float32).reshape(-1)[0]) > 0.5)
 
     def _sense_driven(self, e):
         """A230 (2026-10-17): AN ACT THE WORLD DID NOT CARRY OUT TEACHES act_inv NOTHING. The frame the tick is lived on shows, for an

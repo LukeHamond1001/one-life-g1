@@ -289,13 +289,27 @@ def episode_entries(episodes, surprise, delta, tstar, mean_state, tau=64):
     return out
 
 
-def night_draw(entries, tags, n, gen):
+def night_draw(entries, tags, n, gen, tire=False):
     """THE TAGGED COME FIRST (7.4 item 2; R8): the night's `n` dreams over episodes with `entries` and T_e `tags`: every episode with T_e >= 1
     dreamt once before the weighted draw, highest first, taking at most half the night; the rest drawn by entry, with replacement, on the
-    body's generator `gen`. Returns the episodes' indices in the order dreamt"""
+    body's generator `gen`. Returns the episodes' indices in the order dreamt.
+    NB2 (2026-10-25; `tire`, the switch night_draw_tire): A DREAMT EPISODE TIRES. The rest are drawn by entry WITHOUT replacement, the
+    tagged firsts not again: each episode dreamt at most once a night while the night has episodes enough (fewer than its dreams: every
+    one once, the remainder by entry with replacement). With replacement a heavy-tailed entry took the night: NB1's nights dreamt 845 to
+    1,308 distinct episodes of their 2,048 dreams, one episode up to 160 times (night 3), so with 6 rounds one 64-tick window was
+    replayed up to 960 times in a night. The words' dreams tire the same way (dream_adapt, dream_exhaust: a recalled memory tires, a slot
+    fires at most twice), as a reactivated memory trace is refractory for a while (neural adaptation; the words' night's own law)"""
     first = sorted([i for i, T_ in enumerate(tags) if float(T_) >= 1.0], key=lambda i: (-float(tags[i]), i))[: int(n) // 2]
     rest = int(n) - len(first)
     w = torch.tensor([max(0.0, float(e)) for e in entries], dtype=torch.float64)
+    if tire and rest > 0:
+        if first:
+            w[torch.tensor(first, dtype=torch.long)] = 0.0
+        k_ = int((w > 0).sum()); a_ = min(rest, k_)
+        drawn = torch.multinomial(w / w.sum(), a_, replacement=False, generator=gen).tolist() if a_ > 0 else []
+        if rest > a_ and float(w.sum()) > 0:
+            drawn += torch.multinomial(w / w.sum(), rest - a_, replacement=True, generator=gen).tolist()
+        return first + [int(i) for i in drawn]
     drawn = torch.multinomial(w / w.sum(), rest, replacement=True, generator=gen).tolist() if rest > 0 and float(w.sum()) > 0 else []
     return first + [int(i) for i in drawn]
 

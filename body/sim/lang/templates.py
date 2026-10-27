@@ -188,6 +188,12 @@ FRAMES = {
     "see_down": [F("down. the {o}.", "{o}"), F("down. down. the {o}.", "{o}"), F("look. down. the {o}.", "{o}")],
     "see_up": [F("up. the {o}.", "{o}"), F("up. up. the {o}.", "{o}"), F("look. up. the {o}.", "{o}")],
     "see_in": [F("in. the {o}.", "{o}"), F("in. in. the {o}.", "{o}"), F("look. in. the {o}.", "{o}")],
+    # NB2 (2026-10-25, the owner's word: "get number 4 going"): THE TWO-TOY TASK's word (tools/harness/demo_box.py begin2): which of the two
+    # objects in its hands goes in the box, said as the task begins and again while it runs (her words: 'put' and 'box' are not hers;
+    # the focus, the object, last); plain, as see_in: nothing judged by her, the pay the lever's
+    "put_in": [F("in. the {o}.", "{o}"), F("the {o}. in. the {o}.", "{o}"), F("in. in. the {o}.", "{o}"), F("{n}. in. the {o}.", "{o}")],
+    "put_in2": [F("the {o}. in. the {o}.", "{o}")],   # NB2 05:4x 10-26: the two-toy request names the toy first: the first name draws its eyes
+                                                      # to the toy (the grounding cue), the line's last word is heard with them on it
     "ask_give": [F("give me the {o}.", "{o}"), F("give mama the {o}.", "{o}"), F("the {o}. give me the {o}.", "{o}")],
     "confirm": [F("yes. the {o}!", "{o}"), F("yes! a {o}.", "{o}"), F("good. the {o}!", "{o}"), F("yes. it is a {o}.", "{o}")],
     "confirm_act": [F("yes! good.", "good"), F("good. good!", "good")],

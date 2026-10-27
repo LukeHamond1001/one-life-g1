@@ -365,7 +365,7 @@ def test_the_face_template():
                               "words", "face", "ears", "sound_side", "onset_periph",
                               "strain", "gaze_periph", "hand_periph", "salient_periph", "her_cells", "self_cells", "loco_cmd",
                               "loco_cmd_push", "leg_l_driven", "leg_r_driven", "waist_driven", "loco_engaged", "leg_l_engaged", "leg_r_engaged",
-                              "waist_engaged", "loco_blocked"}, sorted(f.obs)   # (A88's strain; the cues and cells since; A224; A228b; A230; A231; A232)
+                              "waist_engaged", "loco_blocked", "arm_l_driven", "arm_r_driven", "hand_l_driven", "hand_r_driven"}, sorted(f.obs)   # (A88's strain; the cues and cells since; A224; A228b; A230; A231; A232; A230b)
         t = f.truth["eyes"]
         assert t["face_test"]["L"][0] and t["face_test"]["R"][0]
         assert f.obs["face_fovea"][0] == 0.0 and f.obs["face_periph"][0] == 1.0       # no born face detector on the pixels at birth (C39 option a); the born

@@ -43,7 +43,16 @@ METRES_WIN = 10                              # ticks: the metres are the pelvis'
 LEAD_M = 0.30                                # m: the lead never farther ahead of the torso than this (a step)
 LIFT_TICKS, LOWER_TICKS = 20, 20             # ticks: the rise from lying to standing height, the lowering at the end (3 s each; ours)
 HOLD_DROP = 0.0                              # m: the hold's height under the torso's standing height (ours: none; the cap below decides what it bears)
-CARRY_SHARE = 0.5                            # the most of its weight the hold carries once it stands (ours: her two hands' sustained cap, 156 N, is 0.46
+POSE_HOLD = bool(int(__import__('os').environ.get('GHOST_POSE_HOLD', '0')))   # NB1 (2026-10-25): THE POSE HELD, no policy: past the lift the
+# legs' servos held at the gait's own standing pose (EXPERT_DEFAULT) and the waist upright, the child's acts on them disengaged as when the
+# gait owned them (A231): the arms-only newborn (the owner's 'the body held up by the parent's hands'). Without it the newborn's own waist
+# leaned its trunk until the waist pitch's gear back-drove: free, 11 pain ticks in 300 (the waist pitch 7), as many on a seat at the
+# pelvis; held, 6 in 325 (the wrists under the push 4, a set-down's jolt 1, the lift 1) and the cup handed 1 to 2 times a task, not 3 to 5
+CARRY_SHARE = float(__import__('os').environ.get('GHOST_CARRY_SHARE', 0.5))   # (NB1 2026-10-25: the newborn's harness 1.0, its whole weight, its legs free)
+WALK_CARRY = float(__import__('os').environ.get('GHOST_WALK_CARRY', 0.5))   # NB2 (15:4x 10-26): the hold's share of the weight in a walk block
+# between the held newborn's tasks (the soles loaded, so the teacher's steps carry it over the floor): CARRY_SHARE's own default, her two
+# hands' sustained cap (0.46 of it); the walking lives' share
+# the most of its weight the hold carries once it stands (ours: her two hands' sustained cap, 156 N, is 0.46
                                              # of it; 16:20: with the whole weight on offer, the copy hung, the soles unloaded and the standing reflex off)
 # 16:00-16:20, the copies (the clock read right at 16:25): held and righted at the torso it walked (900 ticks: 16 steps, 9.1 m, 2 falls) but the righting torque went
 # through the waist pitch joint at its load line (54 of 62 pain ticks); held and righted at the pelvis, a walker's seat, no pain and
@@ -53,10 +62,10 @@ LOWER_Z = 0.30                               # m: the pelvis at the lowering's e
 FADE = 1.0 / 2000.0                          # the strength's fall a tick on which the body bears its own weight (ours: a block of bearing takes it to 0)
 RISE = 0.002                                 # the strength's rise a tick on which the ghost carries more than HANG of its weight (ours: 500 ticks hanging bring it back)
 HANG, BEARS = 0.6, 0.3                       # the share of its weight carried that counts as hanging; under which it bears its own (ours)
-GAIT_CATCH = False                           # A239 (2026-10-19, the owner's word: the scaffolds off; the experiences supply what they forced):
+GAIT_CATCH = bool(int(__import__('os').environ.get('GHOST_GAIT_CATCH', '0')))   # (NB2 16:3x: settable) A239 (2026-10-19, the owner's word: the scaffolds off; the experiences supply what they forced):
                                              # a fall and a walk out of the rooms no longer give the gait's teacher EDGE_UP back; its share falls
                                              # as the leg layer agrees (W9's teaching kept), and the room still lifts a fallen body. True: W7c's
-GAIT_FADE = False                            # A239b (2026-10-19, before dawn 1): in pretraining Unitree's gait walks: its share does not fade as the
+GAIT_FADE = bool(int(__import__('os').environ.get('GHOST_GAIT_FADE', '0')))     # (NB2 16:3x: settable) A239b (2026-10-19, before dawn 1): in pretraining Unitree's gait walks: its share does not fade as the
                                              # leg layer agrees (W9's fade). Day 0 of the second life, its first command block: the share fell
                                              # 1.0 to 0.0 in 3,000 ticks on a newborn's layer that agreed in the gait's own states, and with the
                                              # catch retired (A239) the layer then walked alone and fell 10 times in 1,900 ticks, the pain and
@@ -238,6 +247,12 @@ TURN_WALK_V = 0.15                       # m/s: the room's turn at a wall in a w
 PROBE_HARNESS_S = None                   # (copy probes only: the hold and the righting pinned at this strength; the legs' share apart)
 PROBE_LEGS_S = None                      # (copy probes only: the teacher's share at the legs pinned)
 PROBE_WAIST_EXT = None                   # (copy probes only: an outside torque K (0 - q) - 4 dq on the waist in a walk, uncapped)
+TURN_HELP = float(__import__('os').environ.get('GHOST_TURN_HELP', '0'))   # NB2 (20:3x 10-26): THE TURNS STEADIED. The walk's falls alone, logged
+LAT_RING, LAT_LAST = 12, 4               # ticks: a walk's sideways load kept for a fall's line (1.8 s), less the fall's own last 4 (0.6 s)
+TURN_HELP_FADE, TURN_HELP_CATCH, TURN_HELP_MAX = 0.97, 0.10, 0.5   # (THE WALK FELL), came in the room's turns at a wall: 2 of the 2 within the
+# blocks since the log (backward and sideways, 65-79 degrees, the teacher's share 0). As a parent steadies a toddler through a turn, the
+# teacher's share in a walk's turn is at least turn_s: from TURN_HELP, less by TURN_HELP_FADE at each turn ended without a fall, more by
+# TURN_HELP_CATCH at a fall in a turn (TURN_HELP_MAX at most); the leg layer learns from the teacher's steps in the turns as before. 0: off
 WALK_START = 30                          # ticks: after each lift the teacher walks it off at full share, handing down to s over these
                                          # (ours: the copies' falls came in the first seconds after a catch, a moment the layer had seldom met)
 OBS_MAX = 50.0                           # W9d: the leg layer's readings bounded (the gait's scaled readings sit within +-10 on its feet; ours)
@@ -272,6 +287,10 @@ class Ghost:
         self.e_kp = np.array(EXPERT_KP); self.e_kd = np.array(EXPERT_KD); self.e_default = np.array(EXPERT_DEFAULT)
         self.e_aid = np.asarray(w.aid)[self.e_idx]; self.e_lo = np.asarray(w.lo, float)[self.e_idx]; self.e_hi = np.asarray(w.hi, float)[self.e_idx]
         self.use_expert = bool(int(__import__('os').environ.get('GHOST_EXPERT', '1')))
+        self.pose_hold = bool(POSE_HOLD); self.carry_share = float(CARRY_SHARE)   # NB2 (15:4x 10-26): the walk block switches them (`walk_block`)
+        self.walk_room = False; self.walk_s = 1.0                       # NB2: a walk in the rooms, not on the practice ground; its teacher's share kept
+        self.stop_left = 0                                              # NB2 (20:1x 10-26): ticks of the walk's stop still to run (`stop`)
+        self.turn_s = float(TURN_HELP)                                  # NB2 (20:3x 10-26): the teacher's least share in a walk's turn (TURN_HELP)
         self.turning = False; self.left_room = 0; self.edge = None   # W7c: the strength at the last fall (None: no fall yet)
         self.command = False; self.cmd_v = 0.0; self.cmd_w = 0.0     # W8: the command block, and the brain's command
         self.base = int(w.base_dof)
@@ -303,12 +322,18 @@ class Ghost:
 
     def obeys_command(self):
         """A231 (2026-10-18): whether the gait takes the brain's walk command this tick (a command block): outside one the command moves
-        nothing (the ghost off, or walking the room's own route)"""
-        return bool(self.on and self.command)
+        nothing (the ghost off, or walking the room's own route); NB1's pose held: never (no gait to carry it)"""
+        return bool(self.on and self.command and not self.pose_hold)
+
+    def holds_pose(self):
+        """NB1: whether the pose is held this tick (POSE_HOLD, on, past the lift, not lowering)"""
+        return bool(self.pose_hold and self.on and self.lower == 0 and self.ticks > LIFT_TICKS)
 
     def owns_legs(self):
         """A231 (2026-10-18): whether the gait sets the legs' and the waist's targets this tick (a walk past its lift with the expert on,
         as `before_step` will find it): their own acts would move nothing"""
+        if self.holds_pose():
+            return True                                                 # NB1: the pose held owns them as the gait did
         if not (self.on and self.walk) or self.lower != 0 or self.ticks <= LIFT_TICKS or not self.use_expert:
             return False
         return self._policy() is not None
@@ -321,6 +346,7 @@ class Ghost:
 
     def on_(self, w, heading=None, command=False, walk=False):
         d = w.d
+        self._anchor = True                                             # (NB2 15:3x: under POSE_HOLD the hold anchors where the lift leaves it)
         self.command = bool(command); self.cmd_v = 0.0; self.cmd_w = 0.0
         self.walk = bool(walk); self.alone = 0; self.s_target = np.array(EXPERT_DEFAULT); self.w_target = np.zeros(3)
         if self.walk:                                                   # W9: the gait's memory starts afresh with the walk, the leg servos
@@ -378,6 +404,50 @@ class Ghost:
             return
         self.lower = LOWER_TICKS; self.z_from = float(w.d.xipos[self.b][2]); self.z_to = LOWER_Z
 
+    def walk_block(self, w, on, command=False):
+        """NB2 (15:4x 10-26, the owner: 'instead of dragging it we should be pushing at joints to show it it can walk'): A WALK BLOCK
+        between the held newborn's tasks. ON: the pose hold let go, the gait's teacher (Unitree's pretrained policy, W7b) walks its legs
+        through their servos' targets at the room's pace (W9b's slow swing of speed 0 to 0.5 m/s and of turn), the walls turning the
+        heading toward the room's middle; the hold at the chest carries WALK_CARRY of the weight (the soles loaded: the steps carry the
+        body over the floor) and rights the pelvis as in any walk; the body's own leg layer learns from every step the teacher takes on
+        the state the body is in (W9: its targets the blend of its own and the teacher's by the teacher's share, kept from block to
+        block in walk_s; GAIT_FADE decides whether that share falls as the layer agrees). The gait's memory, the leg layer's short
+        memory and its wild lessons begin afresh, as at any walk's start (on_). OFF: the share kept, the pose held again at the
+        standing pose with the newborn's carry (CARRY_SHARE), the brain's command block as before, the hold anchored where the walk
+        ended. COMMAND (NB2 17:5x, the come): the walk the brain's own (W8): the gait takes the brain's walk command (the loco effector's
+        go and turn), not the room's pace; the leg layer at its kept share carries it. -> True when the mode changed"""
+        if not self.on or bool(on) == (not self.pose_hold):
+            return False
+        if on:
+            self.use_expert = True
+            pol_ = self._policy()
+            if pol_ is None:
+                return False
+            import torch
+            with torch.no_grad():
+                pol_.hidden_state.zero_(); pol_.cell_state.zero_()
+            w.set_leg_gains(True)
+            if getattr(w, "legs", None) is not None:
+                w.legs.forget()
+                w.legs.purge()
+            self.pose_hold = False; self.carry_share = WALK_CARRY; self.command = bool(command); self.walk = True; self.walk_room = True
+            if command:
+                self.cmd_v = 0.0; self.cmd_w = 0.0                      # (the brain's command from rest)
+            self.s = float(self.walk_s); self.turning = False; self.steady = None; self.alone = 0
+            self.ticks = LIFT_TICKS + 1                                 # (17:3x: and walked off at full share, handed down to s over WALK_START
+                                                                        # ticks, as after a lift (s_eff): a walk begun from standing at share 0
+                                                                        # fell in its first block after the 17:22 and 17:28 restarts)
+            R = w.d.xmat[self.pelvis].reshape(3, 3); self.heading = float(math.atan2(float(R[1, 0]), float(R[0, 0])))
+            self.lead = np.asarray(w.d.xipos[self.b][:2], float).copy()
+            self.e_action[:] = 0.0; self.e_target = self.e_default.copy(); self.e_count = 0
+            self.err_bins = [0] * (len(ERR_BINS) + 1)
+        else:
+            self.walk_s = float(self.s)
+            self.use_expert = False; self.pose_hold = True; self.carry_share = float(CARRY_SHARE); self.command = True; self.walk_room = False
+            self.s = 1.0; self.turning = False; self.steady = None; self._anchor = True
+            self.s_target = np.array(EXPERT_DEFAULT); self.w_target = np.zeros(3)
+        return True
+
     def clear(self):
         """the applied wrenches forgotten (the world's fault roll-back cleared xfrc_applied, W6)"""
         self.last[:] = 0.0; self.last_p[:] = 0.0
@@ -401,10 +471,10 @@ class Ghost:
             prog = frac = min(1.0, self.ticks / LIFT_TICKS)
         pol = self._policy() if self.ticks > LIFT_TICKS or self.lower == 0 else None
         expert_on = pol is not None and self.use_expert and self.lower == 0 and self.ticks > LIFT_TICKS
-        self.drove = bool(expert_on and self.walk)                       # A230: the gait set the legs' and the waist's targets this step
+        self.drove = bool(expert_on and self.walk) or self.holds_pose()  # A230: the gait set the legs' and the waist's targets this step (NB1: or the pose held)
         z_t = self.z_from + (self.z_to - self.z_from) * prog - (EXPERT_DROP if expert_on else 0.0)
         fz = s * (K_Z * (z_t - float(p[2])) - C_Z * float(v_lin[2]))
-        cap = F_Z_MAX if (self.ticks <= LIFT_TICKS or self.lower > 0) else CARRY_SHARE * self.weight   # the lift may carry it; standing, the legs must
+        cap = F_Z_MAX if (self.ticks <= LIFT_TICKS or self.lower > 0) else self.carry_share * self.weight   # the lift may carry it; standing, the legs must
         fz = min(max(fz, 0.0), cap)                                       # up only: slack above
         velp = np.zeros(6); mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_BODY, bp, velp, 0)
         w_ang = velp[:3]
@@ -436,6 +506,9 @@ class Ghost:
         self.last = wrench; self.last_p = wrench_p
         if expert_on:
             self._expert_step(w, d, self.s_eff() if PROBE_LEGS_S is None else float(PROBE_LEGS_S))
+        elif self.holds_pose():                                         # NB1: THE POSE HELD: the legs at the gait's standing pose, the waist upright
+            d.ctrl[self.e_aid] = np.clip(self.e_default, self.e_lo, self.e_hi)
+            d.ctrl[self.w_aid] = np.clip(np.zeros(3), self.w_lo, self.w_hi)
         if self.walk and PROBE_WAIST_EXT and expert_on:
             d.qfrc_applied[self.w_dof] += float(PROBE_WAIST_EXT) * (0.0 - d.qpos[self.w_qadr]) - 4.0 * d.qvel[self.w_dof]
         self.fz_sum += fz; self.n += 1
@@ -456,7 +529,11 @@ class Ghost:
             wz = min(max(EXPERT_TURN * _wrap(self.heading - yaw), -EXPERT_WZ_MAX), EXPERT_WZ_MAX)
             if self.turning and abs(_wrap(self.heading - yaw)) < TURN_DONE:
                 self.turning = False
-            if self.walk and self.turning:                             # W9b: the room's turn at a wall in a walk: slowly, walking
+                if TURN_HELP > 0.0:
+                    self.turn_s = max(0.0, float(getattr(self, "turn_s", TURN_HELP)) * TURN_HELP_FADE)   # (a turn without a fall: less help)
+            if int(getattr(self, "stop_left", 0)) > 0:                 # NB2 20:1x: THE WALK'S STOP (`stop`): the gait asked to stand still
+                cmd = np.zeros(3) * np.array(EXPERT_CMD_SCALE)
+            elif self.walk and self.turning:                           # W9b: the room's turn at a wall in a walk: slowly, walking
                 cmd = np.array([TURN_WALK_V, 0.0, wz]) * np.array(EXPERT_CMD_SCALE)
             elif self.command and not self.turning:                    # W8: the brain's command (the room's turn at a wall stands over it);
                 tw_ = w.loco_turn(self.cmd_w) if hasattr(w, "loco_turn") else self.cmd_w   # A227: its turn as the cerebellum calibrates it
@@ -516,7 +593,10 @@ class Ghost:
         """the teacher's share this tick: s, or in a walk's first WALK_START ticks after a lift the hand-down from 1 (W9)"""
         if not self.walk:
             return self.s
-        return max(self.s, 1.0 - max(0, self.ticks - LIFT_TICKS) / WALK_START)
+        base_ = max(self.s, 1.0 - max(0, self.ticks - LIFT_TICKS) / WALK_START)
+        if self.turning and float(getattr(self, "turn_s", 0.0)) > 0.0 and not self.holds_pose():
+            return max(base_, float(self.turn_s))                       # (TURN_HELP: the turn steadied)
+        return base_
 
     @staticmethod
     def ground_mid():
@@ -533,9 +613,44 @@ class Ghost:
         return np.array([(x0 + x1) / 2, (y0 + y1) / 2])
 
     # ------------------------------------------------------------------ the tick's end
+    def stop(self, n):
+        """NB2 (20:1x 10-26): THE WALK'S STOP. A walk block handed straight to the hold (`walk_block(w, False)`: the gait off, the legs' targets
+        the standing pose at once, the hold carrying the whole weight) mid-stride fell at the hand-over (tick 3280: the trunk 59 degrees
+        forward, one hand-over in 9 since the fall log; uncounted in the block's falls, logged after its end). As a parent ends a walk: the
+        gait asked to stand still for n ticks (its command 0, walk or come alike), then the hold"""
+        self.stop_left = int(n); self.turning = False
+
+    def _lat_note(self, w, d, pxy):
+        """NB2 (20:5x 10-26): THE WALK'S SIDEWAYS LOAD, an instrument (the fall line's tip, 5 of 6 to its right, was read along the
+        walk's goal heading; the frames before two falls showed the right forearm held out, and neither the gait nor the leg layer reads
+        the arms): the robot's centre of mass and its two hands across the pelvis's own heading from the pelvis (m, + its left), each
+        upright tick of a walk: a ring of LAT_RING ticks for a fall's line, a sum for the block's"""
+        try:
+            Rp_ = d.xmat[self.pelvis].reshape(3, 3); yaw_ = math.atan2(float(Rp_[1, 0]), float(Rp_[0, 0]))
+            lf_ = np.array([-math.sin(yaw_), math.cos(yaw_)])
+            v_ = [float((np.asarray(d.subtree_com[self.pelvis][:2], float) - pxy) @ lf_)]
+            gc_ = getattr(w, "grasp_centre", None)
+            for h_ in (0, 1):
+                v_.append(float((np.asarray(gc_(h_), float)[:2] - pxy) @ lf_) if gc_ is not None else float("nan"))
+            self.lat_ring = (list(getattr(self, "lat_ring", None) or []) + [v_])[-LAT_RING:]
+            self.lat_sum = np.asarray(getattr(self, "lat_sum", np.zeros(3)), float) + np.asarray(v_, float)
+            self.lat_n = int(getattr(self, "lat_n", 0)) + 1
+        except Exception as e_i5:
+            _I5("ghost.py:_lat_note", e_i5)
+
+    def lat_block(self):
+        """the walk block's mean sideways load as text (the centre of mass, the left hand, the right hand across the pelvis; + its left)"""
+        n_ = int(getattr(self, "lat_n", 0))
+        if n_ <= 0:
+            return "n/a"
+        c_, l_, r_ = (float(x) for x in np.asarray(self.lat_sum, float) / n_)
+        return f"centre {c_:+.3f} m, hands L {l_:+.2f} R {r_:+.2f}"
+
     def tick_end(self, w, acts, digits, settings):
         m, d = w.m, w.d
         self.ticks += 1
+        if int(getattr(self, "stop_left", 0)) > 0:
+            self.stop_left -= 1
         share = (self.fz_sum / self.n) / self.weight if self.n else 0.0
         self.fz_sum = 0.0; self.n = 0
         pz = float(d.xpos[self.pelvis][2]); pxy = np.asarray(d.xpos[self.pelvis][:2], float)
@@ -547,10 +662,10 @@ class Ghost:
         elif self.ticks > LIFT_TICKS:
             x_, y_ = float(pxy[0]), float(pxy[1])
             inside = any(x0 - ROOM_SLACK <= x_ <= x1 + ROOM_SLACK and y0 - ROOM_SLACK <= y_ <= y1 + ROOM_SLACK
-                         for x0, x1, y0, y1 in ((GROUND,) if self.walk and not self.command else ROOMS))   # W9: in a walk, the practice ground
+                         for x0, x1, y0, y1 in ((GROUND,) if self.walk and not self.command and not self.walk_room else ROOMS))   # W9: in a walk, the practice ground
             if not inside and getattr(w, "carry_to_mat", None) is not None:   # W7b: out of the rooms (day 135: 80 m into the void): back to its mat
                 try:
-                    w.carry_to_mat(to=self.ground_mid() if self.walk and not self.command else None)   # (W9: off the ground, back to its middle)
+                    w.carry_to_mat(to=self.ground_mid() if self.walk and not self.command and not self.walk_room else None)   # (W9: off the ground, back to its middle)
                 except Exception as e_i5:
                     _I5("ghost.py:tick_end:502", e_i5)
                     pass
@@ -567,7 +682,25 @@ class Ghost:
                 print(f"the ghost's catch at tick {w.tick}: off its feet {STUCK_TICKS} ticks without a fall (pelvis {pz:.2f} m, the trunk "
                       f"{math.degrees(math.acos(min(1.0, max(-1.0, float(up[2]))))):.0f} deg from upright at ({float(pxy[0]):.1f}, {float(pxy[1]):.1f})) (C362)", flush=True)
             if fallen:                                                      # the catch: the harness takes it again. The first catch
-                if not self.command:
+                ts0_ = float(getattr(self, "turn_s", 0.0))                  # (the turn's help as it fell, before the catch adds to it)
+                if TURN_HELP > 0.0 and self.walk and self.turning and not self.holds_pose():
+                    self.turn_s = min(TURN_HELP_MAX, float(getattr(self, "turn_s", TURN_HELP)) + TURN_HELP_CATCH)   # (a fall in a turn: more help)
+                if self.walk:                                               # NB2 (19:2x 10-26): THE WALK'S FALL, LOGGED (an instrument: falls ran
+                    Rp_ = d.xmat[self.pelvis].reshape(3, 3); yaw_ = float(math.atan2(float(Rp_[1, 0]), float(Rp_[0, 0])))   # ~0.45 a 200-tick
+                    hf_ = np.array([math.cos(yaw_), math.sin(yaw_)])        # block alone, flat over 40 blocks, and the frames show backward
+                    tip_ = float(np.dot(np.asarray(up[:2], float), hf_))   # falls on open floor): where, the heading, turning (and which
+                    lr_ = list(getattr(self, "lat_ring", None) or [])[:-LAT_LAST]   # way), the help, the trunk's tip, the sideways load before
+                    lat_ = (np.nanmean(np.asarray(lr_, float), axis=0) if len(lr_) >= 3 else None)   # (20:5x: the tip was taken along
+                    print(f"THE WALK FELL at tick {w.tick}: at ({float(pxy[0]):.2f}, {float(pxy[1]):.2f}), heading {self.heading:.2f}, "   # the walk's
+                          f"turning {bool(self.turning)}{(' ' + ('left' if _wrap(self.heading - yaw_) > 0 else 'right')) if self.turning else ''}, "   # goal
+                          f"command {bool(self.command)}, its share {float(self.s):.3f} (this tick's {float(self.s_eff()):.3f}), the turn's help {ts0_:.3f}, the hold's {share:.3f}, "   # heading,
+                          f"ticks into the stand {int(self.ticks)}, the trunk {math.degrees(math.acos(min(1.0, max(-1.0, float(up[2]))))):.0f} deg "   # in a
+                          f"from upright, {'backward' if tip_ < 0 else 'forward'} along its pelvis's heading {yaw_:.2f} ({tip_:+.2f}) (sideways "   # turn the
+                          f"{float(np.dot(np.asarray(up[:2], float), np.array([-hf_[1], hf_[0]]))):+.2f}; + its left), "   # new one, up to 90 deg off
+                          f"the sideways load before it {'n/a' if lat_ is None else f'centre {lat_[0]:+.3f} m, hands L {lat_[1]:+.2f} R {lat_[2]:+.2f}'}",   # the
+                          flush=True)                                       # body's: now along the pelvis's own)
+                self.lat_ring = []
+                if not self.command:                                        # the help, the trunk's tip
                     self.edge = float(self.s)
                 self.s = min(1.0, self.s + EDGE_UP) if GAIT_CATCH else self.s; self.ticks = 0; self.falls += 1; self.alone = 0   # W7c; A239
                 if self.walk and getattr(w, "legs", None) is not None:
@@ -585,11 +718,20 @@ class Ghost:
                     self.last[:] = 0.0; self.last_p[:] = 0.0                # (the laying clears the applied forces)
                 self.z_from = float(d.xipos[self.b][2]); self.z_to = self.z_stand; self.lead = np.asarray(d.xipos[self.b][:2], float).copy()
             else:
+                if self.walk:
+                    self._lat_note(w, d, pxy)                               # (NB2 20:5x: the sideways load, an instrument)
                 fwd = np.array([math.cos(self.heading), math.sin(self.heading)])
                 txy = np.asarray(d.xipos[self.b][:2], float)
-                self.lead = self.lead + SPEED * TICK_S * fwd
-                ahead = float((self.lead - txy) @ fwd)
-                self.lead = txy + fwd * min(max(ahead, 0.0), LEAD_M)          # along the heading, a step ahead at most
+                if self.holds_pose():                                       # NB2 (15:3x 10-26, the owner: 'why in clip look like leaning
+                    if self.steady is not None:                             # forward and being dragged'): THE HELD NEWBORN IS HELD, NOT LED.
+                        self.lead = np.asarray(self.steady, float).copy()   # Under POSE_HOLD the lead still walked on at SPEED along the
+                    elif getattr(self, "_anchor", True) or self.ticks == LIFT_TICKS + 1:   # (anchored where the lift or a load leaves it)
+                        self.lead = txy.copy(); self._anchor = False
+                else:                                                       # heading, the legs locked and the weight carried: between tasks
+                    self.lead = self.lead + SPEED * TICK_S * fwd            # the spring hauled the chest forward and the soles slid (the
+                    ahead = float((self.lead - txy) @ fwd)                  # pelvis 0.21 m between task starts, the median; up to 0.91 m).
+                    self.lead = txy + fwd * min(max(ahead, 0.0), LEAD_M)    # Held: where it was set, or the task's steadying point
+                                                                            # (along the heading, a step ahead at most: a walk's lead)
                 expert_ = self.use_expert and self.expert is not None
                 if self.command and not self.turning:                      # W8: the heading is wherever the brain has turned the body
                     Rb = d.xmat[self.pelvis].reshape(3, 3); self.heading = float(math.atan2(float(Rb[1, 0]), float(Rb[0, 0])))
@@ -598,7 +740,7 @@ class Ghost:
                 probe = txy + fwd * look
                 par = getattr(w, "parent", None)
                 clear = getattr(par, "_standing_clear_m", None)
-                if self.walk and not self.command:                          # W9: the ground has no walls; its edge turns the heading
+                if self.walk and not self.command and not self.walk_room:   # W9: the ground has no walls; its edge turns the heading
                     gx0, gx1, gy0, gy1 = GROUND; e_ = GROUND_EDGE_M
                     if not self.turning and not (gx0 + e_ <= probe[0] <= gx1 - e_ and gy0 + e_ <= probe[1] <= gy1 - e_):
                         to_mid = self.ground_mid() - txy                    # (a turn while walking, not in place: the copies' falls
@@ -672,13 +814,17 @@ class Ghost:
                     turn_log=[list(x) for x in getattr(self, "turn_log", [])[-40:]],              # C373
                     own_n=int(self.own_n), own_agree=int(self.own_agree), own_sides=[int(x) for x in getattr(self, "own_sides", [0, 0, 0, 0])], err_bins=[int(x) for x in self.err_bins], off_feet=int(getattr(self, "off_feet", 0)), stuck=int(getattr(self, "stuck", 0)), guide_log=[list(x) for x in self.guide_log], tf=float(self.tf), tc=float(self.tc), fz_sum=float(self.fz_sum), fz_n=int(self.n),
                     walk=bool(self.walk), s_target=[float(x) for x in self.s_target], w_target=[float(x) for x in self.w_target], alone=int(self.alone), alone_best=int(self.alone_best),
-                    pxy=None if self.pxy is None else [float(x) for x in self.pxy])
+                    pxy=None if self.pxy is None else [float(x) for x in self.pxy],
+                    pose_hold=bool(self.pose_hold), carry_share=float(self.carry_share), walk_room=bool(self.walk_room), walk_s=float(self.walk_s), turn_s=float(getattr(self, "turn_s", TURN_HELP)))   # NB2 15:4x: the walk block's
 
     def load_state(self, st):
         if not st:
             self.on = False; self.s = 0.0; self.last[:] = 0.0; self.rec = None; self.lower = 0
             return
         self.on = bool(st["on"]); self.s = float(st["s"]); self.heading = float(st["heading"]); self.lead = np.asarray(st["lead"], float).copy()
+        self._anchor = True                                                    # (NB2 15:3x: a held newborn's hold anchored where the load finds it)
+        self.pose_hold = bool(st.get("pose_hold", POSE_HOLD)); self.carry_share = float(st.get("carry_share", CARRY_SHARE))   # NB2 15:4x (an older
+        self.walk_room = bool(st.get("walk_room", False)); self.walk_s = float(st.get("walk_s", 1.0)); self.turn_s = float(st.get("turn_s", TURN_HELP))                     # save: the launch's)
         self.ticks = int(st["ticks"]); self.lower = int(st["lower"]); self.falls = int(st["falls"]); self.turns = int(st.get("turns", 0))
         self.z_from = float(st["z_from"]); self.z_to = float(st.get("z_to", self.z_stand)); self.last[:] = 0.0; self.last_p[:] = 0.0; self.metres = float(st["metres"])   # (xfrc_applied is not in the
                                                                                         # physics state: a loaded world applies afresh)

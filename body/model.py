@@ -1053,6 +1053,29 @@ class Organs(nn.Module):
         current symbol and the trunk advanced it a step); the night trains the cortex with recall off."""
         return self.latent_pred(C) + self.store_in(reads)     # both calibrated: each norm its certainty
 
+    def set_recency(self, on):
+        """NB1 (2026-10-25, the owner's 'are we adding attention or changing attention kind', before the newborn's birth): THE ATTENTION'S
+        SENSE OF TIME. The cortex's attention had no position in it: over its window a key from the last tick and one from sixty ticks
+        back differed only by what they held, so how long ago a thing happened had to be learned from content, by the causal stacking
+        alone. Under the switch cortex_recency each head's score of an earlier position is lowered by its own slope times the distance
+        (ALiBi: Press, Smith and Lewis 2022, linear biases in place of position embeddings), the slopes 2^(-8 h / H) for the H heads: the
+        first head looks back about 2 ticks, the last about 256 (past the window: no decay), each between twice the one before, as the
+        ladder's clocks double. No learned number, nothing born at random; the same bias in the stream and in the step through the cache.
+        Off (0): None, the attention as it always was"""
+        if not on:
+            if "recency" in self.__dict__:                                         # (none kept where it is off: a body without it carries
+                del self.__dict__["recency"]                                       # no new attribute, its digest as before)
+            return
+        H = int(self.blocks[0].attn.num_heads)
+        self.recency = torch.tensor([2.0 ** (-8.0 * (h + 1) / H) for h in range(H)], device=self._mask.device)
+
+    def _recency_bias(self, T, device):
+        """[H, T, T]: the causal mask as -inf above the diagonal and each head's linear bias -slope x (i - j) at and below it"""
+        i_ = torch.arange(T, device=device)
+        dist_ = (i_.view(T, 1) - i_.view(1, T)).to(torch.float32)
+        bias_ = -self.recency.to(device).view(-1, 1, 1) * dist_.clamp_min(0.0).unsqueeze(0)
+        return bias_.masked_fill(self._mask[:T, :T].to(device).unsqueeze(0), float("-inf"))
+
     def stream(self, u):
         """u [T, d] -> C [T, d], the cortex stream (causal over the window); a batch u [B, T, d] -> C [B, T, d] (the
         night's dreams in lockstep, 2026-09-13: the same arithmetic, many at once)"""
@@ -1060,6 +1083,9 @@ class Organs(nn.Module):
         T = u.shape[-2]
         x = u if batched else u.unsqueeze(0)
         mask = self._mask[:T, :T]
+        if getattr(self, "recency", None) is not None:                             # NB1: the heads' time (a float mask per batch item and head)
+            b_ = self._recency_bias(T, x.device).to(x.dtype)
+            mask = b_.unsqueeze(0).expand(x.shape[0], -1, -1, -1).reshape(-1, T, T)
         for blk in self.blocks:
             x = blk(x, mask)
         x = self.lnf(x)
@@ -1081,7 +1107,12 @@ class Organs(nn.Module):
                 k = torch.cat([cache[i][0], k], dim=2); v = torch.cat([cache[i][1], v], dim=2)
             assert k.shape[2] <= self.window, "the stream's cache outgrew the window"
             cache[i] = (k, v)
-            att = torch.softmax((q @ k.transpose(-1, -2)) / math.sqrt(hd), dim=-1)  # [B, H, 1, t]
+            sc_ = (q @ k.transpose(-1, -2)) / math.sqrt(hd)                          # [B, H, 1, t]
+            if getattr(self, "recency", None) is not None:                         # NB1: the heads' time, the newest position's row
+                t_ = k.shape[2]
+                sc_ = sc_ - self.recency.to(sc_.device, sc_.dtype).view(1, H, 1, 1) * \
+                    (t_ - 1 - torch.arange(t_, device=sc_.device, dtype=sc_.dtype)).view(1, 1, 1, t_)
+            att = torch.softmax(sc_, dim=-1)
             x = x + blk.attn.out_proj((att @ v).transpose(1, 2).reshape(B_, 1, d))
             x = x + blk.mlp(blk.ln2(x))
         return self.lnf(x[:, 0])

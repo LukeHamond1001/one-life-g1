@@ -11,7 +11,6 @@ import datetime as dt
 import json
 import os
 import subprocess
-import sys
 import time
 
 D = "/Users/lukehamond/Projects/project/data/demo"; O = D + "/p8"; C = D + "/clips_box"

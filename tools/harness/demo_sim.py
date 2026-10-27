@@ -152,6 +152,9 @@ class Recorder:
         self.out = out; os.makedirs(out, exist_ok=True)
         self.buf = {}; self.n = 0; self.chunk = 0; self.labels = []
         self.t0 = time.time()
+        done_ = [int(f_[6:12]) for f_ in os.listdir(out) if f_.startswith("chunk_") and f_.endswith(".npz") and f_[6:12].isdigit()]
+        if done_:                                                    # (the review of 10-26: a resumed record goes on after its last chunk;
+            self.chunk = max(done_) + 1                              # from 0 each resume overwrote the chunks of every run before it)
 
     def add(self, frame, acts, info, t, lane, world):
         for k, v in frame.obs.items():

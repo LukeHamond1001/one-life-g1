@@ -3,6 +3,31 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.210.0 (2026-10-27): NB1 and NB2, two newborns on the box task; the code review's fixes
+
+Not a dawn of the life: the code as it stands when NB2 was stopped (2026-10-26 23:37), before a new training method. In groups,
+with their records (`docs/PREREGISTRATION_NB.md`, `docs/PREREGISTRATION_NB2.md`, `docs/NB2_24H_REPORT.md`):
+
+- **NB1 and NB2, brains born fresh (`tools/live/start_nb.sh`, `tools/live/start_nb2.sh`).** The same newborn (birth seed 1, its own
+  born eye, nothing pretrained), raised by the teacher on the box task: an object handed into its hand, the box set by it, the guide's
+  push when it is stuck, the lever at a task met; every fifth task a test with no push and no pay. NB2 adds the night's changes
+  (`night_self_imitate`, `night_draw_tire`, a held-out gauge), the two-toy task (her word names the toy to put in first) and walking
+  blocks (its leg layer imitating Unitree's gait while the teacher's share fades).
+- **What they did.** NB1 lived 15.5 hours. NB2 lived 17 nights (born 2026-10-25 18:18). It put the object in on its own in about half
+  of the tests where the box lay under its hand, and rarely where a carry was needed; its two-toy choices stayed at chance; its leg
+  layer walked whole blocks with the teacher's share at 0, falling about once every two minutes. The night's held-out gauge improved
+  every night, but the held-out windows overlapped the dreamt ones, so it is not evidence of generalization.
+- **The code review's fixes (2026-10-26).** The two-toy lessons paid again (a put-in at least `NB_PAY_OWN_TAIL` ticks after the last
+  push let go is its own, paid by the help; the two flags together had paid none); the box expert sets the box under the hand only
+  during a push (its shadow moved it in tests too); "in. the X." after a success said again (`NB_SEE_IN_FRESH`); a refused line no
+  longer counted as heard; a come walked by the guide paid by the help; the record's chunks numbered across resumes (each restart had
+  overwritten them); the leg layer kept at the night's save; two lever presses in a tick added; a load names every organ it drops (the
+  own-word organs had gone unsaid at a resume); `voice_hold_cues` (off by its absence) holds the voice's side for the actors' cue lines
+  without the born approach; errors in the deliberation's credit reported (I5).
+- **The writes.** No film; a snapshot every `NB_SNAP_EVERY` (25) ticks; the save every `NB_SAVE_EVERY` (6,000) ticks, not 2,000 (a
+  1 GB save every eight minutes wrote about 257 GB a day). A memory leak on the world's side (about 260 KB a tick with no brain in the
+  world at all) is not yet found; the run is restarted at a save before the memory runs out.
+
 ## 0.209.0 (2026-10-24): P8, the box and the rhythms from the tablet; the sight line
 
 Not a dawn of the life: the code as it stands when P8 was stopped (2026-10-24 23:42), before the next experiment (a brain born fresh).

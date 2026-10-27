@@ -23,6 +23,7 @@ from body.sim import world as W
 from body.sim import reflexes as R
 from body.sim import extras as X
 
+NB_GEN_DIR = float(os.environ.get("NB_GEN_DIR", "45"))   # NB1 (2026-10-25): degrees from the taught side toward the front, the new-spot tests'
 HAND_TICKS = 8                   # ticks the object is pinned at the palm (the hand closes on it, or it falls when the pin lapses)
 RE_HAND_TICKS = 15               # ticks the object lies loose (not held, not in the box) before it is handed again (30 at first; the
                                  # live child let every first hand-over fall and the wait was a third of each task: 01:50, frame by frame)
@@ -31,7 +32,17 @@ FAR_M, FAR_TICKS = 0.6, 10       # m, ticks: a held object this far from the box
 RE_HAND_PUSH_TICKS = 6           # ticks a loose object lies before it is handed again DURING A PUSH (0 at first: the re-hand snatched the
                                  # object back out of the air the push had just released over the box; 02:27, the trace: in the box at z 0.09,
                                  # handed again the same tick). Six ticks let a fall of a metre land and settle
-STAGES = (0.0, 0.24, 0.30, 0.36)  # m: the box's centre sideways of the hand's grasp point (its stage; the owner: 'stepping away as it succeeds').
+STAGES = tuple(float(x_) for x_ in os.environ.get("NB_STAGES", "0.0,0.24,0.30,0.36").split(","))   # m: the box's centre sideways of the hand's
+                                 # grasp point (its stage; the owner: 'stepping away as it succeeds'). NB2 (18:3x 10-26): settable; with
+                                 # NB_BOX_AFTER_GRIP the steps between 0 and 0.24 the notes below refused are safe (the box set only once
+                                 # the pin has let go): 0, 0.12 (a straight drop still lands in, by its own release), 0.18 (a short carry)
+NB_BOX_AFTER_GRIP = bool(int(os.environ.get("NB_BOX_AFTER_GRIP", "0")))   # NB2 (18:3x): THE BOX SET ONCE ITS GRIP HAS SET. The box was set as the
+# hand-over began (k 0), and a hand drifting inside the pin dropped the object into a near box (the notes below: 0.10-0.18 refused). Under
+# it the box goes away at the hand-over's start and is set at its stage's spot by the hand as the pin lets go (k HAND_TICKS): a drop-in is
+# then the child's own release. The box at 0.24 m asked a carry of 0.12 m from a child that could only let go (its stage-1 taught tests
+# after stage 0's mastery: holding the toy at its chest the whole test). 18:5x: set once the grip has held BOX_GRIP_SET ticks past the pin
+# (set as the pin let go, a grip that never closed dropped the object into the box set under it: a met, paid, the teacher's own), and
+# parked meanwhile at BOX_PARK (1.2 m behind the child, clipped to the room, set it at its heels with its back to a wall)
                                  # (0.18 with the 26 cm box handed the object 5 cm outside its edge: a hand's drift inside the pin dropped it in,
                                  # 8 of 9 probes 'met' by falls, 04:35; at 0.24 the object starts 11 cm outside the edge)
                                  # (0.15: the hand drifted 8 cm toward the box inside the pin's 8 ticks and the object fell from the pin into it, 02:48)
@@ -40,7 +51,23 @@ STAGES = (0.0, 0.24, 0.30, 0.36)  # m: the box's centre sideways of the hand's g
                                  # frame; at 0.20 the fall misses by a hand's width and the arm must carry)
                                  # The standing child's hands ride ~0.25 m before its feet at ~0.8 m (the gait's arm posture): under the
                                  # hand is clear of the feet; 0.2 m farther is near the arm's reach at that height
+BOX_PARK = (10.0, 0.0, 0.018)      # the practice ground east of the second room's wall (ghost.GROUND; the floor plane runs on), beyond
+                                   # the walls the rooms' walks and comes keep to: the bucket's place in clear_floor's grid
+BOX_GRIP_SET = 4                   # ticks past the pin: the push's own wait for the grip to set (expert_acts: HAND_TICKS + 4)
 ADVANCE_N = 3                    # own successes (no push) at a stage before the box steps away
+NB_ADAPT = bool(int(os.environ.get("NB_ADAPT", "0")))   # NB2 (15:5x 10-26, the owner: 'you are not a good teacher i need you to be perfect level up
+NB_ADAPT_DOWN_N = int(os.environ.get("NB_ADAPT_DOWN_N", "10"))     # your game'): THE BOX KEPT AT THE EDGE OF WHAT IT CAN DO. ADVANCE_N stepped the
+NB_ADAPT_UP_N = int(os.environ.get("NB_ADAPT_UP_N", "20"))         # box away on 3 own successes whatever their rate and never back: NB2 sat at
+NB_ADAPT_LOW = float(os.environ.get("NB_ADAPT_LOW", "0.4"))        # stage 3 (0.36 m) from hour 6, its own successes 5 of the 152 one-toy box
+NB_ADAPT_HIGH = float(os.environ.get("NB_ADAPT_HIGH", "0.75"))     # tasks from 12:00 (3%), 0 of the last 20. A teacher keeps a child succeeding
+NB_ADAPT_TESTS = bool(int(os.environ.get("NB_ADAPT_TESTS", "0")))  # NB2 (17:4x 10-26): THE STAGE JUDGED BY ITS PROBES. Its lessons at stage 0 showed
+NB_ADAPT_PROBE_N, NB_ADAPT_PROBE_UP, NB_ADAPT_PROBE_DOWN = 5, 4, 1  # prompt dependence (held 86-134 ticks and the help came: 5 own of the last 20
+# lessons and tests) while its taught tests there, no help, were its own 4 of 4: mastery is judged on unprompted probes. Under it the window holds
+# the taught tests alone: away at NB_ADAPT_PROBE_UP own of the last NB_ADAPT_PROBE_N, closer at NB_ADAPT_PROBE_DOWN or fewer
+# most of the time and moves on with mastery (shaping; Wilson et al. 2019, the eighty-five per cent rule): the box steps CLOSER when fewer
+# than NB_ADAPT_LOW of the last NB_ADAPT_DOWN_N one-toy box tasks at its stage were its own, and AWAY when NB_ADAPT_HIGH of the last
+# NB_ADAPT_UP_N were (lessons and tests alike: an own success is met before any push, held, with the carry its placement needs); each step
+# begins the stage's count afresh. Stage 0 (the box under the hand) is the release alone
 FOOT_CLEAR_M = 0.30              # m: the box's centre keeps this far from either foot's centre (moved forward until it does; the bare
                                  # world's box is 27 cm across)
 OVER_TICKS = 2                   # ticks running over the box before the hand opens (the arm settles; a release on the move throws)
@@ -56,6 +83,8 @@ CARRY_MIN_M = 0.08               # m: an OWN success carried the object at least
                                  # at the chest crosses a box 15 cm to the side by 6 cm and back: 02:52, the trace; a carry is a move toward)
 TICK_S = 1.0 / 6.0               # the sim's tick
 GENTLE_MPS, HAND_EXTRA = 0.25, 6 # the hand-over lets go only when the hand moves slower than this, waiting up to this many extra ticks
+NB_TIDY = bool(int(os.environ.get("NB_TIDY", "0")))   # NB2 06:2x 10-26: a box task begins with the toys it does not use put away behind
+                                                       # the child, out of its view (`Box.tidy`)
 HAND_TURN = bool(int(os.environ.get("P8_HAND_TURN", "0")))   # THE CUP HANDED TURNED (16:2x 10-24; the teacher's method): the object's axis
                                   # set along the receiving hand's wrist (the wrist-yaw link's z) as she puts it in the palm, where upright it
                                   # stood under a palm facing down, held by one finger hooked over its rim, the thumb off it (the frames of
@@ -168,15 +197,47 @@ def _quat_z_to(v):
     return np.array([math.cos(h_), *(math.sin(h_) * a_)])
 
 
+OVER_PROMPT_M = 0.10             # m: NB1 08:2x, the held object this near the box's middle is over it (the teacher's prompt at the release)
+WORD_PIN_MAX = 60                # ticks: NB2's two-toy task: her hands keep both objects in its hands until her word is heard, at most this long
+IN2_HAND_M = float(os.environ.get("NB_IN2_HAND_M", "0.18"))                # m: NB2's two-toy task: each hand's grasp point at least this far from the box's middle as the objects are
+                                 # handed (neither over the box as handed: a release where it was handed misses; the box 27 cm across)
+                                 # (NB2 12:1x 10-26, NB_IN2_HAND_M 0.24: the one-toy box is set OUTWARD of the holding hand, so its
+                                 # learned carry goes away from its midline, and the two-toy box between the hands asks the opposite:
+                                 # the named toy carried off, the other resting 0.18 m from the box's middle by its rim (the box 27 cm
+                                 # across); at 0.24 m, the stage-1 distance, a toy goes in only carried there)
+BOX_CAPTURE_M = 0.135            # m: a placement this near the hand's grasp point has the object over the box already (the bare world's box is 27 cm
+                                 # across): NB1 04:5x, the reach's and the feet's rules set the stage-1 box 2 to 32 cm from the hand. NB2 (18:5x
+                                 # 10-26): 0.12 until then, and the 0.12 m step's box (0.12 sideways, 0.05 forward: 0.13 from the grasp point,
+                                 # inside the box's 0.13 inner half-width, X.BARE_BUCKET_IN) asked a carry of 8 cm: its taught test of 18:54
+                                 # (the duck held 124 ticks and let go over the box, in) read as no success of its own. Its inner half-width and
+                                 # the grasp's 5 mm: a release there is the step's act, as the step was designed ('a straight drop lands in')
+
+
+def carry_need(stage, place_d0=None):
+    """the carry an own success needs before the object goes in: at least halfway from the hand-over to the box and CARRY_MIN_M where the
+    box stands off the hand; NONE where it stands under the hand (-inf; stage 0: the task there is letting go over it, as P8's pre-registration
+    has it). NB1 (2026-10-25 04:0x, an error fixed): the 8 cm floor, added against a swing past a box set to the side, held at stage 0
+    too, where the guide's own lessons carried the cup a median 1.9 cm before letting go (196 met lessons, none 8 cm): no copy of its own
+    demonstration could count and the box could never step away"""
+    d_ = STAGES[min(int(stage or 0), len(STAGES) - 1)] if place_d0 is None else float(place_d0)   # (NB1 05:2x: the box as PLACED, the
+    return float("-inf") if d_ <= BOX_CAPTURE_M else max(CARRY_MIN_M, 0.5 * d_)                  # rule's own words: "halfway from the
+                                                                                                 # hand-over's point to the box's middle")   # (none at all: a carry away from the box's middle, still over it,
+                                                                          # is negative; 04:10, the first release under the 0.0 floor: -0.065)
+
+
 class Box:
     def __init__(self, world, expert, lane, rng, out=None, stage=None):
         self.w, self.x, self.lane, self.rng = world, expert, lane, rng
         self.out = out
-        self.stage = 0; self.own_at_stage = 0
+        self.stage = 0; self.own_at_stage = 0; self.recent = []          # (NB_ADAPT: the own outcomes of the one-toy box tasks at this stage)
         if out is not None and os.path.exists(os.path.join(out, "box_state.json")):
             try:
                 st = json.load(open(os.path.join(out, "box_state.json")))
                 self.stage = int(st.get("stage", 0)); self.own_at_stage = int(st.get("own_at_stage", 0))
+                self.recent = [int(x) for x in (st.get("recent") or [])]
+                if st.get("recent_mode", "all") != ("tests" if NB_ADAPT_TESTS else "all") or not st.get("since_ok"):
+                    self.recent = []                                     # (17:4x: another window's outcomes, or 18:2x a window reseeded from
+                                                                         # before the stage's start: counted again from the record)
             except (OSError, ValueError):
                 pass
         if stage is not None:
@@ -200,7 +261,7 @@ class Box:
             return min(free, key=self.x.closure)                                 # (the more open one receives; a fist cannot)
         return str(self.rng.choice(free))
 
-    def begin(self, t, toy, probe=False, act="in"):
+    def begin(self, t, toy, probe=False, act="in", gen=None):
         """the task's start (the tablet gone): the hand drawn; the box and the hand-over follow on the first step"""
         inb = set(getattr(self.lane, "_in_bucket", None) or ())
         if toy is not None and toy in self.x.par.toys and toy in inb:               # the clip's object lies in the box from the last task:
@@ -213,15 +274,73 @@ class Box:
             toy = str(self.rng.choice(sorted(toys))) if toys else None
         if toy is None:
             return None
+        if act != "in2":
+            self.tidy({str(toy)})                                                # (NB_TIDY: the toys it does not use put away)
         hand = self.pick_hand()
         self.cur = dict(toy=str(toy), hand=hand, h=0 if hand == "hand_l" else 1, arm="arm_l" if hand == "hand_l" else "arm_r", k=0, hands=0,
                         loose_t=None, probe=bool(probe), stage=int(self.stage), put=dict(phase="carry"), spot=None, t0=int(t), met_t=None,
                         act=str(act), shake=dict(ext=None, dir=0, rev=[]), lift=dict(n=0, best=0), wave=dict(ext=None, dir=0, rev=[]), poke=dict(ext=None, dir=0, rev=[]), diag=dict(ext=None, dir=0, rev=[]), anti=dict(ext=None, dir=0, rev=[]), dg_hist=[], out=dict(n=0, best=0), cross=dict(n=0, best=0),
-                        other_met=False)   # act 'in' | 'shake' | 'lift' | 'wave' | 'out'; the trackers; another act seen
+                        other_met=False, gen=gen)   # act 'in' | 'shake' | 'lift' | 'wave' | 'out'; the trackers; another act seen; NB1's test kind
         self.n["begun"] += 1
         if probe:
             self.n["probes"] += 1
         return self.cur
+
+    def begin2(self, t, toy, toy2, probe=False, gen=None, hand_named=None):
+        """NB2 (2026-10-25, the owner's word: "get number 4 going", the fourth milestone: "put the duck in the box" against "put the cup
+        in the box", the words choosing what it does): THE TWO-TOY TASK. Two objects handed at once, one into each hand: `toy`, the one
+        her line names (the harness's `_narrate("put_in")`), into a hand drawn at random, `toy2` into the other; the box set before it
+        between the two hands (`spot`: its place never tells which, each hand IN2_HAND_M from its middle); met when `toy` lies in the box,
+        WRONG when `toy2` lies there first (`step2`, `judge`). Each object handed again into its own hand when loose. -> the task"""
+        inb = set(getattr(self.lane, "_in_bucket", None) or ())
+        if toy not in self.x.par.toys or toy2 not in self.x.par.toys or toy == toy2:
+            return None
+        if toy2 in inb:                                                          # (the other object lying in the box from the last task:
+            bp = np.asarray(self.x.toy_xyz("bucket"), float)                     # taken out and set beside it, as begin's own)
+            self.w.pin_toy(toy2, np.array([bp[0] + 0.5, bp[1] - 0.3, 0.05]), ticks=1)
+        self.tidy({str(toy), str(toy2)})                                        # (NB_TIDY: the toys it does not use put away)
+        c = self.begin(t, toy, probe=probe, act="in2", gen=gen)
+        if c is None or c["toy"] != toy:
+            self.cur = None
+            return None
+        hand = str(hand_named) if hand_named in ("hand_l", "hand_r") else str(self.rng.choice(["hand_l", "hand_r"]))
+        hand2 = "hand_r" if hand == "hand_l" else "hand_l"
+        c.update(hand=hand, h=0 if hand == "hand_l" else 1, arm="arm_l" if hand == "hand_l" else "arm_r",
+                 toy2=str(toy2), hand2=hand2, h2=0 if hand2 == "hand_l" else 1, arm2="arm_l" if hand2 == "hand_l" else "arm_r",
+                 k2=0, hands2=0, loose2_t=None, first_in=None, wrong=False)
+        return c
+
+    def tidy(self, keep):
+        """NB2 (06:2x 10-26, NB_TIDY): THE TOYS THE TASK DOES NOT USE PUT AWAY. Under A202t (the toy in its hand the look) the toys lying
+        near still took the names said over the one in its hand: in a newborn copy's one-toy block task (box2z) the duck lying by took 4
+        of 9 hearings of 'block' (its eyes on the brightest thing in view), and NB2's cup task had the block and the duck in view. A
+        parent teaching one toy's name clears the others from the floor: every toy but `keep` not held is set 2 m behind the child, out
+        of its view (the direction most behind it that stays in the room), each a hand's width apart. (15:0x: the toys lying in the box
+        were left there, and the box's move for the task set them on the floor at its feet: the last task's toy lay in view in most
+        tasks, the duck by the bear's first try; the box emptied too). (15:5x: and a toy still in its hand from the last task is taken
+        back: the 15:53 cup test began with the block in its other hand, dropped at its feet through the test)"""
+        if not NB_TIDY:
+            return
+        xy, yaw, _ = self.x.pose()
+        xy = np.asarray(xy, float)[:2]
+        fwd = np.array([math.cos(yaw), math.sin(yaw)]); left = np.array([-fwd[1], fwd[0]])
+        lim = np.array([2.3, 2.0])                                               # (the room's half sizes less 0.3 m)
+        k = 0
+        for tt in sorted(self.x.par.toys):
+            if tt in ("bucket", "bucket2", "screen") or tt in keep:
+                continue
+            best = None
+            for ang in (math.pi, 0.75 * math.pi, -0.75 * math.pi, 0.5 * math.pi, -0.5 * math.pi):
+                d_ = math.cos(ang) * fwd + math.sin(ang) * left
+                p_ = np.clip(xy + 2.0 * d_ + (k - 1) * 0.35 * np.array([-d_[1], d_[0]]), -lim, lim)
+                rel_ = p_ - xy
+                off_ = abs(math.atan2(float(np.dot(rel_, left)), float(np.dot(rel_, fwd))))
+                score_ = (10.0 if off_ > math.radians(110) else 0.0) + float(np.linalg.norm(rel_))
+                if best is None or score_ > best[0]:
+                    best = (score_, p_)
+            self.w.pin_toy(tt, np.array([float(best[1][0]), float(best[1][1]), 0.06]), ticks=1)
+            k += 1
+        self.n["tidied"] = int(self.n.get("tidied", 0)) + k
 
     def spot(self):
         """the box's place for the hand: the stage's distance forward of the grasp point, on the floor, clear of the feet"""
@@ -229,7 +348,20 @@ class Box:
         gc = np.asarray(w.grasp_centre(c["h"]), float)
         _, yaw, _ = self.x.pose()
         fwd = np.array([math.cos(yaw), math.sin(yaw)]); left = np.array([-fwd[1], fwd[0]])
+        if c.get("act") == "in2" and c.get("h2") is not None:                  # NB2: THE TWO-TOY TASK'S BOX: between the two grasp points,
+            g2 = np.asarray(w.grasp_centre(c["h2"]), float)                     # before it, forward until clear of the feet and each hand
+            p = 0.5 * (gc[:2] + g2[:2]) + fwd * 0.05                             # IN2_HAND_M from its middle (its side never tells which)
+            for _ in range(30):
+                near = [float(np.linalg.norm(p - np.asarray(w.d.xpos[b][:2], float))) for b in self.feet]
+                dh = min(float(np.linalg.norm(gc[:2] - p)), float(np.linalg.norm(g2[:2] - p)))
+                if (not near or min(near) >= FOOT_CLEAR_M) and dh >= IN2_HAND_M:
+                    break
+                p = p + fwd * 0.03
+            return np.array([float(p[0]), float(p[1]), BOX_Z])
         out = left if c["hand"] == "hand_l" else -left                          # SIDEWAYS, away from its midline on the holding hand's side
+        if c.get("gen") == "dir":                                               # NB1: THE FINAL WINDOW'S NEW SPOT: the side turned NB_GEN_DIR
+            a_ = math.radians(NB_GEN_DIR)                                       # degrees toward the front (a place it was never taught)
+            out = math.cos(a_) * out + math.sin(a_) * fwd
         p = gc[:2] + out * STAGES[min(c["stage"], len(STAGES) - 1)] + fwd * 0.05   # (02:33, frame by frame: a box set forward came back under
                                                                                  # its chest by the reach clamp, and a release where it holds
                                                                                  # things anyway fell in; sideways the arm can reach and a chest
@@ -256,12 +388,16 @@ class Box:
             p = p + out * 0.04
         return np.array([float(p[0]), float(p[1]), BOX_Z])
 
-    def place(self, t):
-        """the box set at the spot (a tick's pin, then free; the world's act), a loose toy under it moved aside first"""
+    def place(self, t, sp=None):
+        """the box set at the spot (a tick's pin, then free; the world's act), a loose toy under it moved aside first; sp: a spot given
+        (NB_BOX_AFTER_GRIP's, from the hand at the hand-over's start), else the spot from the hand now"""
         c = self.cur; w = self.w
-        sp = self.spot()
+        sp = self.spot() if sp is None else np.asarray(sp, float)
         for tt in sorted(self.x.par.toys):
-            if tt in ("bucket", "bucket2", "screen", c["toy"]) or tt in self.x.holds():
+            if tt in ("bucket", "bucket2", "screen") or tt in self.x.holds() or (tt == c["toy"] and c.get("act") != "in2"):
+                # (NB2 18:5x 10-25: the two-toy task's own objects are moved aside too when they lie loose under the new spot: a test's
+                # box, set again at the duck's re-hand, came down over the cup lying on the floor below the hands and read "the named
+                # one in first", a success the teacher made)
                 continue
             tp = np.asarray(self.x.toy_xyz(tt), float)
             if float(np.linalg.norm(tp[:2] - sp[:2])) < 0.25:
@@ -279,7 +415,12 @@ class Box:
             return None
         w = self.w; toy = c["toy"]
         if c["k"] < HAND_TICKS:
-            if c["k"] == 0:
+            if c["k"] == 0 and NB_BOX_AFTER_GRIP and c["act"] == "in":
+                c["spot_due"] = [float(v) for v in self.spot()]                # NB2 18:3x: the stage's spot from the hand that takes the object
+                c["gc0"] = [float(v) for v in w.grasp_centre(c["h"])]           # (k 0's, as before), the box away meanwhile (BOX_PARK)
+                w.pin_toy("bucket", np.array(BOX_PARK, float), ticks=1)
+                c["parked"] = True; c["hands"] += 1; self.n["hands"] += 1
+            elif c["k"] == 0:
                 self.place(t); c["hands"] += 1; self.n["hands"] += 1
                 c["place_d0"] = float(np.linalg.norm(np.asarray(w.grasp_centre(c["h"]), float)[:2] - np.asarray(c["spot"], float)[:2]))   # the stage's
                                                                         # distance by construction: the carry's origin (06:03: the hand swung out to
@@ -293,6 +434,12 @@ class Box:
             w.pin_toy(toy, gc + np.array([0.0, 0.0, HAND_OVER_Z_M]), quat=q_turn, ticks=2, follow=c["h"])
             v_ = float(np.linalg.norm(gc - np.asarray(c.get("gc_prev", gc), float))) / TICK_S; c["gc_prev"] = [float(x_) for x_ in gc]
             c["k"] += 1
+            if c["k"] == HAND_TICKS and c["act"] == "in2" and not c.get("word_heard") and int(c.get("word_wait", 0)) < WORD_PIN_MAX:
+                # NB2 (20:3x 10-25): HER HANDS KEEP THE TOYS IN ITS HANDS UNTIL HER WORD IS HEARD. The duck-and-block lessons' first toy went
+                # in 7 to 34 ticks into the task, about as her first word came: its choice was made before it heard which she asked for. A
+                # parent holds the child's hands on the two toys while she says "in. the duck.", then lets go: the pins hold (riding its
+                # palms) until the harness marks her word heard (`word_heard`), WORD_PIN_MAX ticks at most
+                c["k"] -= 1; c["word_wait"] = int(c.get("word_wait", 0)) + 1
             if c["k"] == HAND_TICKS and v_ > GENTLE_MPS and c.get("hand_extra", 0) < HAND_EXTRA:
                 c["k"] -= 1; c["hand_extra"] = c.get("hand_extra", 0) + 1   # THE GENTLE RELEASE: the pin holds on while the hand swings
             if c["k"] == HAND_TICKS:                                     # (07:13: let go mid-swing, the object flew 20 cm into the box in
@@ -302,6 +449,15 @@ class Box:
         c["k"] += 1                                                     # (ticks since the hand-over began, on past it)
         held = toy in self.x.holds()
         inb = toy in (getattr(self.lane, "_in_bucket", None) or ())
+        if c.get("parked") and held and c["k"] >= HAND_TICKS + BOX_GRIP_SET:   # NB2 18:5x: THE BOX SET ONCE THE GRIP HAS HELD BOX_GRIP_SET
+            sp_ = np.asarray(c["spot_due"], float)                      # ticks past the pin, at the spot k 0's hand gave it (set from the hand
+            nf_ = [float(np.linalg.norm(sp_[:2] - np.asarray(w.d.xpos[b][:2], float))) for b in self.feet]   # here the child had pulled
+            c["spot_fresh"] = bool(nf_ and min(nf_) < FOOT_CLEAR_M)
+            self.place(t, sp=None if c["spot_fresh"] else sp_)          # the object to its chest and the feet's clearance set the
+            c["parked"] = False; c["place_k"] = int(c["k"])            # 0.12 m step's box 0.05-0.23 m off, 18:4x); from the hand now only
+            c["place_d0"] = float(np.linalg.norm(np.asarray(c["gc0"], float)[:2] - np.asarray(c["spot"], float)[:2]))   # where its feet
+            c["hand_d0"] = None                                         # moved onto the spot. An object the grip let fall lies on the floor,
+                                                                        # handed again, the box away
         if held and not inb:                                            # THE BOX FOLLOWS A WANDERING HOLDER (02:41, the trace: it walked off
             dxy_ = float(np.linalg.norm(np.asarray(self.x.toy_xyz(toy), float)[:2] - np.asarray(self.x.toy_xyz("bucket"), float)[:2]))
             c["far_n"] = c.get("far_n", 0) + 1 if dxy_ > FAR_M else 0     # 1.8 m holding the cup and the push's arm had no box to reach):
@@ -313,6 +469,7 @@ class Box:
         else:
             c["far_n"] = 0
         dxy_now = float(np.linalg.norm(np.asarray(self.x.toy_xyz(toy), float)[:2] - np.asarray(self.x.toy_xyz("bucket"), float)[:2]))
+        c["over_n"] = (int(c.get("over_n", 0)) + 1) if (held and not inb and dxy_now < OVER_PROMPT_M) else 0   # NB1: ticks held over the box running
         sh = c["shake"]                                                 # THE SHAKE TRACKER: the held object's vertical reversals (a swing of
         if held and not inb:                                            # SHAKE_MIN_DZ back from the last extreme is one); reset when loose
             z_ = float(self.x.toy_xyz(toy)[2]) - float(w._shoulder_xyz(c["arm"])[2])   # AGAINST ITS SHOULDER (20:20 10-22: a probe at 20:17 'met'
@@ -446,12 +603,12 @@ class Box:
             c["other_met"] = True                                       # (an 'in' or 'shake' task's object lifted high: another act done)
         if self.pushing:
             c["pushed"] = True                                          # (a task pushed once is the push's: its accidents are the push's)
-        fell_in_ = bool(FELL_IN_REHAND and inb and c["act"] != "in" and int(c.get("held_since_hand", 0)) < FELL_IN_HOLD)   # (a failed hand-over)
-        if inb and c["act"] != "in" and c["hands"] >= 1 and (c["k"] >= HAND_TICKS or c["hands"] >= 2) and not (self.pushing or c.get("pushed")) \
+        fell_in_ = bool(FELL_IN_REHAND and inb and c["act"] not in ("in", "in2") and int(c.get("held_since_hand", 0)) < FELL_IN_HOLD)   # (a failed hand-over)
+        if inb and c["act"] not in ("in", "in2") and c["hands"] >= 1 and (c["k"] >= HAND_TICKS or c["hands"] >= 2) and not (self.pushing or c.get("pushed")) \
                 and not fell_in_:
             c["other_met"] = True; c["in_met"] = True                   # (a 'shake' or 'lift' task's object put in the box: another act done,
                                                                         # and the task over: an object in the box can be neither shaken nor lifted)
-        push_in_ = bool(inb and c["act"] != "in" and (self.pushing or c.get("pushed") or fell_in_))      # 19:10 (10-22, "fix it immediately"): THE PUSH'S OWN ACCIDENT. A shake
+        push_in_ = bool(inb and c["act"] not in ("in", "in2") and (self.pushing or c.get("pushed") or fell_in_))      # 19:10 (10-22, "fix it immediately"): THE PUSH'S OWN ACCIDENT. A shake
                                                                         # pushed hard flung the cup into the box 3 times in 20 pushed shakes and the
                                                                         # lesson ended there ('in_box'); during a push an object in the box is
                                                                         # handed again as a loose one is (the child's own put-in alone is another act)
@@ -460,8 +617,12 @@ class Box:
                 c["hold_d0"] = dxy_now                                  # where the object was as the hold began (the hand-over's point)
             c["hold_n"] = c.get("hold_n", 0) + 1                        # (a record per hand-over, for the reader)
             c["held_since_hand"] = c.get("held_since_hand", 0) + 1
+            c["clo"] = (list(c.get("clo") or []) + [round(float(self.x.closure(c["hand"])), 3)])[-6:]   # (the holding hand's closure, its last ticks)
         elif c.get("hold_n"):
             c.setdefault("holds", []).append(int(c["hold_n"])); c["hold_n"] = 0
+            if c.get("clo"):                                            # NB2 19:1x: THE HAND OPENED, OR THE OBJECT SLIPPED: how far the holding
+                c["last_open"] = round(max(c["clo"]) - float(self.x.closure(c["hand"])), 3)   # hand opened over the hold's last 6 ticks (rad;
+            c["clo"] = []                                               # a release opens it, a slip leaves it closed); recorded, not judged
             c["last_carry"] = round(float(c.get("place_d0", c.get("hand_d0", dxy_now))) - dxy_now, 3)   # THE CARRY: from where the object was handed (the
                                                                         # box's placement, the stage's distance) to where it was let go
                                                                         # (04:37: the hold's first tick caught an outward swing at 0.29 and a sway back to
@@ -477,11 +638,110 @@ class Box:
                                                                         # hand-over left; the tester ends the task, which ran on to its 300
                                                                         # ticks with the push moving an empty hand: 9 of 56 tasks since 01:31)
         elif t - c["loose_t"] >= (RE_HAND_PUSH_TICKS if self.pushing else RE_HAND_TICKS) and c["hands"] < MAX_HANDS:
-            hand = self.pick_hand()
+            hand = c["hand"] if c["act"] == "in2" else self.pick_hand()       # (NB2: the two-toy task's object into its own hand again)
+            c["placed2"] = False                                             # (NB2: the box set again where the hands settle after it)
             c.update(k=0, loose_t=None, held_since_hand=0, put=dict(phase="carry", z=None), hand=hand, h=0 if hand == "hand_l" else 1, arm="arm_l" if hand == "hand_l" else "arm_r",
                      shake=dict(ext=None, dir=0, rev=[]), lift=dict(n=0, best=0), wave=dict(ext=None, dir=0, rev=[]), poke=dict(ext=None, dir=0, rev=[]), diag=dict(ext=None, dir=0, rev=[]), anti=dict(ext=None, dir=0, rev=[]), dg_hist=[], out=dict(n=0, best=0), cross=dict(n=0, best=0),
                      low=dict(n=0, best=0), side=dict(n=0, best=0))
         return "wait"
+
+    def step2(self, t):
+        """NB2: each tick of the two-toy task, its second object's: its hand-over's pin at the other hand (HAND_TICKS, as the first's), its
+        hand-over again when loose RE_HAND_TICKS (into its own hand, MAX_HANDS at most), and which object lay in the box first (the first
+        tick either lies there after both hand-overs: `first_in` "named" | "other" | "both"; `wrong` when not the named one alone)"""
+        c = self.cur
+        if c is None or c.get("act") != "in2":
+            return None
+        w = self.w; toy2 = c["toy2"]
+        if c["k2"] < HAND_TICKS:
+            if c["k2"] == 0:
+                c["hands2"] += 1
+                c["placed2"] = False                                         # (the box set again where the hands settle after it)
+                if c["hands2"] >= 2 and toy2 not in self.x.holds():
+                    # THE BOX SET AGAIN AT THE OTHER OBJECT'S RE-HAND (18:3x 10-25, the smoke's trace: the duck handed again into a hand above
+                    # the box's wall shoved the box 25 cm, the named cup's distance 0.08 -> 0.31 m in a tick): as at the named one's own
+                    # hand-over (`step`, k 0), the box is set first, between the hands, then the object handed
+                    self.place(t)
+                    c["place_d0"] = float(np.linalg.norm(np.asarray(w.grasp_centre(c["h"]), float)[:2] - np.asarray(c["spot"], float)[:2]))
+            gc2 = np.asarray(w.grasp_centre(c["h2"]), float)
+            w.pin_offset[toy2] = np.array([0.0, 0.0, HAND_OVER_Z_M])
+            w.pin_toy(toy2, gc2 + np.array([0.0, 0.0, HAND_OVER_Z_M]), ticks=2, follow=c["h2"])
+            c["k2"] += 1
+            if c["k2"] == HAND_TICKS and not c.get("word_heard") and int(c.get("word_wait2", 0)) < WORD_PIN_MAX:
+                c["k2"] -= 1; c["word_wait2"] = int(c.get("word_wait2", 0)) + 1   # (the other toy held too until her word is heard)
+            if c["k2"] == HAND_TICKS:
+                w.unpin_toy(toy2)
+            return "hand"
+        c["k2"] += 1
+        inb_ = set(getattr(self.lane, "_in_bucket", None) or ())
+        if not c.get("placed2") and c["k"] >= HAND_TICKS and c.get("first_in") is None and c["toy"] in self.x.holds() and toy2 in self.x.holds():
+            # THE BOX SET WHERE THE HANDS SETTLED (18:4x 10-25, NB2's first two-toy lesson: placed as the hand-overs began, the arms still
+            # swinging from the last task's push, the named cup's hand came to 5 cm of the box's middle in 6 ticks and the duck's stood
+            # 29 cm off): once both objects are in its hands after their hand-overs the box is set again between the hands as they are,
+            # and the two distances kept (each at least IN2_HAND_M: neither over the box)
+            self.place(t); c["placed2"] = True
+            bp2_ = np.asarray(c["spot"], float)[:2]
+            c["d0_named"] = round(float(np.linalg.norm(np.asarray(self.x.toy_xyz(c["toy"]), float)[:2] - bp2_)), 3)
+            c["d0_other"] = round(float(np.linalg.norm(np.asarray(self.x.toy_xyz(toy2), float)[:2] - bp2_)), 3)
+        self._first_in(t)
+        held2 = toy2 in self.x.holds()
+        if held2 or toy2 in inb_:
+            c["loose2_t"] = None
+        elif c["loose2_t"] is None:
+            c["loose2_t"] = int(t)
+        elif t - c["loose2_t"] >= (RE_HAND_PUSH_TICKS if self.pushing else RE_HAND_TICKS) and c["hands2"] < MAX_HANDS \
+                and c["hand2"] not in self.x.held_by_hand():
+            c["k2"] = 0; c["loose2_t"] = None
+        return "wait"
+
+    def correct2(self, t):
+        """NB2 (21:4x 10-25): THE CORRECTION OF A LESSON'S WRONG TOY. A two-toy lesson whose other toy lay in the box first ended there, with
+        nothing shown: 14 of 34 lessons from 20:38. As a parent takes the wrong one out, says which again and helps: the other toy is handed
+        again into its own hand (out of the box: the box set again first, `step2`), her word owed again (the toys held until it is heard),
+        and the attempt kept (`first_attempt`). The harness lets the push come CORRECT_WAIT ticks on and pays the corrected lesson as a
+        helped one. -> True when set up"""
+        c = self.cur
+        if c is None or c.get("act") != "in2" or c.get("first_attempt") is not None:
+            return False
+        c["first_attempt"] = c.get("first_in"); c["first_attempt_t"] = c.get("first_t")
+        c["first_in"] = None; c["first_t"] = None; c["wrong"] = False
+        c["k2"] = 0; c["loose2_t"] = None; c["placed2"] = False             # (the other toy into its own hand again: step2's hand-over)
+        c["word_heard"] = False; c.pop("instr_t0", None); c.pop("said_t0", None); c["word_wait"] = 0; c["word_wait2"] = 0
+        c["corrected_t"] = int(t)
+        return True
+
+    def _first_in(self, t):
+        """NB2: which of the two-toy task's objects lay in the box first, read once both were handed (the first tick either lies there:
+        "named" | "other" | "both"); `wrong` when not the named one alone. Read where the box's contents are read (step2 before the tick's
+        acts, judge after them)"""
+        c = self.cur
+        if c is None or c.get("act") != "in2" or c.get("first_in") is not None or c["hands"] < 1 or c["hands2"] < 1:
+            return
+        inb_ = set(getattr(self.lane, "_in_bucket", None) or ())
+        a_ = c["toy"] in inb_ and c["k"] >= HAND_TICKS                     # (a toy counts in the box only past its own hand-over: a correction's
+        b_ = c["toy2"] in inb_ and c["k2"] >= HAND_TICKS                   # wrong toy lies in it the tick its re-hand begins)
+        if a_ or b_:
+            c["first_in"] = "both" if (a_ and b_) else ("named" if a_ else "other")
+            c["first_t"] = int(t) if t is not None else None
+            c["wrong"] = c["first_in"] != "named"
+
+    def expert_acts2(self, acts):
+        """NB2: the expert's acts for the two-toy task's second object (after expert_acts, which acts for the named one): its hand closes
+        on it at its hand-over and then grips it, its arm at rest: the push carries the named object alone, the other kept"""
+        c = self.cur; x = self.x; w = self.w
+        if c is None or c.get("act") != "in2":
+            return acts
+        toy2, hand2, arm2 = c["toy2"], c["hand2"], c["arm2"]
+        held = x.held_by_hand()
+        if held.get(hand2) == toy2:
+            acts[hand2] = R.closing_act(hand2) if x.closure(hand2) < HOLD_RAD else x.grip(hand2)
+            acts[arm2] = w.effector_rest(arm2)
+        elif c["k2"] <= HAND_TICKS + 6:
+            gc2 = np.asarray(w.grasp_centre(c["h2"]), float); tp2 = np.asarray(x.toy_xyz(toy2), float)
+            near_ = float(np.linalg.norm(tp2 - gc2)) < 0.12
+            acts[hand2] = R.closing_act(hand2) if (near_ and c["k2"] >= 2) else R.opening_act(hand2)
+            acts[arm2] = w.effector_rest(arm2)
+        return acts
 
     def _shaken(self, t):
         """True when the held object has reversed its vertical motion SHAKE_REVERSALS times within SHAKE_WINDOW ticks, held throughout"""
@@ -649,6 +909,10 @@ class Box:
                     c["met_t"] = int(t) if t is not None else 0
                 return "met"
             return None
+        if c["act"] == "in2":
+            self._first_in(t)
+            if c.get("wrong"):
+                return "wrong"                                       # NB2: the other object (or both at once) in the box first
         if c["hands"] >= 1 and (c["k"] >= HAND_TICKS or c["hands"] >= 2) and c["toy"] in (getattr(self.lane, "_in_bucket", None) or ()):   # (after the hand-over)
             if c["met_t"] is None:
                 c["met_t"] = int(t) if t is not None else 0
@@ -661,46 +925,105 @@ class Box:
         if c is None:
             return
         holds = list(c.get("holds") or []) + ([int(c["hold_n"])] if c.get("hold_n") else [])
-        need = max(CARRY_MIN_M, 0.5 * STAGES[min(int(c.get("stage", 0)), len(STAGES) - 1)])
+        need = carry_need(c.get("stage", 0), c.get("place_d0"))
         if c["act"] in ACTS_HELD:
             hold_now = int(c.get("hold_n") or 0)                        # (an act met while held: the current hold)
             c["own_act"] = bool(met and not guided and hold_now >= HOLD_MIN)
+        elif c["act"] == "in2":                                         # NB2: the two-toy task's own success: the named object in first, its
+            c["own_act"] = bool(met and not guided and holds and holds[-1] >= HOLD_MIN)   # hand's own hold (no carry: the box between)
         else:
             c["own_act"] = bool(met and not guided and holds and holds[-1] >= HOLD_MIN and float(c.get("last_carry", 0.0)) >= need)
         if met:
             self.n["met"] += 1
             if probe:
                 self.n["probes_met"] += 1
-            if c["own_act"]:
+            if c["own_act"] and c["act"] != "in2":
                 self.n["own"] += 1; self.own_at_stage += 1
-                if c["act"] == "in" and self.own_at_stage >= ADVANCE_N and self.stage < len(STAGES) - 1:
+                if not (int(c.get("stage", 0)) == 0 or float(c.get("place_d0") or 0.0) > BOX_CAPTURE_M):
+                    self.own_at_stage -= 1                                   # NB1 05:2x: a put into a box placed under the hand is its own
+                                                                             # success but no step away (the box steps on a real carry)
+                if not NB_ADAPT and c["act"] == "in" and self.own_at_stage >= ADVANCE_N and self.stage < len(STAGES) - 1:
                     self.stage += 1; self.own_at_stage = 0
                     print(f"THE BOX steps away: stage {self.stage} ({STAGES[self.stage]:.2f} m before the hand) after {ADVANCE_N} own successes", flush=True)
+        if NB_ADAPT and c["act"] == "in" and int(c.get("stage", self.stage)) == int(self.stage) and c.get("gen") in (None, "taught") \
+                and (probe or not NB_ADAPT_TESTS):
+            self.adapt(int(bool(c["own_act"])))
         self.cur = None
         if self.out is not None:
             try:
                 with open(os.path.join(self.out, "box_state.json"), "w") as f:
-                    json.dump(dict(stage=self.stage, own_at_stage=self.own_at_stage, n=self.n), f)
+                    json.dump(dict(stage=self.stage, own_at_stage=self.own_at_stage, n=self.n, recent=list(self.recent),
+                                   recent_mode="tests" if NB_ADAPT_TESTS else "all", since_ok=True), f)
             except OSError:
                 pass
+
+    def clear_floor(self):
+        """NB2 (18:1x 10-26): THE FLOOR CLEARED FOR A WALK. A walk began where a box task ended, the box at its feet (stage 0: under its
+        hand) and the toys lying by: at 18:13 it walked into the box (the box flipped onto its chest, a fall) and tripped among the toys,
+        three falls in one walk block; at 18:2x it tripped over the block it still held from the box task, dropped in the walk; and at
+        18:3x, the toys set in the room's far corner, its walk wandered there and it fell among them. As a parent clears the floor before
+        walking practice: the box and every toy, held or not, set on the practice ground east of the second room's wall (BOX_PARK,
+        ghost.GROUND), a grid 0.4 m apart, beyond the walls (the next box task's tidy and hand-over bring back what it uses). (18:5x: set in
+        the second room at first, which the walks and comes roam too, ghost.ROOMS: a walk crossed the pile and fell twice by a cup) -> how
+        many were moved"""
+        k = 0
+        for tt in ["bucket"] + sorted(t_ for t_ in self.x.par.toys if t_ not in ("bucket", "bucket2", "screen")):
+            if tt not in self.x.par.toys:
+                continue
+            x_ = BOX_PARK[0] + 0.4 * (k % 6); y_ = BOX_PARK[1] + 0.4 * (k // 6)
+            self.w.pin_toy(tt, np.array([x_, y_, 0.018 if tt == "bucket" else 0.06]), ticks=1)
+            k += 1
+        self.n["cleared"] = int(self.n.get("cleared", 0)) + k
+        return k
+
+    def adapt(self, own):
+        """NB_ADAPT: one one-toy box task's own outcome at the current stage; the box steps closer or away by the recent rate -> the
+        step taken (-1, 0, +1)"""
+        self.recent = (list(self.recent) + [int(own)])[-max(NB_ADAPT_DOWN_N, NB_ADAPT_UP_N):]
+        dn_ = self.recent[-NB_ADAPT_DOWN_N:]; up_ = self.recent[-NB_ADAPT_UP_N:]
+        step_ = 0
+        if NB_ADAPT_TESTS:                                               # (the probes' window: the last NB_ADAPT_PROBE_N taught tests)
+            dn_ = up_ = self.recent[-NB_ADAPT_PROBE_N:]
+            if len(dn_) >= NB_ADAPT_PROBE_N and sum(dn_) <= NB_ADAPT_PROBE_DOWN and self.stage > 0:
+                step_ = -1
+            elif len(up_) >= NB_ADAPT_PROBE_UP and sum(up_[-NB_ADAPT_PROBE_N:]) >= NB_ADAPT_PROBE_UP and self.stage < len(STAGES) - 1:
+                step_ = +1
+        elif len(dn_) >= NB_ADAPT_DOWN_N and sum(dn_) / len(dn_) < NB_ADAPT_LOW and self.stage > 0:
+            step_ = -1
+        elif len(up_) >= NB_ADAPT_UP_N and sum(up_) / len(up_) >= NB_ADAPT_HIGH and self.stage < len(STAGES) - 1:
+            step_ = +1
+        if step_:
+            rate_ = sum(dn_ if step_ < 0 else up_) / len(dn_ if step_ < 0 else up_)
+            self.stage += step_; self.own_at_stage = 0; self.recent = []
+            print(f"THE BOX steps {'CLOSER' if step_ < 0 else 'away'}: stage {self.stage} ({STAGES[self.stage]:.2f} m before the hand), its own "
+                  f"{rate_:.0%} of the last {len(dn_) if step_ < 0 else len(up_)} {'taught tests' if NB_ADAPT_TESTS else 'one-toy box tasks'} (NB_ADAPT)", flush=True)
+        return step_
 
     def record(self, met=None, guided=None):
         """the task record's box fields (own_act read here when met and guided are given: the record is written before end())"""
         c = self.cur or {}
         holds = list(c.get("holds") or []) + ([int(c["hold_n"])] if c.get("hold_n") else [])
-        need = max(CARRY_MIN_M, 0.5 * STAGES[min(int(c.get("stage", 0)), len(STAGES) - 1)])   # at least halfway from the hand-over to the box
+        need = carry_need(c.get("stage", 0), c.get("place_d0"))      # at least halfway from the hand-over to the box (none over it)
         if c.get("act") in ACTS_HELD:
             own = c.get("own_act") if met is None else bool(met and not guided and int(c.get("hold_n") or 0) >= HOLD_MIN)
+        elif c.get("act") == "in2":
+            own = c.get("own_act") if met is None else bool(met and not guided and holds and holds[-1] >= HOLD_MIN)
         else:
             own = c.get("own_act") if met is None else bool(met and not guided and holds and holds[-1] >= HOLD_MIN and float(c.get("last_carry", 0.0)) >= need)
-        return dict(stage=c.get("stage"), hands=c.get("hands"), hand=c.get("hand"), spot=c.get("spot"), met_t=c.get("met_t"), holds=holds, own_act=own,
+        return dict(stage=c.get("stage"), place_d0=(None if c.get("place_d0") is None else round(float(c["place_d0"]), 3)), place_k=c.get("place_k"), spot_fresh=c.get("spot_fresh"), last_open=c.get("last_open"), hands=c.get("hands"), hand=c.get("hand"), spot=c.get("spot"), met_t=c.get("met_t"), holds=holds, own_act=own,
                     carry=c.get("last_carry"), act=c.get("act"), other=bool(c.get("other_met")), shakes=len((c.get("shake") or {}).get("rev") or []),
                     lifts=int((c.get("lift") or {}).get("best", 0)), waves=len((c.get("wave") or {}).get("rev") or []), pokes=len((c.get("poke") or {}).get("rev") or []),
                     outs=int((c.get("out") or {}).get("best", 0)), crosses=int((c.get("cross") or {}).get("best", 0)),
                     lows=int((c.get("low") or {}).get("best", 0)), sides=int((c.get("side") or {}).get("best", 0)),
                     shook=bool(c.get("shook")), waved=bool(c.get("waved")), poked=bool(c.get("poked")),
                     diags=len((c.get("diag") or {}).get("rev") or []), antis=len((c.get("anti") or {}).get("rev") or []),
-                    diaged=bool(c.get("diaged")), antied=bool(c.get("antied")), hwaved=bool(c.get("hwaved")), owaved=bool(c.get("owaved")))
+                    diaged=bool(c.get("diaged")), antied=bool(c.get("antied")), hwaved=bool(c.get("hwaved")), owaved=bool(c.get("owaved")),
+                    **({"toy2": c.get("toy2"), "hand2": c.get("hand2"), "hands2": c.get("hands2"), "first_in": c.get("first_in"),
+                        "first_t": c.get("first_t"), "wrong": bool(c.get("wrong")), "instr": c.get("instr_n", 0),
+                        "d0_named": c.get("d0_named"), "d0_other": c.get("d0_other"), "instr_miss": c.get("instr_miss"), "her_rel": c.get("her_rel"),
+                        "instr_t0": c.get("instr_t0"), "said_t0": c.get("said_t0"), "word_wait": c.get("word_wait"),
+                        "first_attempt": c.get("first_attempt"), "corrected_t": c.get("corrected_t"),
+                        "eyes_said": c.get("eyes_said"), "eyes_late": c.get("eyes_late")} if c.get("act") == "in2" else {}))
 
     # ------------------------------------------------------------------ the expert's act (the push; the clips)
     def expert_acts(self, acts):
@@ -832,7 +1155,9 @@ class Box:
                 put["stall_n"] = put.get("stall_n", 0) + 1
                 if float(x.arm_ik(arm, goal)[1]) > UNREACH_ERR_M:                    # THE BOX OUT OF REACH during a push: set again by its hand
                     put["unreach_n"] = put.get("unreach_n", 0) + 1
-                    if put["unreach_n"] >= UNREACH_TICKS:
+                    if put["unreach_n"] >= UNREACH_TICKS and self.pushing:   # (the review of 10-26: during a push only. The shadow
+                        # reads these acts every tick, tests and its own tries too, and this set the box under its hand there: a help no
+                        # record showed)
                         self.place(toy); c["put"] = dict(phase="carry", z=None)
                         c["place_d0"] = float(np.linalg.norm(np.asarray(w.grasp_centre(h), float)[:2] - np.asarray(c["spot"], float)[:2])); c["hand_d0"] = None
                         acts[arm] = w.effector_rest(arm); acts[hand] = x.grip(hand)
