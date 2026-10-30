@@ -263,6 +263,10 @@ class Box:
 
     def begin(self, t, toy, probe=False, act="in", gen=None):
         """the task's start (the tablet gone): the hand drawn; the box and the hand-over follow on the first step"""
+        self.w.arms_by_acts = True                                      # (a box lesson moves the arms by acts: the arm layer below the brain,
+                                                                        # the workshops', gives way; 10-28, it held the arms in the guide's
+                                                                        # stance and walk and the swings never came. Set here, not when a Box
+                                                                        # is made: the workshops make one to clear the floor)
         inb = set(getattr(self.lane, "_in_bucket", None) or ())
         if toy is not None and toy in self.x.par.toys and toy in inb:               # the clip's object lies in the box from the last task:
             bp = np.asarray(self.x.toy_xyz("bucket"), float)                         # taken out and set on the floor beside it (the world's
@@ -292,6 +296,7 @@ class Box:
         her line names (the harness's `_narrate("put_in")`), into a hand drawn at random, `toy2` into the other; the box set before it
         between the two hands (`spot`: its place never tells which, each hand IN2_HAND_M from its middle); met when `toy` lies in the box,
         WRONG when `toy2` lies there first (`step2`, `judge`). Each object handed again into its own hand when loose. -> the task"""
+        self.w.arms_by_acts = True                                      # (as `begin`)
         inb = set(getattr(self.lane, "_in_bucket", None) or ())
         if toy not in self.x.par.toys or toy2 not in self.x.par.toys or toy == toy2:
             return None

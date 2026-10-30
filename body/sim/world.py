@@ -85,6 +85,7 @@ DETERMINISM. One seed; the world's own stream (the IMU noise) is a numpy PCG64 f
 with the world, as are the gaze and its velocity. A saved world restored anywhere continues bit for bit (body/tests/test_sim_world.py, the exact replay test)."""
 import json
 import math
+import os
 import pickle
 import sys
 import time
@@ -109,6 +110,15 @@ from body.sim import observer as OBS  # noqa: E402  (the born momentum observer:
 from body.sim import sounds as SND  # noqa: E402  (the room's sounds from its physics, W5)
 from body.sim import ghost as GH  # noqa: E402  (the room's guidance field, fading, W7)
 from body.sim import legs as LEGS  # noqa: E402  (the learned leg layer below the brain, W9)
+from body.sim import arms as ARMS  # noqa: E402  (the learned carriage of the arms and the hands in a walk, below the brain)
+from body.sim import gaze_layer as GZ  # noqa: E402  (the learned pull of the eyes toward what a hand turned them to, below the brain)
+from body.sim import pace_layer as PL  # noqa: E402  (the learned walking drive on the walk command's speed, below the brain)
+from body.sim import moves as MV  # noqa: E402  (the learned movements, any a hand repeats, below the brain)
+from body.sim import goal_layer as GL  # noqa: E402  (the held goal, set by looking, and the learned turn toward it, below the brain)
+from body.sim import start_layer as SL  # noqa: E402  (the learned starts of the walk and the pick-ups, below the brain)
+from body.sim import word_forms as WF  # noqa: E402  (A254: the words learned from her speech, below the brain)
+from body.sim import concepts as CP  # noqa: E402  (A255: what it heard of each thing, and their likeness)
+from body.sim import voice_layer as VL  # noqa: E402  (the vocal learning loop: a heard word's program, tried and kept, below the brain)
 from body.core.swallow import swallowed as _I5  # noqa: E402  (I5: no error swallowed unseen)
 
 R = None                        # body/sim/reflexes.py, the body's spinal cord: bound at the first world's birth (it imports this module)
@@ -224,6 +234,23 @@ def first_law_gains(tau_max):
     return kp, SERVO_DAMP_S * kp
 
 
+def hull2d(pts):
+    """the convex hull of points in a plane, counter-clockwise (monotone chain)"""
+    p_ = sorted(map(tuple, np.asarray(pts, float)))
+    if len(p_) < 3:
+        return np.array(p_, float)
+
+    def half(seq):
+        h_ = []
+        for q_ in seq:
+            while len(h_) >= 2 and (h_[-1][0] - h_[-2][0]) * (q_[1] - h_[-2][1]) - (h_[-1][1] - h_[-2][1]) * (q_[0] - h_[-2][0]) <= 0.0:
+                h_.pop()
+            h_.append(q_)
+        return h_
+    lo_, hi_ = half(p_), half(p_[::-1])
+    return np.array(lo_[:-1] + hi_[:-1], float)
+
+
 def servo_gains():
     """(kp, kd) per joint in JOINTS' order: Unitree's (A39, the constants above)"""
     kp, kd = [], []
@@ -287,6 +314,119 @@ VOICE_MUTE_PA = 2e-4                        # NB2 (19:4x 10-26): THE TRACT'S MUT
                                             # changed nothing the ears heard but her voice or the room: such a pair teaches it nothing (body/core/
                                             # timing.py `_sense_mute`, as A230's driven act); its rest pairs (her voice heard while it is silent: the
                                             # imitation road, act_inv's label at its reliability) are kept
+MOVE_LIMBS = ("leg_l", "leg_r", "waist", "arm_l", "arm_r", "hand_l", "hand_r")   # 10-28: the limbs a learned movement may hold (moves.py)
+PILOT_TRUNK, PILOT_TRUNK_MAX = 0.5, 0.25     # A243 (10-28 night): THE TRUNK RECRUITED IN THE REACH'S HOMING: the waist's turn joins the arm's
+                                            # joints in steering the hand onto the goal, its column weighted PILOT_TRUNK (the arm moving most), at
+                                            # most PILOT_TRUNK_MAX rad (a reach to a target off the arm's line turns the trunk with it: Kaminski,
+                                            # Bock and Gentile 1995; infants' reaching recruits the trunk as its control grows: Rachwani et al.
+                                            # 2015). 10-28 night: its own pick-up's hand, the arm alone homing, stopped 4-8 cm short of a block
+                                            # 6-13 cm across its feet's middle, its forearm against its knee. Ours: the numbers
+                                            # (Tried and not kept, 10-29: A251, the homing hand more than 1.5 cm across from its goal kept
+                                            # its fingertips over the thing's top; at the bottom it held a hand 1.5-3 cm off 2-6 cm too high
+                                            # and the fingers closed over the cup: Workshop 12's cup 1 of 4, 11 of 15 without)
+HOMING_TEACH_R = 0.06                       # A248: m: taught only at its reach's end, the hand this near the thing (or holding it as it closes):
+                                            # 10-29, taught on the way down too, the program learned to reach the cup sooner and lower, 6
+                                            # ticks early by the 10th pass, its fingers beside the cup's side pushing it 2-13 cm before they
+                                            # closed (the corrections a reach learns are its end point's: visuomotor adaptation); within 3 cm
+                                            # it never taught at all where the homing, at its caps and the forearm on the thigh, held the hand
+                                            # 3-4 cm off the cup's middle
+HOMING_TEACH = 0.0                          # A248 (10-29), TRIED AND NOT KEPT (off: 0; 10-29 afternoon, taught at 0.15 the programs and the
+                                            # homing both made the same correction and its hand overshot the block 5-10 cm, its own pick-up
+                                            # 4 of 10 where it had been 17 of 20). ITS HOMING TEACHES ITS PROGRAM: each tick its own movement runs (not her plan in
+                                            # her hands: `own_movement`) while its homing steers or holds a limb, the program's pose at that
+                                            # phase steps toward the pose with the homing's offset, at
+                                            # HOMING_TEACH of a hand's lesson (the corrective command of a feedback controller trains the
+                                            # feedforward program: feedback-error learning, Kawato, Furukawa and Suzuki 1987). 10-29: its
+                                            # pick-up's homing sat at its cap at the elbow (0.45 rad) and near it at the shoulder and the
+                                            # trunk's turn every pass, the program learned from her plans aiming where its own squat never put
+                                            # the hand, and the last centimetres onto the cup out of the homing's reach. Ours: the number (12
+                                            # dry cup passes: at 0.3 the program, having taken up the corrections, overshot 3 cm past the cup
+                                            # and picked it up 6 of 12, worse after the 5th; at 0.15, 9 of 12)
+PILOT_HOLD_R = 0.06                         # A247 (10-29 night): THE HOMING HELD THROUGH THE GRASP: a hand closing within this of the goal
+                                            # keeps the correction its homing made (its fingers close where its eyes brought it; the reach's
+                                            # transport held as the grasp closes: Jeannerod 1981; 10-29, faded as its fingers began to close,
+                                            # its hand slid 1.5-3 cm back to its program's path and its fingers met the cup's near side,
+                                            # pushing it away). Ours: the number
+REACH_CLOSE = 0.1                           # A253: rad: the reach's end, its program's fingers' mean closing this past its least (ours)
+GRIP_TURN_W = 0.05                          # A257: m a rad: the grip's turn weighed against the hand's place in the homing (ours)
+GRIP_TURN_MAX = 1.6                         # A257: rad: the wrist's roll turned at most this for the grip (its range 1.97 a side; ours)
+LONG_RATIO = 1.5                            # A257: a thing seen this much longer one way than across is long; less, a box square and a
+                                            # rounded thing round (10-29 evening: the duck, 1.33 and rounded, its grip turned at 1.25, was
+                                            # picked up 4 of 5 and turned 2 of 5, 5 and 4 of 5 its grip as it came; ours)
+WRIST_ROLL_K = 4                            # (the wrist's roll among an arm's 7 joints)
+TURN_FLAT = 0.7                             # A257: the hand's length this near level (its floor share) for a grip from above to turn (ours)
+JOINT_R = 0.05                              # A259 (10-29 evening): JOINT ATTENTION: a thing within this (m, on the floor) of where a hand on
+                                            # its head turns its eyes is attended as its goal whatever it wanted before (A246 aside): a
+                                            # parent turning a child's eyes to a thing and naming it makes it the thing they share (Baldwin
+                                            # 1993; Tomasello 1995). 10-29: the can, a thing it had never seen (its priority 0), her hand
+                                            # turning its eyes to it, stayed a lesser thing than the ball it held, and nothing it heard
+                                            # there was learned of it. Ours: the number
+REACH_END_TOL = 0.001                       # A253: m: a program that does not close the hand: its reach's end, its hand within this of its
+                                            # lowest (ours)
+PILOT_R = 0.25                              # 10-28: THE REACH'S HOMING (`_pilot`): within this of the goal its eyes hold, an open hand a movement
+PILOT_GAIN = 0.15                           # carries is steered onto it by its arm's joints, this share of the miss a tick (no joint more than
+PILOT_STEP = 0.06                           # PILOT_STEP rad a tick), at most PILOT_MAX rad a joint, fading by PILOT_FADE a tick once it no
+PILOT_MAX = 0.45                            # longer homes (the hand closed, or far) (10-28: within 0.12 m it began only at the bottom, its
+                                            # learned squat's hand 10-16 cm off, and with her fix threw the arm 0.7 rad in 3 ticks):
+PILOT_FADE = 0.85                           # the last centimetres of a reach guided by sight below deliberation, the parietal cortex's and
+                                            # the cerebellum's "automatic pilot" (Desmurget et al. 1999; Pisella et al. 2000), a toddler's
+                                            # hand closing on a toy wherever it lies within reach. Ours: the numbers
+WORD_ROWS = (29, 78)                       # the words channel's whole words: the born table's 50 word rows (anatomy.born_table)
+EQ_KP, EQ_KD = 0.5, 0.4                    # A240 (10-28): THE EQUILIBRIUM REACTION (`_equilibrium_prep`, `_equilibrium_step`): while a
+EQ_MAX = 0.25                               # movement holds both legs, every 10 ms its legs' commanded pose carries its centre of mass back
+EQ_FEET, EQ_REG = 100.0, 1e-4               # over its feet's middle: EQ_KP of its miss less EQ_KD s of its speed, by the least move of all its
+                                            # legs' joints and its pelvis that carries it there with both feet kept where they stand (a stiff
+                                            # penalty EQ_FEET on their move, EQ_REG on every move: its legs move together over its feet), at
+                                            # most EQ_MAX rad a joint, eased as the tone's balance responses are under a hold (A214), the
+                                            # referent tone (below) carrying it out. The ankle and hip strategies (Horak and Nashner 1986) and
+                                            # the hips' load and unload (Winter 1995), the muscles' answer to the centre of mass's place and
+                                            # speed (Welch and Ting 2008; Peterka 2002): an infant's equilibrium reactions, maturing from about
+                                            # 7 months, there by the age it squats to pick a toy up (3.7, reversed for these by A240). Its
+                                            # centre of mass is the body schema's, from its joints' angles and its feet. Like A195's reflexes it
+                                            # acts at the 10 ms step with no latency of its own (in the replays a 20-50 ms lag tipped it: open).
+                                            # 10-28: her squat with her hold off fell 8 of 8; replayed through its servos alone it fell by tick
+                                            # 8, with the referent tone too (every joint within 0.13 rad of hers, its weight 9-18 cm ahead).
+                                            # Tried and not kept: the ankles' pitch alone front to back (the pelvis following by least squares)
+                                            # with the hips' and ankles' roll side to side: the two legs' answers did not fit both feet on the
+                                            # floor and pushed them 11-17 cm across it; the ankles' roll alone tipped a foot onto its edge
+                                            # (A201's finding); the feet kept strictly with the ankles alone moved its weight 1.3 cm in 10; the
+                                            # earlier balance on bare servos picked up 1 of 14. Ours: the numbers
+FEET_KEPT_ITERS, FEET_KEPT_STEPS = 20, 4    # A240: the commanded pose stood on the feet where they stand: the pelvis's fit's steps, each
+                                            # leg's Newton steps to its foot (`_feet_kept`; ours)
+TONE_LOAD = 0.9                             # A240: the referent tone's push held so that its servo's torque with the cerebellum's stays under
+                                            # this share of the joint's pain line: the tendon organ's autogenic inhibition limiting a muscle's
+                                            # force as it nears injury (Houk and Henneman 1967; A139's reflex relaxes a joint only a tick after
+                                            # its load line: 10-28, the tone held the waist's servos (kp 40, 50 N m) at 1.04 of their pain
+                                            # line, 37 of 55 pain ticks in a pass). Ours: the number
+GRIP_SET = 0.3                              # A250 (10-29): THE GRIP'S SET FORCE: each closing finger joint's push held at this share of its pain
+                                            # line past where it is (the fingers' tendon organs; a grip's force set a modest margin over the
+                                            # slip point, Johansson and Westling 1984): a finger meeting a thing presses it so hard and no
+                                            # harder, whatever angle its command reaches for. 10-29: its own pick-up's fingers, commanded to
+                                            # the angles it learned on the block with nothing holding them back, swung the thumb's base from
+                                            # -0.73 to +0.53 rad round the cup and let it go, 0 of 3; under her grip's same cap in Workshop 12,
+                                            # 11 of 15 (her grip read as near none: it only held them back). Ours: the number, hers
+# A258 (10-29 evening), TRIED AND NOT KEPT: THE GRIP'S ANSWER TO A TWIST (a thing pressing a movement's hand's fingers turning against
+# the hand past 0.5 rad/s raised the grip as for a slip; fingertip afferents signal a held thing's torque and rotational slip, and the
+# grip force rises with it: Kinoshita, Backstrom, Flanagan and Johansson 1997). The car, hanging from a two-fingertip grip, pivoted out of
+# it at 6-15 rad/s near the top of the lift with the grip already at its cap, 2 of 5 kept against 3 of 5 without. The twist is kept as
+# a reading (`_twist`, the tick's most, rad/s).
+GRIP_HOLD_N, GRIP_SLIP_FRAC, GRIP_PEAK_DECAY = 1.0, 0.6, 0.99   # A244 (10-29 night): THE GRIP'S ANSWER TO A SLIP: a hand's fingers
+GRIP_GONE_W = 10                            # A244: 10 ms windows with nothing pressing its fingers before its grip's raise is let go (ours)
+GRIP_SLIP_STEP, GRIP_SLIP_MAX = 0.04, 0.3   # pressed by a thing not its own past GRIP_HOLD_N (N, its recent peak, decaying GRIP_PEAK_DECAY a 10 ms
+                                            # window) whose push falls under GRIP_SLIP_FRAC of that peak (the thing slipping away) squeeze
+                                            # it, each closing joint GRIP_SLIP_STEP rad further closed a slipping window, at most GRIP_SLIP_MAX,
+                                            # never past STRAIN_LINE of its pain line; kept while the thing is held, let go when nothing is.
+                                            # Slips felt at the fingertips raise the grip force in 60-80 ms, automatically, and the grip stays
+                                            # raised for the rest of the lift (Johansson and Westling 1984, 1987). 10-29: its own pick-up's
+                                            # fingertip pinch let the cup slide out on the way up in 2 of 6, the block in 2-3 of 15. Ours:
+                                            # the numbers
+TONE_TAU = 0.04                             # s: A240b (10-28 night): THE MUSCLES' ACTIVATION, the referent tone's commanded pose reaching each
+                                            # joint through a first-order lag (a muscle's force builds and fades over tens of ms after its
+                                            # command: excitation-contraction coupling, Zajac 1989). The pose a movement commands changes a tick
+                                            # (100 ms) at a time; stepped straight into the tone (8 x the servo's gain) each tick's jump kicked
+                                            # the waist to 4 rad/s in a step and its motor to +-50 N m, its pain line, at every tick's start
+                                            # (10-28: 5-23 pain ticks a pass). Ours: the number, within the muscles' 10-50 ms
+SOLE_MID = (0.035, 0.0, -0.03)              # m: the sole's middle in its ankle's frame (the model's four contact points, x -0.05 to 0.12)
 REFLEX_DRIVEN = ("arm_l", "arm_r", "hand_l", "hand_r")   # A230b (2026-10-26, NB2): the effectors whose act a spinal reflex can replace (the
                                            # palmar grasp and the dorsal opening on the hands, the traction response and the prone pattern on the
                                            # arms; the prone pattern's waist is GAIT_DRIVEN's key): A230's law for the cord. NB2's holding hand's
@@ -654,6 +794,24 @@ class G1World(SimWorld):
         self.hand_of_zone = np.full(self.nz + 1, -1, dtype=np.int64)          # A171: each zone's hand (0 left, 1 right, -1 none; nz: no zone)
         for h, grp in enumerate(("hand_l", "hand_r")):
             self.hand_of_zone[list(self.groups[grp])] = h
+        self._finger_zones = [np.array([z_ for z_ in range(self.nz) if self.hand_of_zone[z_] == h_ and z_ != self.palm_zones[h_]], int)
+                              for h_ in (0, 1)]                         # A244: each hand's fingers' zones (its palm not)
+        self._movable_body = np.array([int(m.body_dofnum[b_]) > 0 or int(m.body_mocapid[b_]) >= 0 for b_ in range(m.nbody)], bool)
+        self._floor_touch = np.zeros(2, bool)                           # (A244b: each hand's fingers on the floor, the last tick)
+        self._grip_ext = np.zeros(2); self._grip_acc = np.zeros(2)     # (this step's push on each hand's fingers by things not its own, the
+        self._grip_pk = np.zeros(2); self._grip_boost = np.zeros(2)    # window's sum, its recent peak, the squeeze a slip added)
+        self._grip_gone = np.zeros(2, int)                              # (the windows nothing has pressed its fingers)
+        self._grip_body = np.full(2, -1); self._twist = np.zeros(2)     # (A258: the thing pressing each hand's fingers most this step; its
+                                                                        # turn against the hand, rad/s, the tick's most: a reading)
+        self._grip_close = []                                           # (each hand's closing joints: actuators, the closing sign, positions)
+        self._grip_set_rad = []                                         # (A250: each closing joint's set push past where it is, rad)
+        self._move_hands = ()
+        for h_, hand_ in enumerate(("hand_l", "hand_r")):
+            js_ = [j_ for j_ in range(self.eff_slices[hand_].start, self.eff_slices[hand_].stop) if JOINTS[j_] in R.CLOSING[hand_]]
+            self._grip_close.append((np.asarray(self.aid)[js_], np.array([float(R.CLOSING[hand_][JOINTS[j_]]) for j_ in js_]),
+                                     np.asarray(self.qadr)[js_], np.asarray(self.tau_hold, float)[js_] * STRAIN_LINE
+                                     / np.maximum(np.asarray(self.kp, float)[js_], 1e-6)))
+            self._grip_set_rad.append(np.asarray(self.tau_hold, float)[js_] * GRIP_SET / np.maximum(np.asarray(self.kp, float)[js_], 1e-6))
         self._sides = np.zeros((2, 2))                                          # A171: this step's push on each hand from things not
                                                                                 # its own: [palmar (toward its back), dorsal (toward its palm)]
         self.spinal = bool(spinal)                                      # the palmar grasp at the spinal cord (off: an instrument's switch)
@@ -711,6 +869,58 @@ class G1World(SimWorld):
         self.g1_bodies = np.array([b for b in range(m.nbody) if int(m.body_rootid[b]) == int(m.body_rootid[m.body('pelvis').id])], dtype=np.int64)
         self.ghost = GH.Ghost(self)                                     # W7: the room's guidance field (off until the day plan's ghost block)
         self.legs = LEGS.LegLayer(self.seed)                            # W9: the body's learned leg layer (taught in walk blocks)
+        self.arms = ARMS.ArmLayer({n_: [JOINTS[i_] for i_ in range(self.eff_slices[n_].start, self.eff_slices[n_].stop)] for n_ in ARMS.LIMBS},
+                                  {j_: v_ for t_ in R.TONE_REST.values() for j_, v_ in t_.items()})   # THE ARM LAYER (10-28): the arms' and
+        self.arm_layer = bool(int(os.environ.get("ARM_LAYER", "1")))   # the hands' carriage in a walk, below the brain (body/sim/arms.py)
+        sj_ = {n_: [JOINTS[i_] for i_ in range(self.eff_slices[n_].start, self.eff_slices[n_].stop)] for n_ in ARMS.STANCE_LIMBS}
+        self.stand = ARMS.ArmLayer(sj_, ARMS.stance_born(sj_, R.STANCE), limbs=ARMS.STANCE_LIMBS)   # THE STANCE LAYER (10-28): the legs'
+        self.stand_layer = bool(int(os.environ.get("STAND_LAYER", "1")))   # and the waist's stance while it is held standing, below the brain
+        self.eye_layer = GZ.EyeLayer()                                  # THE EYE LAYER (10-28): its eyes' learned pull toward what a hand
+        self.eye_layer_on = bool(int(os.environ.get("EYE_LAYER", "1")))   # turned them to (body/sim/gaze_layer.py)
+        self.moves = MV.MoveLayer({n_: [JOINTS[i_] for i_ in range(self.eff_slices[n_].start, self.eff_slices[n_].stop)]
+                                   for n_ in MOVE_LIMBS})                 # THE MOVEMENT LAYER (10-28): any movement a hand repeats, learned
+        self.move_layer = bool(int(os.environ.get("MOVE_LAYER", "1")))   # below the brain and run off once started (body/sim/moves.py)
+        self._pilot_held = set(); self._teach_ = None                   # (A248: the limbs its homing steered or held; what it teaches)
+        self.own_movement = True                                        # (A248: a running movement its own; a workshop's her plan: not)
+        self.waist_yaw_j = JOINTS.index("waist_yaw_joint")             # (A243: the waist's turn, its index in the joints and in the waist's)
+        self.waist_yaw_k = self.waist_yaw_j - self.eff_slices["waist"].start
+        self.pilot = {"arm_l": np.zeros(7), "arm_r": np.zeros(7), "waist": np.zeros(3)}   # THE REACH'S HOMING (10-28): each arm's offset onto
+                                                                        # the held goal (and the trunk's turn recruited with it: PILOT_TRUNK)
+        self.pilot_on = bool(int(os.environ.get("PILOT", "1")))
+        self.pilot_predict = bool(int(os.environ.get("PILOT_PREDICT", "1")))   # (A253: the homing on the forward model's hand)
+        self.grip_turn = bool(int(os.environ.get("GRIP_TURN", "1")))   # (A257: the grip turned to the thing's seen shape)
+        self.gaze_anchor = bool(int(os.environ.get("GAZE_ANCHOR", "1")))   # (A260: its eyes anchored on the goal it acts on)
+        self._grip_turn_err = None                                      # (A257: this tick's turn left, rad, None when none is wanted)
+        self._reach_end = {}                                            # (A253: the running movement's reach's end for each hand: its phase)
+        self._pilot_pred = None                                         # (A253: this tick's forward model's hand, None when it is not used)
+        self.bal = {"leg_l": np.zeros(6), "leg_r": np.zeros(6)}       # A240: THE EQUILIBRIUM REACTION's offsets on each leg's commanded pose
+        self._bal_com = None                                            # (its ankles' this 10 ms; zero when no movement holds the legs)
+        self.move_ref = None                                            # A240: THE REFERENT TONE's commanded pose (the actuators' order, as
+        self._move_tone = ()                                            # ctrl) and the limbs under it this tick (a movement's legs and waist)
+        self._tone_ref = {}                                             # A240b: each toned limb's commanded pose as its muscles carry it (TONE_TAU)
+        self._tone_ramp = {}                                            # and the tick's command's ramp (from, to) over its steps
+        self._ctrl_end = None                                           # (the servos' command at the last tick's end: a limb's push as a movement takes it)
+        self.probe = None                                               # AN INSTRUMENT (not felt, not acted on): a joint's index whose torque's
+        self.probe_rows = []                                            # parts are gathered each physics step of the tick (`probe_rows`)
+        self.foot_body = [m.body(f"{s_}_ankle_roll_link").id for s_ in ("left", "right")]   # (its feet: their soles' middle, `feet_middle`)
+        self._sole_geoms = [g_ for g_ in range(m.ngeom) if int(m.geom_bodyid[g_]) in self.foot_body and int(m.geom_contype[g_]) != 0]
+        self.pace = PL.PaceLayer()                                      # THE PACE LAYER (10-28): its learned walking drive on the walk
+        self.pace_layer = bool(int(os.environ.get("PACE_LAYER", "1")))   # command's speed (body/sim/pace_layer.py), born pulling nowhere
+        self._pace_pull = 0.0
+        self.goal = GL.HeldGoal()                                       # THE HELD GOAL (10-28): where it is going, set by resting its eyes on
+        self.steer = GL.SteerLayer()                                    # a named object; THE STEERING LAYER: its learned turn toward it
+        self.steer_layer = bool(int(os.environ.get("STEER_LAYER", "1")))   # (body/sim/goal_layer.py), born pulling nowhere
+        self._steer_pull = 0.0; self._goal_b = None
+        self.word_forms = WF.WordForms()                                # A254: THE WORD FORMS: a spelled word heard often enough a word
+        self.recalled = {}                                              # (A256: what a new goal recalled, from the thing it is like)
+        self._recall_last = None                                        # (A256: the goal last recalled for)
+        self.concepts = CP.Concepts()                                   # A255: THE THINGS' CONCEPTS: what it heard of each thing
+        self.starts = SL.StartLayer()                                   # THE STARTS (10-28 night): its learned start of the walk and of each
+                                                                        # pick-up from the context (body/sim/start_layer.py), born starting nothing
+        self.voice = VL.VoiceLayer(self.seed)                           # THE VOICE LAYER (10-28): its attempts at a heard word, kept by her
+        self.voice_layer = bool(int(os.environ.get("VOICE_LAYER", "1")))   # reaction (body/sim/voice_layer.py), born doing nothing
+        self._voice_drove = False
+        self.gaze_hand = None                                           # a hand on its head (a workshop's: its step on the gaze, by the gap)
         self.cereb_idx = np.array([JOINTS.index(j) for j in AN.CEREB_JOINTS])
         self.weight = self.body_mass * float(np.linalg.norm(m.opt.gravity))
         self.armature = m.dof_armature[self.dof].copy()                     # each joint's rotor inertia through its gear (the model's)
@@ -867,11 +1077,17 @@ class G1World(SimWorld):
                "loco_cmd": np.array([float(self.ghost.cmd_v), float(self.ghost.cmd_w)], float),   # A224: the walk command's own drive (the command before this tick's act)
                "loco_cmd_push": np.array([float(x) for x in getattr(self, "_loco_push", (0.0, 0.0))], float),   # A228b: the part of it the cord's
                **{n_ + "_driven": np.array([1.0 if (n_ in getattr(self, "_driven", ()) or n_ in getattr(self, "_reflexed", ())) else 0.0])
-                  for n_ in GAIT_DRIVEN + REFLEX_DRIVEN},   # A230: the gait set its joints (A230b: or a reflex replaced its act)
+                  for n_ in GAIT_DRIVEN + REFLEX_DRIVEN + (GAZE_NAME,)},   # A230: the gait set its joints (A230b: or a reflex replaced its act;
+                                                                            # 10-28: or a hand turned its eyes)
                "voice_mute": np.array([1.0 if float(np.sqrt(np.mean(np.square(np.asarray(self.tract_pa, float))))) < VOICE_MUTE_PA else 0.0]),   # NB2 19:4x
                "loco_engaged": np.array([1.0 if self.ghost.obeys_command() else 0.0]),   # A231: whether the actuators will carry these effectors'
+               "voice_engaged": np.array([0.0 if (getattr(self, "voice_layer", False) and self.voice.sounding()) else 1.0]),   # (10-28: the tract
+               "voice_driven": np.array([1.0 if getattr(self, "_voice_drove", False) else 0.0]),   # the voice layer's this tick / the last)
                "loco_blocked": np.array(self._loco_blocked(), float),   # A232: the walk command's settings its integrator cannot carry out now
-               **{n_ + "_engaged": np.array([0.0 if self.ghost.owns_legs() else 1.0]) for n_ in GAIT_DRIVEN}}   # acts this tick (the gait's)
+               **{n_ + "_engaged": np.array([0.0 if self.ghost.owns_legs() else 1.0]) for n_ in GAIT_DRIVEN},   # acts this tick (the gait's)
+               **({n_ + "_engaged": np.array([0.0 if (self.arms_own() or n_ in self.moves_own()) else 1.0]) for n_ in ARMS.LIMBS}
+                  if self.arm_layer else {})}   # (and the arm
+                                                                        # layer's: the arms and the hands carried in a walk)
                                                                                                  # push made in the last tick (its corollary discharge)
         face = 0.0
         if not self.night:
@@ -983,6 +1199,441 @@ class G1World(SimWorld):
         dy_ = (self._pelvis_yaw() - y0 + math.pi) % (2 * math.pi) - math.pi
         self._loco_err = [dy_ / TICK_S - u_]; self._loco_cmd = [u_]
 
+    def goal_distance(self):
+        """how far its held goal is from its pelvis (m, the floor's plane), or None (no goal held)"""
+        if self.goal.point is None:
+            return None
+        xy_ = self.d.xpos[self.pelvis_id][:2]
+        return float(math.hypot(float(self.goal.point[0]) - float(xy_[0]), float(self.goal.point[1]) - float(xy_[1])))
+
+    def _program_hand(self, h, phase, held, pilot=True):
+        """A253: THE FORWARD MODEL'S HAND: hand `h`'s grasp point where the running movement's program puts it at `phase` (the pose it
+        was shown on the limbs it holds, the homing's offsets added unless not `pilot`), its body stood on its feet where they stand
+        (pickup.place_base) -> (the point, the state there)"""
+        from body.sim import pickup as PU_
+        q_ = self.d.qpos.copy()
+        for l_ in held:
+            q_[self.qadr[self.eff_slices[l_]]] = (np.asarray(self.moves.pose(l_, phase), float)
+                                                  + (self.pilot[l_] if (pilot and l_ in self.pilot) else 0.0))
+        q_ = PU_.place_base(self, q_, self.d.qpos, iters=FEET_KEPT_ITERS)[0]
+        dk_ = mujoco.MjData(self.m); dk_.qpos[:] = q_
+        mujoco.mj_kinematics(self.m, dk_); mujoco.mj_comPos(self.m, dk_)
+        return PU_.hand_point(self, dk_, h), dk_
+
+    def _reach_predicted(self, h, held):
+        """A253: before the running movement's reach's end, where the movement will bring hand `h` there (`_program_hand`) -> (the point,
+        the state there); None at or past it, or no movement. The reach's end, found once a run: the phase its program's fingers begin
+        to close (their mean closing REACH_CLOSE past its least, after it: the transport ends as the grasp closes, Jeannerod 1981;
+        Haggard and Wing 1991); a program that does not close the hand, the first phase it brings the hand within REACH_END_TOL of its
+        lowest; a held pose has none"""
+        r_ = self.moves.running
+        if r_ is None or not held:
+            return None
+        key_ = (r_["name"], int(self.moves.programs[r_["name"]]["runs"]), int(h))
+        if key_ not in self._reach_end:
+            self._reach_end = {k_: v_ for k_, v_ in self._reach_end.items() if k_[:2] == key_[:2]}
+            T_ = max(1, int(r_["T"])); hand_ = ("hand_l", "hand_r")[int(h)]; end_ = None
+            if hand_ in held:
+                cl_ = [(k2_, R.CLOSING[hand_][j2_]) for k2_, j2_ in enumerate(dict(G.EFFECTORS)[hand_]) if j2_ in R.CLOSING[hand_]]
+                sh_ = np.array([float(np.mean([s_ * float(np.asarray(self.moves.pose(hand_, k_ / T_), float)[k2_]) for k2_, s_ in cl_]))
+                                for k_ in range(T_ + 1)]) if cl_ else np.zeros(0)
+                if len(sh_):
+                    k0_ = int(np.argmin(sh_)); on_ = np.flatnonzero(sh_[k0_:] >= float(sh_[k0_]) + REACH_CLOSE)
+                    end_ = None if not len(on_) else k0_ + int(on_[0])
+            if end_ is None:
+                zs_ = [float(self._program_hand(h, k_ / T_, held, pilot=False)[0][2]) for k_ in range(T_ + 1)]
+                end_ = int(np.flatnonzero(np.asarray(zs_) <= min(zs_) + REACH_END_TOL)[0])
+            self._reach_end[key_] = end_ / float(T_)
+        if float(self.moves.phase()) >= self._reach_end[key_]:
+            return None
+        return self._program_hand(h, self._reach_end[key_], held)
+
+    def seen_shape(self, name):
+        """A257: A THING'S SHAPE AS ITS EYES SEE IT FROM ABOVE, the room's outline of its main part (the eye layer's things are the room's,
+        a stand-in for its seeing them): long (one way LONG_RATIO or more its width: across its narrow way), else a box square (across a
+        face) and a rounded thing round (a cylinder, a ball, a rounded body: any grip) -> (kind, the floor's angle of the way across its
+        narrow side, or of a side; None when round)"""
+        try:
+            g_ = self.m.geom(str(name)).id
+        except Exception:
+            return "round", None
+        t_ = int(self.m.geom_type[g_]); sz_ = self.m.geom_size[g_]
+        if t_ not in (int(mujoco.mjtGeom.mjGEOM_BOX), int(mujoco.mjtGeom.mjGEOM_ELLIPSOID)):
+            return "round", None
+        R_ = self.d.geom_xmat[g_].reshape(3, 3)
+        if max(sz_[0], sz_[1]) >= LONG_RATIO * min(sz_[0], sz_[1]):
+            a_ = R_[:2, 1] if sz_[0] >= sz_[1] else R_[:2, 0]          # (its narrow way: the shorter of its two sides)
+            return "long", float(math.atan2(a_[1], a_[0]))
+        if t_ == int(mujoco.mjtGeom.mjGEOM_ELLIPSOID):
+            return "round", None
+        return "square", float(math.atan2(R_[1, 0], R_[0, 0]))
+
+    def _grip_turn(self, h, d):
+        """A257: the turn about the vertical (rad) that brings hand `h`'s length (along which this hand closes, thumb to fingers) across
+        the held goal's narrow way (a long thing) or one of its sides (a square thing), the nearer way round; None for a round thing, or
+        a hand whose length is not near level (TURN_FLAT: a grip from above)"""
+        kind_, a_ = self.seen_shape(self.goal.name)
+        if a_ is None:
+            return None
+        hx_ = d.xmat[self.palm_body[h]].reshape(3, 3)[:2, 0]
+        if float(np.linalg.norm(hx_)) < TURN_FLAT:
+            return None
+        e_ = a_ - math.atan2(float(hx_[1]), float(hx_[0])); per_ = math.pi if kind_ == "long" else math.pi / 2.0
+        return float((e_ + per_ / 2.0) % per_ - per_ / 2.0)
+
+    def _pilot(self, held):
+        """THE REACH'S HOMING this tick (PILOT_R): for each arm a running movement holds, its open hand within PILOT_R of the goal its eyes
+        hold (the eye layer's point for it) steps its offset by PILOT_GAIN of the miss through the arm's joints (damped least squares),
+        else the offset fades; none when no movement runs. A253: before the reach's end the miss is the forward model's, the goal less
+        where the movement will bring the hand (`_reach_predicted`), through the arm's joints as they will be there. A257: and the hand
+        turned about the vertical to close across the thing's narrow way (`_grip_turn`), a row of the same least squares (GRIP_TURN_W),
+        its wrist's roll free to GRIP_TURN_MAX"""
+        from body.sim import pickup as PU_
+        self._pilot_pred = None; self._grip_turn_err = None
+        tg_ = self.eye_layer.targets.get(self.goal.name) if (self.goal.name is not None and self.pilot_on) else None
+        near_ = None                                                    # (ONE HAND HOMES, the nearer the goal: the parietal reach region picks
+        if tg_ is not None:                                             # the effector, Cui and Andersen 2007; A240, 10-28 night: both open
+            dd_ = [float(np.linalg.norm(np.asarray(tg_, float) - PU_.hand_point(self, self.d, h2_))) for h2_ in (0, 1)]   # hands homed and
+            near_ = int(np.argmin(dd_))                                 # her hands held the idle arm back, her share at it 0.37-0.47)
+        trunk_ = "waist" in held                                        # (the trunk recruited: a movement holds the waist)
+        homed_ = False
+        self._pilot_held = set()                                        # (A248: the limbs its homing steered or held this tick)
+        for h_, arm_, hand_ in ((0, "arm_l", "hand_l"), (1, "arm_r", "hand_r")):
+            off_ = self.pilot[arm_]
+            if arm_ not in held or (near_ is not None and h_ != near_):
+                off_ *= PILOT_FADE if arm_ in held else 0.0
+                continue
+            hp_ = PU_.hand_point(self, self.d, h_)
+            q_ = self.d.qpos[self.qadr[self.eff_slices[hand_]]]
+            cl_ = [(k_, R.CLOSING[hand_][j2_]) for k_, j2_ in enumerate(dict(G.EFFECTORS)[hand_]) if j2_ in R.CLOSING[hand_]]
+            shut_ = float(np.mean([s_ * float(q_[k_]) for k_, s_ in cl_])) if cl_ else 0.0   # (its fingers' closing, mean)
+            pr_ = self._reach_predicted(h_, held) if (self.pilot_predict and tg_ is not None) else None
+            hj_, dj_ = (hp_, self.d) if pr_ is None else pr_                # (A253: before its reach's end, the hand where its movement will
+            self._pilot_pred = None if pr_ is None else pr_[0].copy()       # bring it, and its arm's joints there)
+            mis_ = None if tg_ is None else np.asarray(tg_, float) - hj_
+            if mis_ is not None and self._floor_touch[h_] and mis_[2] < 0.0:   # (A244b: its fingers on the floor, the homing no deeper: the
+                mis_ = np.array([mis_[0], mis_[1], 0.0])                        # touch stops the descent, the eyes still steer it across)
+            if mis_ is not None and float(np.linalg.norm(mis_)) < PILOT_R and shut_ < 0.4:
+                jp_ = np.zeros((3, self.m.nv)); jr_ = np.zeros((3, self.m.nv))
+                mujoco.mj_jac(self.m, dj_, jp_, jr_, hj_, int(self.palm_body[h_]))
+                cols_ = self.dof[self.eff_slices[arm_]]
+                J_ = jp_[:, cols_] * np.r_[np.ones(6), 0.0]             # (all but the wrist's yaw: 10-28, through it the yaw neared its end)
+                if trunk_:                                              # (A243: the waist's turn a column beside them, weighted)
+                    J_ = np.hstack([J_, PILOT_TRUNK * jp_[:, [int(self.dof[self.waist_yaw_j])]]])
+                tu_ = self._grip_turn(h_, dj_) if (self.grip_turn and pr_ is not None) else None   # (turned as it comes, set by the
+                                                                        # reach's end: 10-29 evening, turned on as its fingers closed, the hand
+                                                                        # twisted on the duck and pushed it 1-4 cm)
+                self._grip_turn_err = tu_
+                if tu_ is None:
+                    dq_ = PILOT_GAIN * (J_.T @ np.linalg.solve(J_ @ J_.T + 0.05 ** 2 * np.eye(3), mis_))
+                else:                                                   # (A257: the hand's turn about the vertical, a row beside its place)
+                    Jt_ = jr_[2, cols_] * np.r_[np.ones(6), 0.0]
+                    if trunk_:
+                        Jt_ = np.r_[Jt_, PILOT_TRUNK * jr_[2, int(self.dof[self.waist_yaw_j])]]
+                    J4_ = np.vstack([J_, GRIP_TURN_W * Jt_]); r4_ = np.r_[mis_, GRIP_TURN_W * tu_]
+                    dq_ = PILOT_GAIN * (J4_.T @ np.linalg.solve(J4_ @ J4_.T + 0.05 ** 2 * np.eye(4), r4_))
+                off_ += np.clip(dq_[:7], -PILOT_STEP, PILOT_STEP)
+                lim_ = np.full(7, PILOT_MAX)
+                if tu_ is not None:
+                    lim_[WRIST_ROLL_K] = GRIP_TURN_MAX                  # (the wrist's roll free to turn the grip)
+                np.clip(off_, -lim_, lim_, out=off_)
+                if trunk_:
+                    self.pilot["waist"][self.waist_yaw_k] = float(np.clip(self.pilot["waist"][self.waist_yaw_k]
+                                                                          + np.clip(PILOT_TRUNK * dq_[7], -PILOT_STEP, PILOT_STEP),
+                                                                          -PILOT_TRUNK_MAX, PILOT_TRUNK_MAX))
+                    homed_ = True
+                if float(np.linalg.norm(mis_)) <= HOMING_TEACH_R:       # (A248: its reach's end, the hand at the thing: taught there)
+                    self._pilot_held.add(arm_)
+            elif mis_ is not None and shut_ >= 0.4 and float(np.linalg.norm(mis_)) < PILOT_HOLD_R:
+                homed_ = True                                           # (A247: closing on the thing it homed onto, the correction held)
+                self._pilot_held.add(arm_)
+            else:
+                off_ *= PILOT_FADE
+        if not homed_:                                                  # (the trunk's share fades as the arm's does)
+            self.pilot["waist"] *= PILOT_FADE if trunk_ else 0.0
+        elif trunk_ and self._pilot_held:
+            self._pilot_held.add("waist")
+
+    def support_margin(self, d=None):
+        """how far its centre of mass lies inside the area its two soles span (m, the floor's plane: the convex hull of their contact
+        points; negative, outside it): how near it is to tipping over its feet's edge"""
+        d = self.d if d is None else d
+        h_ = hull2d(np.array([d.geom_xpos[g_][:2] for g_ in self._sole_geoms], float))
+        c_ = np.asarray(d.subtree_com[int(self.m.body_rootid[self.pelvis_id])][:2], float)
+        return float(min((float(np.cross(h_[(i_ + 1) % len(h_)] - h_[i_], c_ - h_[i_])) / max(1e-9, float(np.linalg.norm(h_[(i_ + 1) % len(h_)] - h_[i_]))))
+                         for i_ in range(len(h_))))
+
+    def feet_middle(self, d=None):
+        """the middle of its two soles (m, the room's frame; SOLE_MID in each ankle's frame)"""
+        d = self.d if d is None else d
+        return np.mean([d.xpos[b_] + d.xmat[b_].reshape(3, 3) @ np.asarray(SOLE_MID, float) for b_ in self.foot_body], axis=0)
+
+    def _equilibrium_prep(self, held):
+        """A240: THE EQUILIBRIUM REACTION for this tick: the postural reflexes on and a running movement holding both legs -> the legs'
+        joints (JOINTS' indices) and the pseudo-inverse of the centre of mass's floor-plane Jacobian through the ankles' pitch and roll under
+        the feet's constraint (its pelvis free), read at the tick's start; else its offsets are zero -> None"""
+        if not (self.posture and "leg_l" in held and "leg_r" in held):
+            for k_ in self.bal:
+                self.bal[k_][:] = 0.0
+            self._bal_com = None
+            return None
+        m, d = self.m, self.d
+        root_ = int(m.body_rootid[self.pelvis_id])
+        jc_ = np.zeros((3, m.nv)); mujoco.mj_jacSubtreeCom(m, d, jc_, root_)
+        rows_ = []
+        for b_ in self.foot_body:
+            jp_ = np.zeros((3, m.nv)); jr_ = np.zeros((3, m.nv)); mujoco.mj_jacBody(m, d, jp_, jr_, b_)
+            rows_ += [jp_, jr_]
+        jf_ = np.vstack(rows_)
+        idx_ = np.concatenate([np.arange(self.eff_slices[l_].start, self.eff_slices[l_].stop) for l_ in ("leg_l", "leg_r")])
+        bd_ = np.arange(self.base_dof, self.base_dof + 6); jd_ = np.asarray(self.dof)[idx_]
+        cols_ = np.concatenate([bd_, jd_])                              # the least move of its legs' joints and its pelvis carrying its centre
+        Af_, Ac_ = jf_[:, cols_], jc_[:2, cols_]                        # of mass by the miss with both feet kept where they stand (a stiff
+        G_ = np.linalg.solve(EQ_FEET * Af_.T @ Af_ + Ac_.T @ Ac_ + EQ_REG * np.eye(len(cols_)), Ac_.T)   # penalty EQ_FEET on their move):
+        Jp_ = G_[6:].copy()                                             # its legs move together over its feet, as a body's do
+        return dict(idx=idx_, Jp=Jp_, root=root_)
+
+    def _equilibrium_step(self, b):
+        """A240: THE EQUILIBRIUM REACTION, a 10 ms step: its centre of mass's miss off its feet's middle and its speed -> each leg's
+        offset on its commanded pose (`bal`), eased by the tone's share under a hold (A214)"""
+        d = self.d
+        com_ = np.asarray(d.subtree_com[b["root"]][:2], float)
+        dt_ = OBS_WINDOW_STEPS * float(self.m.opt.timestep)
+        v_ = np.zeros(2) if self._bal_com is None else (com_ - self._bal_com) / dt_
+        self._bal_com = com_.copy()
+        e_ = self.feet_middle()[:2] - com_
+        off_ = float(getattr(self, "_tone_w", 1.0)) * np.clip(b["Jp"] @ (EQ_KP * e_ - EQ_KD * v_), -EQ_MAX, EQ_MAX)
+        self.bal["leg_l"], self.bal["leg_r"] = off_[:6].copy(), off_[6:].copy()
+
+    def _referent_tone_step(self, s=None, n=None):
+        """A240: THE REFERENT TONE, a physics step's (2 ms): each limb a movement holds of the waist and the legs driven toward its
+        commanded pose (`move_ref`, the equilibrium reaction's offsets added on the legs) by A195's law, POSTURE_STIFF times the distance
+        less POSTURE_DAMP times the joint's speed, at most POSTURE_MAX, the servo's torque with the cerebellum's kept under TONE_LOAD of its
+        pain line at every step (the tendon organ's graded inhibition; A139's tick-long release is the standing tone's, not this one's). (10-28: at A195's 10 ms its
+        targets jumped between steps, its waist's gear chattered at its pain line and its hand swung 4-6 cm a tick over the block, her
+        catch 0.44-0.68; every 2 ms, her catch 0.00-0.06, no fall in 5, the hand 2 cm a tick. Tried and not kept: the damping scaled to
+        the stiffness as well, its waist's motors swung +-70 N m tick to tick and its squat tipped by tick 12). A240b: the commanded pose
+        changes continuously, from where the last tick's command ended to this tick's over the tick's `n` steps (`s` the step; the
+        movement's phase runs on between the brain's ticks: 10-28 night, stepped each 150 ms tick, the legs' new pose jolted the pelvis and
+        swung the waist's motor +-25 N m about its load every tick, to its pain line in the squat), and reaches each joint through its
+        muscles' lag (TONE_TAU)"""
+        d = self.d
+        kept_ = self._feet_kept() if self.move_tone_on() else {}
+        a_lp_ = float(self.m.opt.timestep) / (TONE_TAU + float(self.m.opt.timestep))   # (A240b: the muscles' lag, a step's share)
+        for limb in list(self._tone_ref):
+            if limb not in self._move_tone:
+                del self._tone_ref[limb]                                # (a limb the movement lets go: its lag begins again from its pose)
+                self._tone_ramp.pop(limb, None)
+        for limb in self._move_tone:
+            sl = self.eff_slices[limb]
+            q_ = d.qpos[self.qadr[sl]]
+            g_ = np.full(len(q_), R.POSTURE_STIFF)
+            wrist_ = np.array([JOINTS[j_].split("_")[1] == "wrist" for j_ in range(sl.start, sl.stop)])   # (an arm's wrist: fine control,
+            for k_, j_ in enumerate(range(sl.start, sl.stop)):         # no posture's tone: 10-28, under it the wrist's gear chattered at its
+                                                                        # pain line, 1.0-1.23, and shook the held block out of the pinch)
+                                                                        # (A196's rule: the legs' sideways joints and every twist, the waist's
+                if JOINTS[j_].endswith(("hip_roll_joint", "ankle_roll_joint", "hip_yaw_joint", "waist_yaw_joint")):   # too, held softly
+                    g_[k_] = R.POSTURE_ROLL                             # (POSTURE_ROLL): two legs on the floor are one chain, and stiff across
+                                                                        # they pushed each other's feet 11-17 cm across the floor in a squat,
+                                                                        # both soles down; the waist's stiff turn of 0.5 rad toward the block
+                                                                        # turned its legs the other way on soles that hold no twist: 10-28)
+            if limb not in self._tone_ref:                              # (A240b: as the movement takes the limb, its muscles' push goes on
+                c0_ = (self._ctrl_end if self._ctrl_end is not None else d.ctrl)[self.aid[sl]] - q_   # as it was: the referent its last
+                lp0_ = q_ + (c0_ + R.POSTURE_DAMP * d.qvel[self.dof[sl]]) / g_   # command's push stands for under the tone's law; 10-28 night,
+                lp0_[wrist_] = (q_ + c0_)[wrist_]                       # begun from where its joints were, the push dropped to nothing for a
+                self._tone_ref[limb] = lp0_                             # step and its wrists kicked to their pain line at the movement's start)
+                self._tone_ramp[limb] = [lp0_.copy(), lp0_.copy()]
+            base_ = kept_[limb] if limb in kept_ else self.move_ref[self.aid[sl]]
+            if s is not None and n:                                     # (A240b: the tick's command reached over its steps, from where the
+                if s == 0 or limb not in self._tone_ramp:               # last tick's ended, toward the command as it stands this step: her
+                    r0_ = self._tone_ramp.get(limb)                     # hands write it at each step after the tone's)
+                    self._tone_ramp[limb] = [self._tone_ref[limb].copy() if r0_ is None else r0_[1].copy(), None]
+                b0_ = self._tone_ramp[limb][0]
+                base_ = b0_ + min(1.0, (s + 1) / float(n)) * (np.asarray(base_, float) - b0_)
+                self._tone_ramp[limb][1] = base_.copy()                 # (where this step's command stands: the next tick's ramp begins there)
+            cmd_ = base_ + (self.bal[limb] if limb in self.bal else 0.0)
+            lp_ = self._tone_ref[limb] + a_lp_ * (cmd_ - self._tone_ref[limb])   # (its muscles' lag)
+            self._tone_ref[limb] = lp_
+            ref_ = lp_
+            off_ = np.clip(g_ * (ref_ - q_) - R.POSTURE_DAMP * d.qvel[self.dof[sl]], -R.POSTURE_MAX, R.POSTURE_MAX)
+            off_[wrist_] = (ref_ - q_)[wrist_]                          # (the wrist's servo to its commanded angle, as before the tone)
+                                                                        # (the tendon organ here is the graded cap below, at every step: A139's
+                                                                        # whole tick without the pull after a tick at the load line set the
+                                                                        # waist going on and off tick by tick at its pain line as it rose, its
+                                                                        # motor -30, -10, -26, -7 N m, and shook the held block out: 10-28)
+            L_ = TONE_LOAD * np.asarray(self.tau_hold, float)[sl]          # (the tendon organ's limit on its own push: the servo's torque
+            cb_ = self.m.actuator_biasprm[self.aid[sl], 0]                  # with the cerebellum's under TONE_LOAD of the pain line)
+            kp_ = np.asarray(self.kp, float)[sl]
+            off_ = np.clip(off_, (-L_ - cb_) / kp_, (L_ - cb_) / kp_)
+            d.ctrl[self.aid[sl]] = np.clip(q_ + off_, self.lo[sl], self.hi[sl])
+
+    def _feet_kept(self):
+        """A240: THE LEGS' COMMANDED POSE KEPT ON THE FEET WHERE THEY STAND: the commanded pose (`move_ref`'s legs, waist and arms) stood
+        on the feet as they stand (its pelvis placed so its feet best meet them: pickup.place_base), then each leg's six joints solved so
+        that its foot meets its own exactly from there (damped Newton steps) -> {leg: its joints' commanded angles}. Recomputed only when
+        the commanded pose changes (a tick's or a hand's). Two legs with both feet down are one closed chain: each joint driven to its own
+        angle, they pushed against each other once the pelvis stood off the pose's way, and the feet slid 16 cm across the floor in a
+        squat, both soles down and loaded (10-28); a body keeps its soles where they stand and moves its legs together over them"""
+        from body.sim import pickup as PU_
+        m, d = self.m, self.d
+        idx_ = np.concatenate([np.arange(self.eff_slices[l_].start, self.eff_slices[l_].stop) for l_ in MOVE_LIMBS if l_ in self._move_tone])
+        key_ = np.round(self.move_ref[self.aid[idx_]], 6).tobytes()
+        if getattr(self, "_kept_key", None) == key_ and getattr(self, "_kept", None) is not None:
+            return self._kept
+        q_ = d.qpos.copy()
+        q_[self.qadr[idx_]] = self.move_ref[self.aid[idx_]]
+        q_ = PU_.place_base(self, q_, d.qpos, iters=FEET_KEPT_ITERS)[0]
+        dk_ = mujoco.MjData(m); dk_.qpos[:] = q_
+        out_ = {}
+        for k_, leg_ in enumerate(("leg_l", "leg_r")):
+            sl_ = self.eff_slices[leg_]
+            fb_ = self.foot_body[k_]
+            for _ in range(FEET_KEPT_STEPS):
+                mujoco.mj_kinematics(m, dk_); mujoco.mj_comPos(m, dk_)
+                jp_ = np.zeros((3, m.nv)); jr_ = np.zeros((3, m.nv)); mujoco.mj_jacBody(m, dk_, jp_, jr_, fb_)
+                J_ = np.vstack([jp_[:, self.dof[sl_]], jr_[:, self.dof[sl_]]])
+                r_ = np.concatenate([d.xpos[fb_] - dk_.xpos[fb_], PU_._rot_err(dk_.xmat[fb_].reshape(3, 3), d.xmat[fb_].reshape(3, 3))])
+                dq_ = J_.T @ np.linalg.solve(J_ @ J_.T + PU_.LAM ** 2 * np.eye(6), r_)
+                dk_.qpos[self.qadr[sl_]] = np.clip(dk_.qpos[self.qadr[sl_]] + dq_, self.lo[sl_], self.hi[sl_])
+            out_[leg_] = dk_.qpos[self.qadr[sl_]].copy()
+        self._kept_key, self._kept = key_, out_
+        return out_
+
+    def move_tone_on(self):
+        """A240: whether the referent tone holds the legs this tick (a movement holds them): then a hand on them moves their commanded
+        pose (`move_ref`), not their servos' targets"""
+        return "leg_l" in self._move_tone and "leg_r" in self._move_tone
+
+    def arm_tone_on(self, arm):
+        """A240: whether the referent tone holds this arm this tick (a movement holds it): a hand on it moves its commanded pose"""
+        return arm in self._move_tone
+
+    def moves_own(self):
+        """THE MOVEMENT LAYER CARRIES THESE LIMBS THIS TICK: the layer on (MOVE_LAYER, 1) and a movement running (`moves.start`): the
+        limbs its program holds, the brain's acts on them out of its hands (A231), as under the stance and arm layers -> their names"""
+        return self.moves.limbs() if getattr(self, "move_layer", False) else ()
+
+    def stand_own(self):
+        """THE STANCE LAYER CARRIES THE LEGS AND THE WAIST THIS TICK: the layer on (STAND_LAYER, 1) and the pose held (it stands in her hold:
+        `ghost.holds_pose`); its standing reflex and its postural tone give way to the layer's stance (its learned set point), and the
+        brain's acts on them are out of its hands as under the pose (A231, `ghost.owns_legs`)"""
+        return bool(getattr(self, "stand_layer", False) and self.ghost.holds_pose())
+
+    def arms_own(self):
+        """THE ARM LAYER CARRIES THE ARMS AND THE HANDS THIS TICK: the layer on (ARM_LAYER, 1) and the gait walking the body (the ghost on in
+        a walk, its gait on, the pose not held, past the lift and not lowering): as the leg layer's legs (`ghost.owns_legs` but the pose)"""
+        g_ = self.ghost
+        if getattr(self, "arms_by_acts", False):                       # (a demonstration moves the arms by its acts, the box's lessons:
+            return False                                             # the layer gives way; tools/harness/demo_box.py, 10-28)
+        if getattr(self, "arm_layer", False) and self.stand_own():    # (10-28: held standing, the arms carried with the stance: the
+            return True                                             # workshops' "stand still", the arms' pose a part of the stance)
+        if not (getattr(self, "arm_layer", False) and g_.on and g_.walk and g_.use_expert and not g_.pose_hold):
+            return False
+        if g_.lower != 0 or g_.ticks <= GH.LIFT_TICKS:
+            return False
+        return g_._policy() is not None
+
+    def pace_own(self):
+        """THE PACE LAYER DRIVES THE WALK COMMAND'S SPEED THIS TICK: the layer on (PACE_LAYER, 1) and the gait walking under the
+        brain's command (a command block's walk: the ghost on, walking, the pose not held, not lowering)"""
+        g_ = self.ghost
+        return bool(getattr(self, "pace_layer", False) and g_.on and g_.walk and g_.command and not g_.pose_hold and g_.lower == 0)
+
+    def movement_for(self, name, thing):
+        """A256: THE MOVEMENT FOR A THING: its own (`name:thing`, moves.variant), or, the first time it is wanted, born from the movement
+        for the thing it is most like by what it heard of them (body/sim/concepts.py), else from `name` -> the program's name"""
+        if thing is None or f"{name}:{thing}" in self.moves.programs or name not in self.moves.programs:
+            return self.moves.variant(name, thing)
+        known_ = [k_.split(":", 1)[1] for k_ in self.moves.programs if k_.startswith(name + ":")]
+        like_, _ = self.concepts.most_like(thing, known_)
+        self.recalled.setdefault(str(thing), {})["move"] = like_
+        return self.moves.variant(name, thing, like=like_)
+
+    def _recall_goal(self):
+        """A256: A THING HELD AS ITS GOAL WHOSE STOPPING PLACE NO HAND HAS TAUGHT: its place and the side it comes up on recalled from the
+        thing most like it (body/sim/concepts.py) among those a hand taught, as a child comes up to a new toy as to the toy it is like;
+        recalled afresh each time it becomes the goal (what it knows of the thing may have grown), until a hand's first stop there
+        replaces it (pace_layer.stopped_at, goal_layer.stopped_side). Like none: nothing (a goal never stopped at is walked into), and a
+        place recalled before let go"""
+        g_ = self.goal.name
+        if g_ is None or g_ == self._recall_last:
+            self._recall_last = g_
+            return
+        self._recall_last = g_
+        if g_ in self.pace.stops and g_ not in self.pace.recalled:
+            return
+        like_, l_ = self.concepts.most_like(g_, [t_ for t_ in self.pace.stops if t_ not in self.pace.recalled])
+        self.recalled[str(g_)] = dict(self.recalled.get(str(g_)) or {}, like=like_, likeness=round(float(l_), 3))
+        if like_ is None:
+            if g_ in self.pace.recalled:
+                del self.pace.stops[g_]; self.pace.recalled.discard(g_)
+            if g_ in self.steer.recalled:
+                del self.steer.sides[g_]; self.steer.recalled.discard(g_)
+            return
+        self.pace.stops[g_] = float(self.pace.stops[like_]); self.pace.recalled.add(g_)
+        if like_ in self.steer.sides and like_ not in self.steer.recalled and (g_ not in self.steer.sides or g_ in self.steer.recalled):
+            self.steer.sides[g_] = float(self.steer.sides[like_]); self.steer.recalled.add(g_)
+
+    def start_context(self, stop_d=None):
+        """THE STARTS' READING this tick (start_layer.context): the words its eye layer holds, its held goal, whether the goal is far or at
+        the place it stops for it (the pace layer's, else `stop_d`), and its side from its feet (left positive)"""
+        g_ = self.goal
+        if g_.point is None:
+            return SL.context(self.eye_layer.heard, word0=WORD_ROWS[0])
+        R_ = self.d.xmat[self.pelvis_id].reshape(3, 3)
+        rel_ = np.asarray(g_.point, float)[:2] - self.feet_middle(self.d)[:2]
+        dist_ = self.goal_distance(); side_ = float(rel_ @ R_[:2, 1])  # (its distance as the pace layer reads it: from its pelvis)
+        st_ = (getattr(self.pace, "stops", None) or {}).get(g_.name, stop_d)
+        at_ = st_ is not None and dist_ <= float(st_) + PL.STOP_ZONE
+        far_ = st_ is None or dist_ > float(st_) + PL.D_SLOW
+        return SL.context(self.eye_layer.heard, goal=True, far=far_, at=at_, side=side_, word0=WORD_ROWS[0])
+
+    def _anchor_point(self):
+        """A260: GAZE ANCHORING: while a movement runs on its held goal (the reach, the grasp, the lift) its eyes are held on the goal:
+        the eye layer's pull to it alone, in its view or not, and the born saccade away from it cut. Not on the walk there: a name heard
+        late must still turn its eyes and its goal (10-29 evening: anchored from the walk's start on the ball its eyes had gone to as her
+        line began, it never turned to the can she named at its end, and picked up the ball). The eyes stay
+        on the target of an ongoing reach and are not drawn off it until the hand is there (Neggers and Bekkering 2000), fixate the
+        grasp site and then the thing as it is moved (Johansson, Westling, Backstrom and Flanagan 2001), and rest on the object being
+        acted on (Land, Mennie and Rusted 1999). Once a hand holds the goal, the thing's own middle, where it now is -> the point, or
+        None. 10-29 evening: in every pick-up of every toy its eyes left the toy as its fingers closed, 13-59 degrees, for the block, the
+        ball or its own arm: squatting, the toy went out of its view and the eye layer pulled to a valued thing in view, and the born
+        saccade, unchecked off the thing, threw them off"""
+        if not self.gaze_anchor or self.goal.name is None or self.goal.point is None:
+            return None
+        if self.moves.running is None:
+            return None
+        b_ = self._toy_body(self.goal.name)
+        if b_ is not None and b_ in {int(x_) for x_ in self._grip_body}:
+            return np.asarray(self.d.xipos[b_], float)
+        tg_ = self.eye_layer.targets.get(self.goal.name)
+        return None if tg_ is None else np.asarray(tg_, float)
+
+    def _toy_body(self, name):
+        """the body of the toy named `name` (None for a thing that is not a toy: the circle)"""
+        c_ = self.__dict__.setdefault("_toy_bodies", {})
+        if name not in c_:
+            try:
+                c_[name] = int(self.m.body("toy_" + str(name)).id)
+            except Exception:
+                c_[name] = None
+        return c_[name]
+
+    def _valued_fixation(self):
+        """the learned priority of the eye layer's object its eyes rest on now (its gaze within a small step of it, yaw and pitch), 0
+        when they rest on none of them"""
+        if not (getattr(self, "eye_layer_on", False) and self.eye_layer.targets):
+            return 0.0
+        from body.sim import eyes as EYES3_
+        for nm_, pt_ in self.eye_layer.targets.items():
+            p_ = float(self.eye_layer.p.get(nm_, 0.0))
+            if pt_ is None or p_ <= 0.0:
+                continue
+            tg_ = clamp_gaze(EYES3_.gaze_at(self.m, self.d, np.asarray(pt_, float)))
+            if abs(float(tg_[0]) - float(self.gaze[0])) <= GAZE_SMALL and abs(float(tg_[1]) - float(self.gaze[1])) <= GAZE_SMALL:
+                return min(1.0, p_)
+        return 0.0
+
     def _loco_blocked(self):
         """A232 (2026-10-18): the walk command's settings its integrator cannot carry out now, one flag per setting (the go joint's five,
         then the turn's): a step back on a speed at its floor (0: the command is a speed, nothing is slower), a step forward on a speed at
@@ -1046,6 +1697,8 @@ class G1World(SimWorld):
         m, d = self.m, self.d
         t_apply = time.perf_counter(); t_phys = 0.0
         cord = dict(getattr(acts, "cord", None) or {})
+        core_cord_ = {k_: np.asarray(v_, float) for k_, v_ in cord.items()}   # (the brain's cord: on a limb its spontaneous pattern generator's
+                                                                        # step alone; held apart for the limbs a layer carries, below)
         cry_flag = getattr(acts, "crying", None)                       # A173: the body's word on whether the cord's cry stepped (read before
                                                                         # the acts become a plain dict below)
         if hasattr(acts, "vor"):                                        # the body's own VOR (the core's Acts.vor: empty when it has none)
@@ -1087,9 +1740,14 @@ class G1World(SimWorld):
                 spinal.update(R.prone(acts, self._sensed["imu_torso"]))   # trunk yaws toward the side that is up (A92)
         self._reflexed = tuple(sorted(n_ for n_ in spinal if n_ in REFLEX_DRIVEN + ("waist",) and acts.get(n_) != given_.get(n_)))   # A230b: the
                                                                         # effectors whose act a reflex replaced this tick (the next frame shows them)
+        arms_own_ = self.arms_own()                                     # (the arm layer carrying the arms and the hands this tick: a walk)
+        moves_own_ = self.moves_own()                                   # (the limbs a running movement holds this tick)
         if self.tone:                                                   # A185: THE RESTING TONE: each arm's proximal joints drawn toward
             q_ = d.qpos[self.qadr]                                      # their born resting angles by a saturating step, summed with the
             for limb in R.TONE_REST:                                    # cord's other patterns and the own act (reflexes.tone)
+                if (arms_own_ and limb in ARMS.LIMBS) or limb in moves_own_:
+                    continue                                            # (in a walk the arm layer's posture is the arms' set point; in a
+                                                                        # movement, its program's)
                 t_ = R.tone(limb, q_[self.eff_slices[limb]])
                 c_ = cord.get(limb)
                 cord[limb] = t_ if c_ is None else tuple(float(a_) + float(b_) for a_, b_ in zip(c_, t_))
@@ -1100,7 +1758,16 @@ class G1World(SimWorld):
             st_, ev_ = R.stand({n_: q_[self.eff_slices[n_]] for n_ in R.STAND_LIMBS}, self._sensed["imu_torso"],
                                (float(tf_[self.sole_zones[0]].sum()), float(tf_[self.sole_zones[1]].sum())), self._stepping)
             posture_ = R.posture(ev_, {n_: q_[self.eff_slices[n_]] for n_ in R.STAND_LIMBS}, self._sensed["imu_torso"], getattr(self, "_tone_on", False)) if self.posture else {}
-            sup_n_ = float(np.asarray(self._sensed["touch_force"], float)[self._trunk_zones].sum())
+            if self.stand_own():                                        # (the stance layer holds the legs and the waist: their reflexes give way)
+                posture_ = {k_: v_ for k_, v_ in posture_.items() if k_ not in ARMS.STANCE_LIMBS}
+                st_ = {k_: v_ for k_, v_ in st_.items() if k_ not in ARMS.STANCE_LIMBS}
+            if moves_own_:                                              # (and to a movement's program, the limbs it holds)
+                posture_ = {k_: v_ for k_, v_ in posture_.items() if k_ not in moves_own_}
+                st_ = {k_: v_ for k_, v_ in st_.items() if k_ not in moves_own_}
+            sup_n_ = float(getattr(self, "_trunk_ext_tick", 0.0))           # A240: the hold felt is what presses its trunk from outside it
+                                                                            # (a support, her hands); until A240 every touch on its torso and
+                                                                            # pelvis, its own thighs in a squat too: its balance responses
+                                                                            # eased off as it went down
             self._sup_lp = getattr(self, "_sup_lp", 0.0) + R.SUPPORT_LP * (sup_n_ - getattr(self, "_sup_lp", 0.0))   # (the hold felt, smoothed over
             sup_n_ = self._sup_lp                                           # about half a second: her steadying wavers 40 to 150 N in a walk)
             self._tone_w = float(np.clip(1.0 - (sup_n_ - R.SUPPORT_N) / (R.SUPPORT_FULL_N - R.SUPPORT_N), 0.0, 1.0))   # C287: the tone's share: all of it
@@ -1135,13 +1802,54 @@ class G1World(SimWorld):
                 _I5("world.py:apply:E2", e_i5)
         own = self._efference(acts)                                     # the efference copy (the own acts, after the grasp's sum)
         steps = {}                                                      # every act read before anything moves (a bad act moves nothing)
+        ph_ = ((int(self.ghost.e_count) * GH.EXPERT_DT) % GH.EXPERT_PERIOD) / GH.EXPERT_PERIOD if arms_own_ else None
+        self._arms_phase = ph_
+        stand_own_ = self.stand_own(); self._stand_own = stand_own_
+        q0_ = d.qpos[self.qadr]
+        mph_ = self.moves.phase() if moves_own_ else None; self._move_phase = mph_
+        self._pilot(moves_own_)                                         # (the reach's homing onto the held goal, below the brain)
+        self._teach_ = None                                             # (A248: what its homing teaches its program this tick, its command
+        if moves_own_ and mph_ is not None and HOMING_TEACH > 0.0 and self.own_movement:   # as this tick sets it; a movement its own, not
+                                                                        # her plan carried by her hands: a workshop's `own_movement`)
+            self._teach_ = {n_: (np.asarray(self.moves.target(n_, mph_), float) + self.pilot[n_], mph_, self.moves.running["name"])
+                            for n_ in ("arm_l", "arm_r", "waist") if n_ in moves_own_ and n_ in self._pilot_held and np.any(self.pilot[n_])}
         for name, js in G.EFFECTORS:
             a = acts.get(name); c = cord.get(name)
+            if name in moves_own_:                                      # THE MOVEMENT LAYER WHILE A MOVEMENT RUNS: its program's pose at the
+                sl_ = self.eff_slices[name]                             # movement's phase, the cord's reflexes summed with it, the brain's act
+                st_ = (np.asarray(self.moves.target(name, mph_), float) + (self.pilot[name] if name in self.pilot else 0.0)   # none
+                       - q0_[sl_])
+                                                                        # of it (A231), as under the stance layer; an arm's homing added
+                if c is not None:
+                    st_ = st_ + np.asarray(c, float) - core_cord_.get(name, 0.0)
+                steps[name] = st_
+                continue
+            if stand_own_ and name in ARMS.STANCE_LIMBS:                # THE STANCE LAYER WHILE IT IS HELD STANDING: its stance, the cord's
+                sl_ = self.eff_slices[name]                             # steps summed with it, the brain's act none of it (A231)
+                st_ = np.asarray(self.stand.target(name, 0.0), float) - q0_[sl_]
+                if c is not None:                                       # (10-28: THE SPONTANEOUS PATTERN YIELDS to a limb a layer carries,
+                    st_ = st_ + np.asarray(c, float) - core_cord_.get(name, 0.0)   # as the gait's legs: its kicks made her share at the held
+                                                                        # stance and the walking arms, 0.12 to 0.23 and 0.13; the newborn's
+                                                                        # general movements wane as the limbs come under postural control)
+                steps[name] = st_
+                continue
+            if arms_own_ and name in ARMS.LIMBS:                        # THE ARM LAYER IN A WALK: its target at the gait's phase, the cord's
+                sl_ = self.eff_slices[name]                             # reflexes summed with it; the brain's act none of it (A231: its own
+                st_ = np.asarray(self.arms.target(name, ph_), float) - q0_[sl_]   # act its rest, the frame shows it out of its hands)
+                if c is not None:                                       # (its spontaneous pattern yields, as the stance's above)
+                    st_ = st_ + np.asarray(c, float) - core_cord_.get(name, 0.0)
+                steps[name] = st_
+                continue
             if (a is not None and int(a) != EFFECTOR_REST[name]) or c is not None:
                 st_ = np.array([SETTINGS[k] for k in act_digits(EFFECTOR_REST[name] if a is None else a, len(js))])
                 if c is not None:
                     st_ = st_ + np.asarray(c, float)
                 steps[name] = st_
+        if moves_own_:
+            self.moves.advance()                                        # (a tick of the movement gone by: it runs off by itself)
+        self._arm_steps = {n_: (np.round(np.asarray(steps[n_], float), 4).tolist(), None if cord.get(n_) is None else
+                                np.round(np.asarray(cord[n_], float), 4).tolist()) for n_ in ARMS.LIMBS if n_ in steps}   # (a reading: the
+                                                                        # arms' and hands' steps this tick and the cord's part of them)
         if self.spinal:                                                 # A139: THE TENDON ORGAN: a joint at its load line last tick has
             loaded = self._sensed["bd_peak"] >= self.tau_hold          # its drive relaxed this tick (the withdrawal's own blocked push
             ev = R.tendon(steps, loaded, self._tendon, self.eff_joint_idx)   # made day 26's 440-tick elbow storm, C113)
@@ -1150,9 +1858,76 @@ class G1World(SimWorld):
                 self.stats_tendon = getattr(self, "stats_tendon", 0) + len(js)
         a = acts.get(GAZE_NAME)
         gaze_step = np.zeros(3) if a is None else np.array([GAZE_SETTINGS[j][k] for j, k in enumerate(act_digits(a, len(GAZE_JOINTS)))])
+        self._gaze_parts = {"own": np.round(np.asarray(gaze_step, float), 4).tolist()}   # (a reading: each part of the gaze's step this tick)
+        anc_ = self._anchor_point()                                       # (A260: its eyes anchored on the goal it acts on; the brain's own
+        if anc_ is not None:                                              # gaze act out of its hands while the reach holds them, as a running
+            self._gaze_parts["own_held"] = True                           # movement's limbs are, A231: 10-29 evening, its own saccades of up
+            gaze_step = np.zeros(3)                                       # to 0.2 rad a tick held its eyes 10-28 degrees off the can)
         cg_ = cord.get(GAZE_NAME)                                         # A186: the born saccade, summed with the gaze's own step (the
         if cg_ is not None:                                               # brainstem's saccade generator: the colliculus's command and the
-            gaze_step = gaze_step + np.asarray(cg_, float)                # cortex's add)
+            vh_ = 1.0 if anc_ is not None else self._valued_fixation()   # cortex's add). 10-28: A VALUED THING HOLDS THE EYES: while they
+            if vh_ > 0.0:                                                 # rest on an object of learned priority p (the eye layer's), the
+                cg_ = tuple((1.0 - vh_) * float(x_) for x_ in cg_)       # born saccade away from it is cut to (1 - p): the colliculus's
+            gaze_step = gaze_step + np.asarray(cg_, float)                # fixation zone holding the eyes (Munoz and Wurtz 1993), the basal
+                                                                          # ganglia's object value strengthening the hold on a valued thing
+                                                                          # (Hikosaka, Kim, Yasuda and Yamamoto 2014). Workshop 2's look: the
+                                                                          # born salience saccade, the circle just seen inhibited (A211's
+                                                                          # return), pushed 0.16-0.21 rad a tick past the layer's 0.20 step
+            self._gaze_parts["cord"] = np.round(np.asarray(cg_, float), 4).tolist()
+        if getattr(self, "lane", None) is not None:                     # THE WORDS HEARD (10-28, Workshop 12b): the words channel's whole word
+            tok_ = int(self.lane.word_now)                                # this tick held in the eye layer's working memory (gaze_layer.hear;
+            wd_ = self.word_forms.step(tok_)                              # a letter or a space is no word, but speech; rest, end; A254:
+            self.eye_layer.hear(wd_, speech=tok_ >= 2)                    # a learned word heard at its closing space, as a born one; A255:
+            self.concepts.hear(wd_, int(self.tick))                       # and to be credited to the thing its eyes come to rest on)
+        if getattr(self, "eye_layer_on", False) and self.eye_layer.targets:   # THE EYE LAYER: its learned pull toward the object a hand turned
+            from body.sim import eyes as EYES_                            # its eyes to, while that object is in its view (10-28)
+
+            def in_view_(pt_):
+                pr_ = EYES_.project(self.m, self.d, "L", pt_)
+                return pr_ is not None and 0.0 <= pr_[0] < G.EYE_W and 0.0 <= pr_[1] < G.EYE_H
+            if anc_ is not None:                                          # (A260: anchored: pulled to the goal alone, in view or not, as far
+                st_ = np.asarray((GAZE_BIG, GAZE_BIG, VERG_BIG), float)   # as the eyes turn; A186's saccade away cut above)
+                el_ = np.clip(np.asarray(clamp_gaze(EYES_.gaze_at(self.m, self.d, anc_)), float) - clamp_gaze(self.gaze + gaze_step), -st_, st_)
+                self._gaze_parts["anchor"] = True
+            else:
+                el_ = self.eye_layer.pull(self.m, self.d, clamp_gaze(self.gaze + gaze_step), EYES_.gaze_at, clamp_gaze,
+                                          (GAZE_BIG, GAZE_BIG, VERG_BIG), visible=in_view_)
+            self._gaze_parts["layer"] = np.round(np.asarray(el_, float), 4).tolist()
+            gaze_step = gaze_step + el_
+        if getattr(self, "gaze_hand", None) is not None:                 # A HAND ON ITS HEAD (a workshop's): its step on the gaze toward where
+            hs_ = self.gaze_hand.step(self, clamp_gaze(self.gaze + gaze_step))   # it turns it, after its own and the layer's (by the gap)
+            if hs_ is not None:
+                gaze_step = gaze_step + np.asarray(hs_, float)
+                self._gaze_parts["hers"] = np.round(np.asarray(hs_, float), 4).tolist()
+        if self.eye_layer.targets:                                        # THE HELD GOAL: the named object its eyes rest on this tick (within a
+            from body.sim import eyes as EYES2_                           # small gaze step of it, yaw and pitch) is held as the goal after
+            gn_ = clamp_gaze(self.gaze + gaze_step); on_ = (None, None)   # FIX_TICKS ticks (goal_layer.HeldGoal)
+            for nm_, pt_ in self.eye_layer.targets.items():
+                if pt_ is None:
+                    continue
+                tg_ = clamp_gaze(EYES2_.gaze_at(self.m, self.d, np.asarray(pt_, float)))
+                if abs(float(tg_[0]) - float(gn_[0])) <= GAZE_SMALL and abs(float(tg_[1]) - float(gn_[1])) <= GAZE_SMALL:
+                    on_ = (nm_, pt_); break
+            self.concepts.credit(on_[0], int(self.tick))                  # (A255: the words heard CREDIT_LAG ago are about the thing its eyes
+                                                                          # rest on now)
+            gh_t_ = getattr(getattr(self, "gaze_hand", None), "target", None)   # (A259: the thing a hand on its head turns its eyes to)
+            jt_ = (on_[0] is not None and gh_t_ is not None
+                   and float(np.linalg.norm(np.asarray(on_[1], float)[:2] - np.asarray(gh_t_, float)[:2])) < JOINT_R)
+            if (on_[0] is not None and self.goal.name is not None and on_[0] != self.goal.name and not jt_
+                    and self.eye_layer.score(on_[0]) < self.eye_layer.score(self.goal.name)):   # A246 (10-29 night): THE GOAL HELD AGAINST A
+                on_ = (None, None)                                      # LESSER THING: its eyes resting on a thing it wants less (its priority
+                                                                        # and the words held) leave the goal as it is (the goal's
+                                                                        # representation held in working memory against distraction:
+                                                                        # Miller and Cohen 2001; 10-29, walking up to the block its eyes,
+                                                                        # the block gone below their view, rested on the cup and it went on to it).
+                                                                        # A259: but not a thing a hand on its head turned them to: joint attention
+            self.goal.see(*on_)
+            self._recall_goal()                                           # (A256: a new goal's stop and side from the thing it is like)
+            if on_[0] is not None and self.eye_layer.heard:               # (its eyes on a thing while words are held: the words' associations
+                def seen_(pt_):                                           # with the things in its view learn which it is: gaze_layer)
+                    pr_ = EYES2_.project(self.m, self.d, "L", pt_)
+                    return pr_ is not None and 0.0 <= pr_[0] < G.EYE_W and 0.0 <= pr_[1] < G.EYE_H
+                self.eye_layer.word_lesson(on_[0], [n_ for n_, p_ in self.eye_layer.targets.items() if p_ is not None and seen_(p_)])
         la = acts.get(LOCO_NAME)                                          # W8: the locomotion command's step this tick
         lstep = [0.0, 0.0] if la is None or int(la) == EFFECTOR_REST[LOCO_NAME] else [LOCO_SETTINGS[j][k] for j, k in enumerate(act_digits(la, len(LOCO_JOINTS)))]
         if self.ghost.on and self.ghost.command and self.ghost.walk and self.parent is not None and lstep[1] != 0.0:
@@ -1174,6 +1949,28 @@ class G1World(SimWorld):
             k_ = (float(getattr(self.ghost, "go_share", self.ghost.reflex_share)), float(self.ghost.reflex_share))   # forward step by its
             push_ = [k_[j_] * float(b_) for j_, b_ in enumerate(cl_)]                                              # own, the turn by the
             lstep = [float(a_) + p_ for a_, p_ in zip(lstep, push_)]                                                # guide's)
+        self._pace_pull = 0.0
+        if self.pace_own():                                               # THE PACE LAYER (10-28): its learned drive on the command's speed,
+            pl_ = self.pace.pull(float(self.ghost.cmd_v) * GH.COMMAND_DECAY + float(lstep[0]), LOCO_SETTINGS[0][-1],   # summed with the
+                                 self.goal.name, self.goal_distance())   # (10-28: slowing to a stop where it learned to stop for the goal)
+            if pl_:                                                       # brain's own step and the cord's, and shown as a push (A228b)
+                self._pace_pull = float(pl_)
+                push_ = [float(push_[0]) + pl_, float(push_[1])]
+                lstep = [float(lstep[0]) + pl_, float(lstep[1])]
+        self._steer_pull = 0.0; self._goal_b = None
+        if self.steer_layer and self.pace_own() and self.goal.point is not None:   # THE STEERING LAYER (10-28): its learned turn toward
+            Rg_ = self.d.xmat[self.pelvis_id].reshape(3, 3)                       # the held goal, summed with the brain's own turn and
+            self._goal_b = self.goal.bearing(self.d.xpos[self.pelvis_id][:2], math.atan2(Rg_[1, 0], Rg_[0, 0]),   # shown as a push (A252:
+                                             side=self.steer.sides.get(self.goal.name, 0.0))   # toward the side it comes up to the goal on)
+            sp_ = self.steer.pull(float(self.ghost.cmd_w) * GH.COMMAND_DECAY + float(lstep[1]), self._goal_b, LOCO_SETTINGS[1][-1])
+                                                                        # (tried and not kept, 10-29: A245, its wanted turn scaled by its
+                                                                        # walk's speed, against turning in place at the 0.1 m/s crawl; at
+                                                                        # the 0.18 m/s crawl since, it left the thing 8-19 cm to its left
+                                                                        # where it had stopped 1-3 cm off it, past its reach for the cup)
+            if sp_:
+                self._steer_pull = float(sp_)
+                push_ = [float(push_[0]), float(push_[1]) + sp_]
+                lstep = [float(lstep[0]), float(lstep[1]) + sp_]
         if DM.DEMO_WALK and self.ghost.on and self.ghost.command and self.parent is not None:   # E1: the data's walk to her (pretraining;
             try:                                                          # the second life): summed and sensed as the cord's push was
                 her_ = np.asarray(self.parent.base["at"][:2], float); xy_ = np.asarray(self.d.xpos[self.pelvis_id][:2], float)
@@ -1207,14 +2004,39 @@ class G1World(SimWorld):
                 rest_idx.extend(range(sl.start, sl.stop))
                 continue
             d.ctrl[self.aid[sl]] = np.clip(q[sl] + steps[name], self.lo[sl], self.hi[sl])
+        self._move_tone = tuple(l_ for l_ in R.STAND_LIMBS + ("arm_l", "arm_r") if l_ in moves_own_) if self.posture else ()   # A240: THE
+        if not self._move_tone:                                         # (A240b: no movement holds a limb: the tone's lag and ramp let go, a
+            self._tone_ref.clear(); self._tone_ramp.clear()             # movement's next start begun from its limbs' push then: 10-28 night,
+                                                                        # kept from a pass's end its wrist was pulled to where it had been)
+        self.move_ref = d.ctrl.copy()                                   # REFERENT TONE holds a movement's waist, legs and arms about its
+        self._hand_base = [d.ctrl[c_[0]].copy() for c_ in self._grip_close]   # (A244: each hand's closing joints' command this tick)
+        self._move_hands = tuple(l_ for l_ in ("hand_l", "hand_r") if l_ in moves_own_)   # (A250: the hands a movement holds this tick)
+                                                                        # commanded pose this tick (the arms: 10-28, on bare servos a reaching
+                                                                        # arm sagged, her fix wound to its cap and pressed it on its thigh)
         self._last_acts = _canon_acts(acts)
         self._spinal = spinal
         gaze0 = self.gaze.copy()
         self.gaze = clamp_gaze(self.gaze + gaze_step)                  # the gaze's act: the windows jump at the tick's start
+        eq_ = self._equilibrium_prep(moves_own_)                        # (A240: the equilibrium reaction this tick, stepped every 10 ms)
+        if self.probe is not None and self._move_tone and os.environ.get("PROBE_DUMP"):
+            self._probe_ticks = getattr(self, "_probe_ticks", 0) + 1     # (the instrument: the state at a movement's ticks PROBE_FROM on)
+        if (self.probe is not None and self._move_tone and os.environ.get("PROBE_DUMP")
+                and int(os.environ.get("PROBE_FROM", "0")) <= getattr(self, "_probe_ticks", 0)
+                < int(os.environ.get("PROBE_FROM", "0")) + int(os.environ.get("PROBE_N", "8"))):
+            self._probe_dumps = getattr(self, "_probe_ticks", 0)
+            np.savez(os.path.join(os.environ["PROBE_DUMP"], f"tone_{self._probe_dumps}.npz"), qpos=d.qpos, qvel=d.qvel, act=d.act, ctrl=d.ctrl,
+                     move_ref=self.move_ref, tone=np.array(self._move_tone), bal_l=self.bal["leg_l"], bal_r=self.bal["leg_r"],
+                     bias0=m.actuator_biasprm[:, 0].copy(), xfrc=d.xfrc_applied, qfrc=d.qfrc_applied, eq=np.array(eq_ is not None),
+                     ghost_on=np.array(bool(self.ghost.on)), par=np.array(self.parent is not None), tone_w=np.array(float(getattr(self, "_tone_w", 1.0))),
+                     rows=np.array(self.probe_rows, float), lp=np.concatenate([self._tone_ref.get(l_, np.zeros(0)) for l_ in ("waist",)]))
         rest_a = self.aid[rest_idx] if rest_idx else None
         rest_q = self.qadr[rest_idx] if rest_idx else None
         n, nz, J, W_ = STEPS_PER_TICK, self.nz, len(JOINTS), OBS_WINDOW_STEPS
         F = np.zeros((n, nz)); imu = np.zeros((n, 12)); BD = np.zeros((n, J))
+        self.probe_rows = []
+        tx_ = 0.0                                                       # (A240: the outside push on its trunk, summed over the tick's steps)
+        ft_ = np.zeros(2, bool)
+        self._twist = np.zeros(2)                                       # (A258: the tick's most turn of a held thing against each hand)
         OW = np.zeros((n // W_, J + 6)); TW = np.zeros((n // W_, J + 6))   # each 10 ms sample: the observer's estimate, and the truth
         obsv = self.observer                                                # (an instrument's: the world's own contact torques)
         heat_in = np.zeros(J)
@@ -1239,6 +2061,21 @@ class G1World(SimWorld):
                                               getattr(self, "_vest_roll", 0.0), float(imu_last[9]),   # A201: the roll and its rate
                                               relaxed=(self._tendon[self.eff_joint_idx[limb]] > 0) if self.spinal else None)   # A214: the tendon organ
                         d.ctrl[self.aid[sl]] = np.clip(q_ + off_, self.lo[sl], self.hi[sl])
+                if self._move_tone:                                     # A240: A MOVEMENT'S WAIST AND LEGS: every 10 ms the equilibrium
+                    if eq_ is not None and s % W_ == 0:                 # reaction on the legs' commanded pose, every step the referent
+                        self._equilibrium_step(eq_)                     # tone carrying the pose out (A195's law; at A195's 10 ms its
+                    self._referent_tone_step(s, n)                      # targets jumped and the waist's gear chattered at its pain line)
+                for h_ in (0, 1):                                       # A250: THE GRIP'S SET FORCE: a movement's hand, each closing joint
+                    on_ = ("hand_l", "hand_r")[h_] in self._move_hands   # pushes at most GRIP_SET of its pain line past where it is (A244: a
+                    if not on_:                                         # slip raises it, GRIP_SLIP_STEP further a slipping window, never past
+                        continue                                        # the strain line)
+                    a_, sg_, qa_, cap_ = self._grip_close[h_]
+                    q_ = d.qpos[qa_]
+                    want_ = self._hand_base[h_] + sg_ * self._grip_boost[h_]
+                    lim_ = np.minimum(self._grip_set_rad[h_] + self._grip_boost[h_], cap_)
+                    d.ctrl[a_] = np.where(sg_ > 0, np.minimum(want_, q_ + lim_), np.maximum(want_, q_ - lim_))
+                    if self.probe is not None:
+                        self._probe_c1 = float(d.ctrl[int(self.aid[int(self.probe)])])
                 if rest_a is not None:
                     d.ctrl[rest_a] += alpha * (d.qpos[rest_q] - d.ctrl[rest_a])
                 d.qfrc_applied[self.dof] = self.passive_torque(d.qpos[self.qadr])   # A143: the passive end-range stiffness, the tissue's push
@@ -1256,11 +2093,37 @@ class G1World(SimWorld):
                 self.sounds.step(self, s)                               # the step's impacts (W5: body/sim/sounds.py)
                 BD[s] = obsv.gear_load(d.qfrc_actuator[self.dof], d.qvel[self.dof])   # THE GEAR'S LOAD from the sensed torque and the
                                                                                        # encoder's velocity change (A37, A73)
+                if self.probe is not None:                              # (the instrument: motor torque, the cerebellum's bias, the servo's
+                    j_ = int(self.probe); a_ = int(self.aid[j_]); v_ = int(self.dof[j_])   # push, speed, gear load)
+                    self.probe_rows.append((float(d.qfrc_actuator[v_]), float(m.actuator_biasprm[a_, 0]),
+                                            float(m.actuator_gainprm[a_, 0] * (d.ctrl[a_] - d.qpos[int(self.qadr[j_])])), float(d.qvel[v_]), float(BD[s, j_]),
+                                            float(d.ctrl[a_] - getattr(self, "_probe_c1", d.ctrl[a_])),
+                                            float(self.move_ref[a_] if self.move_ref is not None else 0.0), float(d.qpos[int(self.qadr[j_])])))
                 if par is not None:
                     t0 = time.perf_counter()
                     par.after_step(s)                                   # her contacts with the room: her stop (L0)
                     t_par += time.perf_counter() - t0
                 F[s] = self._zone_forces()
+                self._grip_acc += self._grip_ext                        # A244: the fingers' push from a held thing, each 10 ms window
+                ft_ |= self._floor_touch_step                           # (A244b: and their touch on the floor, over the tick)
+                if (s + 1) % W_ == 0:
+                    f_ = self._grip_acc / float(W_); self._grip_acc[:] = 0.0
+                    mh_ = np.array([("hand_l", "hand_r")[h_] in self._move_hands for h_ in (0, 1)])   # (a movement's hand: its grip)
+                    self._grip_pk = np.where(mh_, np.maximum(self._grip_pk * GRIP_PEAK_DECAY, f_), 0.0)
+                    slip_ = mh_ & (self._grip_pk > GRIP_HOLD_N) & (f_ < GRIP_SLIP_FRAC * self._grip_pk)
+                    for h_ in (0, 1):                                   # A258: THE TWIST: the thing pressing its fingers turning against
+                        if mh_[h_] and f_[h_] > GRIP_HOLD_N and self._grip_body[h_] >= 0:   # its hand
+                            vb_ = np.zeros(6); vp_ = np.zeros(6)
+                            mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_BODY, int(self._grip_body[h_]), vb_, 0)
+                            mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_BODY, int(self.palm_body[h_]), vp_, 0)
+                            tw_ = float(np.linalg.norm(vb_[:3] - vp_[:3]))
+                            self._twist[h_] = max(self._twist[h_], tw_)   # (A258's reading kept; its answer tried and not kept)
+                    self._grip_boost = np.where(slip_, np.minimum(GRIP_SLIP_MAX, self._grip_boost + GRIP_SLIP_STEP), self._grip_boost)
+                    self._grip_gone = np.where(f_ < 0.1 * GRIP_HOLD_N, self._grip_gone + 1, 0)   # (nothing pressing its fingers for
+                    gone_ = (self._grip_gone >= GRIP_GONE_W) | ~mh_                              # GRIP_GONE_W windows: the thing let
+                    self._grip_boost = np.where(gone_, 0.0, self._grip_boost)                    # go, or gone: its grip as set again)
+                    self._grip_pk = np.where(gone_, 0.0, self._grip_pk)
+                tx_ += self._trunk_ext
                 own_p += self._palm_own
                 sides += self._sides
                 imu[s] = self._imu_noisy(d.sensordata[self.imu_adr])
@@ -1284,6 +2147,12 @@ class G1World(SimWorld):
                     Rp_ = d.xmat[self.pelvis_id].reshape(3, 3)          # eyes', never the body's)
                     TW[k_] = np.concatenate([tr_[:J], Rp_.T @ tr_[J:J + 3], tr_[J + 3:]])
             mujoco.mj_forward(m, d)                                     # the tick's end: its accelerations, contacts and sensors
+            self._trunk_ext_tick = tx_ / float(n)                       # A240: the tick's mean outside push on its trunk (the next tick's hold felt)
+            self._floor_touch = ft_.copy()                              # (A244b: each hand's fingers touched the floor this tick)
+            self._ctrl_end = d.ctrl.copy()
+            for n_, (t_, ph9_, nm9_) in (getattr(self, "_teach_", None) or {}).items():   # A248: ITS HOMING TEACHES ITS PROGRAM: its own
+                if nm9_ in self.moves.programs:                                          # movement running, the program's pose there steps
+                    self.moves.lesson(n_, t_, share=HOMING_TEACH, phase=ph9_, name=nm9_)   # toward the pose its homing made
             if par is not None:
                 par.tick_end()
         except mujoco.FatalError as e:
@@ -1298,11 +2167,17 @@ class G1World(SimWorld):
             raise WorldFault(self.tick, f"MuJoCo's warnings {warned}{said}" if warned else f"the tick's end state: {bad}")
         # the voice: the tract sounds this tick (its act, the cord's cry below it), heard with the parent's voice by day
         cv = cord.get(VOICE_NAME)
+        vl_ = self.voice.act() if getattr(self, "voice_layer", False) else None   # THE VOICE LAYER: an attempt's settings this tick,
+        self._voice_drove = vl_ is not None                             # the brain's act and the born cry and breath out of the tract (the
+        if vl_ is not None:                                             # frame showed the voice disengaged, A231)
+            vdig, cv = (None if vl_ == VL.RELAX else list(vl_)), None   # (RELAX: no act, the tract relaxing to its rest)
         self.crying = bool(cry_flag) if cry_flag is not None else \
             (cv is not None and bool(np.any(np.asarray(cv, float) != 0.0)))    # the born cry sounding (world truth of a sound; A173: the
                                                                                 # breath's steps are not a cry, so the body says which)
         self.tract_raw = np.asarray(self.tract.tick(vdig, cord=cv), float)
         self.tract_pa = self.tract_raw * PA_PER_UNIT
+        if getattr(self, "voice_layer", False):
+            self.voice.hear_own(self.tract_pa)                          # (its own ears hear an attempt while it is open)
         self.words_out = None if wo is None or int(wo) == 0 else int(wo)
         heard = None
         room = self.sounds.tick_end(self)                               # the room's sounds this tick (W5), made day and night
@@ -1320,13 +2195,22 @@ class G1World(SimWorld):
         vg = vora.get(GAZE_NAME)
         if vg is not None:                                              # THE BODY'S VOR (the core's Acts.vor) with the flocculus's
             gain = (float(vg["gain"]) + self.vor_corr[0], float(vg["gain"]) + self.vor_corr[1])   # correction and offset
-            reach = (GAZE_REACH_YAW - self.gaze[2] / 2, GAZE_REACH_PITCH)
+            reach = None if anc_ is not None else (GAZE_REACH_YAW - self.gaze[2] / 2, GAZE_REACH_PITCH)   # (A261: anchored, no quick phase)
             yaw, pitch, quick = vor(self.gaze[0], self.gaze[1], imu[:, 3:6] @ self.gyro_to_cam.T, m.opt.timestep, gain=gain,
                                     reach=reach, offset=(self.vor_corr[2], self.vor_corr[3]), quick_frac=float(vg["quick"]))
             self.gaze = clamp_gaze([yaw, pitch, self.gaze[2]])
             self._vor_quick = int(quick)
+            vor_cut_ = abs(float(self.gaze[0]) - yaw) > 1e-9 or abs(float(self.gaze[1]) - pitch) > 1e-9   # (its counter-turn cut at the reach)
         else:
             self._vor_quick = 0
+            vor_cut_ = False
+        # A261 (10-29 evening): FIXATION SUPPRESSES THE VOR'S QUICK PHASE. Anchored (A260) on a thing beneath its eyes' reach (the toy at
+        # its feet in the squat, in its hand at its hip: the G1 has no neck, and the windows cannot leave the images), the eyes sat at the
+        # reach's edge and the head's every turn carried the slow phase past it: the quick phase jumped them half the reach back, away from
+        # the toy (10-28 degrees off it on every fifth tick, the can's test). A fixated target suppresses vestibular nystagmus: its quick
+        # phases are not made while the eyes hold a seen target (visual suppression of the VOR: Takemori and Cohen 1974; its loss the sign
+        # of a flocculus lesion), and the eyes stay as near the target as they turn, the slow phase still undoing the head's turns. A
+        # counter-turn cut at the reach teaches the flocculus nothing (below), as a quick phase's does not.
         self.gaze_v = (self.gaze - gaze0) / TICK_S
         # A174 (2026-10-02): THE RETINAL SLIP TEACHES THE VOR. The flocculus's climbing fibres carry the image's motion left on the retina
         # after the VOR's counter-turn (Ito 1982; the cerebellum's VOR lesson, body/core/cerebellum.py, learns down its gradient); the
@@ -1348,7 +2232,7 @@ class G1World(SimWorld):
             verg_ = float(g_s[2])                                        # thing's parallax included: the cameras ride the trunk's yaw axis at
             d_fix = self.eye_ipd / (2.0 * math.tan(0.5 * verg_)) if verg_ > 1e-3 else float("inf")   # a lever, so a thing fixated at the
             mag_ = 1.0 + (self.cam_lever / d_fix if np.isfinite(d_fix) else 0.0)   # vergence's distance moves on the retina by more than
-            if int(self._vor_quick) == 0:                                # the turn (a gain over 1 is asked of the VOR for near things,
+            if int(self._vor_quick) == 0 and not vor_cut_:               # the turn (a gain over 1 is asked of the VOR for near things,
                 self._vor_slip = -mag_ * turn_ - shift_; self._vor_turn = turn_   # as of the eye: Viirre et al. 1986). The gaze's own act is
                                                                          # not in this slip (both counts start after its jump); a quick
             else:                                                        # phase corrupts the counter-shift and hands None)
@@ -1963,6 +2847,8 @@ class G1World(SimWorld):
         out = np.zeros(nz)
         self._palm_own = np.zeros(2)
         self._sides = np.zeros((2, 2))
+        self._trunk_ext = 0.0                                           # A240: the trunk's zones pressed by anything not its own body
+        self._grip_ext = np.zeros(2); self._floor_touch_step = np.zeros(2, bool)
         nc = d.ncon
         if nc:
             con = d.contact
@@ -1973,6 +2859,21 @@ class G1World(SimWorld):
             ok &= ~self.blind[bod[:, 0], bod[:, 1]]                     # a pair pressing at rest: the skin's blind spot (A12)
             fn = np.where(ok, d.efc_force[np.where(ok, adr, 0)], 0.0)     # the elliptic cone's first row: the normal force
             z = zg[geom]
+            fz_ = [np.isin(z, self._finger_zones[h_]) for h_ in (0, 1)]   # (A244: each hand's fingers pressed by a thing not its own that
+            mv_ = self._movable_body[bod]                               # can move: a held thing, not the floor or the furniture)
+            self._grip_ext = np.array([float(fn[(f_[:, 0] & (z[:, 1] < 0) & mv_[:, 1]) | (f_[:, 1] & (z[:, 0] < 0) & mv_[:, 0])].sum())
+                                       for f_ in fz_])
+            for h_, f_ in enumerate(fz_):                               # (A258: the thing pressing them most)
+                a_ = f_[:, 0] & (z[:, 1] < 0) & mv_[:, 1]; b_ = f_[:, 1] & (z[:, 0] < 0) & mv_[:, 0]
+                if a_.any() or b_.any():
+                    fa_ = np.where(a_, fn, -1.0); fb_ = np.where(b_, fn, -1.0)
+                    self._grip_body[h_] = int(bod[int(np.argmax(fa_)), 1]) if fa_.max() >= fb_.max() else int(bod[int(np.argmax(fb_)), 0])
+                else:
+                    self._grip_body[h_] = -1
+            self._floor_touch_step = np.array([bool(np.any((f_[:, 0] & (z[:, 1] < 0) & ~mv_[:, 1] & (fn > 0)) | (f_[:, 1] & (z[:, 0] < 0) & ~mv_[:, 0] & (fn > 0))))
+                                               for f_ in fz_])          # (A244b: each hand's fingers on a thing that cannot move: the floor)
+            tz_ = np.isin(z, self._trunk_zones)                         # (A240: a support or a hand on its trunk, its own limbs not: they
+            self._trunk_ext = float(fn[(tz_[:, 0] & (z[:, 1] < 0)) | (tz_[:, 1] & (z[:, 0] < 0))].sum())   # press it in a squat)
             for col in (0, 1):
                 zc = z[:, col]
                 sel = zc >= 0
@@ -1998,6 +2899,7 @@ class G1World(SimWorld):
                     self._sides[h, 0] = float(f_[away].sum()); self._sides[h, 1] = float(f_[toward].sum())
         if self.parent is not None and self.parent.holds:            # being held is felt (4.2): each capped spring's force on the
             out += self.parent.hold_zone                                # zone of the link it holds, this step's
+            self._trunk_ext += float(np.asarray(self.parent.hold_zone, float)[self._trunk_zones].sum())
         return out
 
     def _sense_tick(self, F, imu, palm_own=None, OW=None, heard=None, BD=None, TW=None, sides=None):
@@ -2145,6 +3047,15 @@ class G1World(SimWorld):
                               "carried": [[int(t), list(a), list(b)] for t, a, b in self.carried], "door_open": bool(self.door_open),
                               "tidied": [[int(t), k, list(a), list(b)] for t, k, a, b in self.tidied],
                               "pinned": {str(k): [list(map(float, v[0])), None if v[1] is None else list(map(float, v[1])), int(v[2])] for k, v in self.pinned.items()},   # C332
+                              "a240": {"trunk_ext": float(getattr(self, "_trunk_ext_tick", 0.0)),   # A240: the last tick's outside push on its trunk
+                                       "ctrl_end": None if self._ctrl_end is None else [float(x) for x in self._ctrl_end],   # (the next tick's hold felt),
+                                       "tone_ref": {k_: [float(x) for x in v_] for k_, v_ in self._tone_ref.items()},   # the tone's lag and ramp, the
+                                       "tone_ramp": {k_: [[float(x) for x in v_[0]], None if v_[1] is None else [float(x) for x in v_[1]]]   # servos' last
+                                                     for k_, v_ in self._tone_ramp.items()},                             # command (A240b)
+                                       "grip": [[float(x) for x in self._grip_pk], [float(x) for x in self._grip_boost],   # A244: the grip's
+                                                [float(x) for x in self._grip_acc], [bool(x) for x in self._floor_touch],
+                                                [int(x) for x in self._grip_gone]]},                                     # slip
+                                                                                                                         # state, the floor's touch
                               "vest": [float(self._vest_pitch), float(getattr(self, "_vest_roll", 0.0)), bool(self._vest_on),   # R9 (2026-10-16): the canals' lean,
                                        float(getattr(self, "_sup_lp", 0.0)), float(getattr(self, "_tone_w", 1.0))],   # the hold felt and the tone's share (C287)
                               "ghost": self.ghost.state(),                                   # W7
@@ -2157,6 +3068,9 @@ class G1World(SimWorld):
 
     def _restore(self, st):
         m, d = self.m, self.d
+        if getattr(self, "word_forms", None) is not None:
+            self.word_forms.run = ""                                      # (A254: a restored world hears from a word's boundary, and
+            self.concepts.pending = []                                    # A255: no word of before it still to be credited)
         for f, v in st["model"].items():
             if np.shape(v) == getattr(m, f).shape:
                 getattr(m, f)[...] = v
@@ -2197,6 +3111,16 @@ class G1World(SimWorld):
         if self.eyes is not None and s5.get("eyes") is not None:
             self.eyes.load_state(s5["eyes"])
         self.ears.load_state(s5["ears"])
+        a240_ = s5.get("a240") or {}                                        # A240/A240b (a save from before: as born)
+        self._trunk_ext_tick = float(a240_.get("trunk_ext", 0.0))
+        self._ctrl_end = None if a240_.get("ctrl_end") is None else np.asarray(a240_["ctrl_end"], float)
+        self._tone_ref = {str(k_): np.asarray(v_, float) for k_, v_ in (a240_.get("tone_ref") or {}).items()}
+        self._tone_ramp = {str(k_): [np.asarray(v_[0], float), None if v_[1] is None else np.asarray(v_[1], float)]
+                           for k_, v_ in (a240_.get("tone_ramp") or {}).items()}
+        g244_ = a240_.get("grip") or [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [False, False]]
+        self._grip_pk, self._grip_boost, self._grip_acc = (np.asarray(g244_[0], float), np.asarray(g244_[1], float), np.asarray(g244_[2], float))
+        self._floor_touch = np.asarray(g244_[3] if len(g244_) > 3 else [False, False], bool)
+        self._grip_gone = np.asarray(g244_[4] if len(g244_) > 4 else [0, 0], int)
         if s5.get("vest") is not None:                                      # R9 (2026-10-16): THE VESTIBULAR LEAN KEPT ACROSS A SAVE. The canals'
             self._vest_pitch, self._vest_roll, self._vest_on = float(s5["vest"][0]), float(s5["vest"][1]), bool(s5["vest"][2])   # integrator was
             if len(s5["vest"]) > 4:                                         # and the tone's share (C287) and the hold felt that sets it: born at

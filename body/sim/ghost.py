@@ -82,12 +82,20 @@ STUCK_TICKS = 40                             # C362 (2026-10-17): off its feet t
                                              # back, and stayed so 675 ticks, the layer taught nothing, until the block ended; ours: 6 s)
 
 
-def catch_step(pz, up_z, off_feet):
+SQUAT_FALL_Z, SQUAT_FALL_UP = 0.15, 0.17      # Workshop 11 (10-28): fallen while squatting by intent: the pelvis under this (m), or the trunk
+                                             # past 80 deg (a squat's pelvis sits at 0.3 m and its trunk leans 40 to 55 deg: the catch at
+                                             # FALL_Z laid it on its back halfway down, four times; ours)
+
+
+def catch_step(pz, up_z, off_feet, squatting=False):
     """the room's catch after a tick (W7c; C362): (fallen, stuck, off_feet) for the pelvis's height pz (m), the trunk's long axis's
     vertical part up_z and the ticks it has been off its feet before this one. Fallen: the pelvis under FALL_Z or the trunk past 60 deg
     (W7c). Stuck: on its feet as the layer's lessons ask it (the pelvis above FALL_Z + 0.15, the trunk within 37 deg) not for
     STUCK_TICKS ticks running, with no fall: a body sitting on the sofa's seat has not fallen and will not stand, and is caught as a
     fall. The count starts again at a catch"""
+    if squatting:                                                    # (a squat by intent: a fall only far lower, and never stuck)
+        fallen = pz < SQUAT_FALL_Z or up_z < SQUAT_FALL_UP
+        return fallen, False, 0
     feet = pz > FALL_Z + 0.15 and up_z > 0.8
     off = 0 if feet else int(off_feet) + 1
     fallen = pz < FALL_Z or up_z < FALL_UP
@@ -291,6 +299,13 @@ class Ghost:
         self.walk_room = False; self.walk_s = 1.0                       # NB2: a walk in the rooms, not on the practice ground; its teacher's share kept
         self.stop_left = 0                                              # NB2 (20:1x 10-26): ticks of the walk's stop still to run (`stop`)
         self.turn_s = float(TURN_HELP)                                  # NB2 (20:3x 10-26): the teacher's least share in a walk's turn (TURN_HELP)
+        self.legs_floor = 0.0                                           # LEVEL 1 (2026-10-27 19:0x): the gait's least share at the legs alone (a
+                                                                        # level sets it while its teacher shows; the hold and the righting untouched)
+        self.right_floor = 0.0                                          # LEVEL 1 (2026-10-27 20:4x): the righting's least share in a walk (the
+                                                                        # pelvis's torque toward upright and the heading; a level sets it while its
+                                                                        # teacher shows: the lurch at the hand-down's end)
+        self.room_turns = True                                          # LEVEL 1 (2026-10-27): False: the room's turn before a wall is not taken
+                                                                        # (the level's teacher ends each walk at its line, well short of the wall)
         self.turning = False; self.left_room = 0; self.edge = None   # W7c: the strength at the last fall (None: no fall yet)
         self.command = False; self.cmd_v = 0.0; self.cmd_w = 0.0     # W8: the command block, and the brain's command
         self.base = int(w.base_dof)
@@ -473,6 +488,8 @@ class Ghost:
         expert_on = pol is not None and self.use_expert and self.lower == 0 and self.ticks > LIFT_TICKS
         self.drove = bool(expert_on and self.walk) or self.holds_pose()  # A230: the gait set the legs' and the waist's targets this step (NB1: or the pose held)
         z_t = self.z_from + (self.z_to - self.z_from) * prog - (EXPERT_DROP if expert_on else 0.0)
+        if getattr(self, "z_ref", None) is not None:                   # (10-28, Workshop 11: her hold follows a movement's own height,
+            z_t = float(self.z_ref)                                     # the torso's in the pick-up's reference; up only as ever)
         fz = s * (K_Z * (z_t - float(p[2])) - C_Z * float(v_lin[2]))
         cap = F_Z_MAX if (self.ticks <= LIFT_TICKS or self.lower > 0) else self.carry_share * self.weight   # the lift may carry it; standing, the legs must
         fz = min(max(fz, 0.0), cap)                                       # up only: slack above
@@ -480,7 +497,8 @@ class Ghost:
         w_ang = velp[:3]
         R = d.xmat[bp].reshape(3, 3)                                    # the pelvis righted and turned
         up = R[:, 2]
-        tau = K_R * np.cross(up, np.array([0.0, 0.0, 1.0])) - C_R * w_ang
+        up_t = np.array([0.0, 0.0, 1.0]) if getattr(self, "up_ref", None) is None else np.asarray(self.up_ref, float)   # (Workshop 11:
+        tau = K_R * np.cross(up, up_t) - C_R * w_ang                    # the pelvis turned toward the reference's, a squat's tilt)
         tau[2] = 0.0
         n_ = float(np.linalg.norm(tau))
         if n_ > T_R_MAX:
@@ -489,7 +507,7 @@ class Ghost:
         yaw = math.atan2(float(fwd[1]), float(fwd[0]))
         tz = K_YAW * _wrap(self.heading - yaw) - C_YAW * float(w_ang[2])
         tau[2] = min(max(tz, -T_YAW_MAX), T_YAW_MAX)
-        tau *= s * frac
+        tau *= max(s, float(getattr(self, "right_floor", 0.0)) if self.walk else s) * frac   # (the righting's floor in a walk, `right_floor`)
         fxy = np.zeros(2)
         if frac >= 1.0 and self.lower == 0 and not expert_on:
             fxy = s * (K_XY * (self.lead - np.asarray(p[:2], float)) - C_XY * np.asarray(v_lin[:2], float))
@@ -505,9 +523,10 @@ class Ghost:
         d.xfrc_applied[b] += wrench; d.xfrc_applied[bp] += wrench_p
         self.last = wrench; self.last_p = wrench_p
         if expert_on:
-            self._expert_step(w, d, self.s_eff() if PROBE_LEGS_S is None else float(PROBE_LEGS_S))
-        elif self.holds_pose():                                         # NB1: THE POSE HELD: the legs at the gait's standing pose, the waist upright
-            d.ctrl[self.e_aid] = np.clip(self.e_default, self.e_lo, self.e_hi)
+            self._expert_step(w, d, max(self.s_eff(), float(getattr(self, "legs_floor", 0.0))) if PROBE_LEGS_S is None else float(PROBE_LEGS_S))
+        elif self.holds_pose() and not (getattr(w, "move_tone_on", None) and w.move_tone_on()):   # NB1: THE POSE HELD: the legs at the gait's
+            d.ctrl[self.e_aid] = np.clip(self.e_default, self.e_lo, self.e_hi)   # standing pose, the waist upright (A240: not while a movement
+                                                                        # holds them: its commanded pose, her hands on it, its tone carrying it)
             d.ctrl[self.w_aid] = np.clip(np.zeros(3), self.w_lo, self.w_hi)
         if self.walk and PROBE_WAIST_EXT and expert_on:
             d.qfrc_applied[self.w_dof] += float(PROBE_WAIST_EXT) * (0.0 - d.qpos[self.w_qadr]) - 4.0 * d.qvel[self.w_dof]
@@ -676,7 +695,7 @@ class Ghost:
                 self.rec = [round(self.s, 4), round(share, 3), round(self.heading, 2), int(self.falls), round(self.metres, 2)]
                 return
             up = d.xmat[self.b].reshape(3, 3)[:, 2]
-            fallen, stuck_, self.off_feet = catch_step(pz, float(up[2]), getattr(self, "off_feet", 0))   # C362: and a body off its feet too long
+            fallen, stuck_, self.off_feet = catch_step(pz, float(up[2]), getattr(self, "off_feet", 0), bool(getattr(self, "squatting", False)))   # C362: and
             if stuck_:
                 self.stuck = int(getattr(self, "stuck", 0)) + 1
                 print(f"the ghost's catch at tick {w.tick}: off its feet {STUCK_TICKS} ticks without a fall (pelvis {pz:.2f} m, the trunk "
@@ -748,7 +767,7 @@ class Ghost:
                         if abs(_wrap(h_ - self.heading)) > 0.3:
                             self.turns += 1
                         self.heading = h_; self.lead = txy.copy()
-                elif clear is not None and not self.turning and float(clear(probe)) < CLEAR_M:
+                elif clear is not None and not self.turning and getattr(self, "room_turns", True) and float(clear(probe)) < CLEAR_M:
                     # blocked ahead: toward the room's middle when far from it (20:25: a quarter turn left it turning in place against
                     # the west wall for a block, 17 m and 9% of ticks with anything in view), else a quarter turn; the expert turns in place
                     mid = self._room_mid(txy)

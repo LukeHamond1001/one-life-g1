@@ -278,6 +278,7 @@
     <text name="sound_stacker" data="the rings' plastic clack"/>
     <text name="sound_drum" data="a boom when hit on top"/>
     <text name="sound_ring" data="a crinkle when handled"/>
+    <text name="sound_can" data="a hollow plastic tap when it strikes something"/>
   </custom>
   <worldbody>
     <!-- the room's lights, each carrying the room's indirect light as its ambient (ROOM_INDIRECT of its diffuse); no headlight -->
@@ -551,6 +552,10 @@
     </body>
     <body name="toy_ring" childclass="room" pos="0.98 -1.34 0.029" euler="0 0 0"><freejoint name="toy_ring"/>
       <geom name="ring" type="mesh" mesh="teether" mass="0.04" material="t_pink" friction="1 .01 .001" contype="4" conaffinity="15" priority="2"/>
+    </body>
+    <body name="toy_can" childclass="room" pos="-0.62 0.48 0.041" euler="0 0 0"><freejoint name="toy_can"/>
+      <geom name="can" type="cylinder" size="0.033 0.04" mass="0.05" material="t_red" condim="6" friction="1 .01 .002" contype="4" conaffinity="15" priority="2"/>
+      <geom type="cylinder" pos="0 0 0" size="0.0332 0.012" material="t_white" contype="0" conaffinity="0" density="0"/>
     </body>
 
     <!-- ======================= THE PARENT: a body, 16 dynamic segments in one tree (parent_motion.py drives her) ======================= -->
@@ -930,6 +935,7 @@
     <weld name="hold_L_stacker" body1="parent_hand_L" body2="toy_stacker" active="false" solref=".006 1"/>
     <weld name="hold_L_drum" body1="parent_hand_L" body2="toy_drum" active="false" solref=".006 1"/>
     <weld name="hold_L_ring" body1="parent_hand_L" body2="toy_ring" active="false" solref=".006 1"/>
+    <weld name="hold_L_can" body1="parent_hand_L" body2="toy_can" active="false" solref=".006 1"/>
     <weld name="hold_R_ball" body1="parent_hand_R" body2="toy_ball" active="false" solref=".006 1"/>
     <weld name="hold_R_block" body1="parent_hand_R" body2="toy_block" active="false" solref=".006 1"/>
     <weld name="hold_R_duck" body1="parent_hand_R" body2="toy_duck" active="false" solref=".006 1"/>
@@ -940,5 +946,6 @@
     <weld name="hold_R_stacker" body1="parent_hand_R" body2="toy_stacker" active="false" solref=".006 1"/>
     <weld name="hold_R_drum" body1="parent_hand_R" body2="toy_drum" active="false" solref=".006 1"/>
     <weld name="hold_R_ring" body1="parent_hand_R" body2="toy_ring" active="false" solref=".006 1"/>
+    <weld name="hold_R_can" body1="parent_hand_R" body2="toy_can" active="false" solref=".006 1"/>
   </equality>
 </mujoco>

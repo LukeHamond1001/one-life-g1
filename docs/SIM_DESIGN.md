@@ -516,7 +516,8 @@ Each kept reflex has a biological basis and is disclosed. The withdrawal acts be
 | spinal pattern generator | kept (A48; reverses the stepping refusal; C54 closed) | Spinal, present at birth: a half-centre generator per limb (Brown 1911), as the per-muscle oscillators that gave a simulated neonate its motor patterns (Kuniyoshi and Sangawa 2006). **Its cycle is a short movement, then a pause** (C54, closed by its sources; built in 903cb75): flexion for 2 ticks (0.30 s: "a little over 300 msec" in kicks and steps, Thelen and Fisher 1982, Dev Psychol 18:760–775; about 320 ms, Thelen and Fisher 1983, J Mot Behav 15:353–372), extension for 3 ticks (0.45 s: 420 ms in steps and 586 ms in kicks, Thelen and Fisher 1982), then the pause. Each cycle's length is drawn from the body's seed: a log-normal of mean 3.56 s and SD 1.93 s (sigma 0.508, median 3.13 s; newborns' kicking at birth, Hinnekens et al. 2023, eLife 12:e87463; newborn stepping agrees: 3.29 ± 1.21 s there, 3.03 ± 1.07 s in La Scaleia et al. 2018, about 3.5 s in Sylos-Labini et al. 2017, 0.34 Hz in Dewolf et al. 2022), held to 1.0–8.5 s (per-infant means from under 1 s to over 8 s: Thelen, Bradshaw and Ward 1981; Hinnekens et al.'s 1.19–8.51 s). The movement's 5 ticks are fixed and only the pause stretches (Thelen 1981: the pause is what varies). The clip moves 1.2% of the draws to 1.0 s and 2.5% to 8.5 s, so the drawn cycles are 3.514 ± 1.742 s and the pause 2.76 s on average, its coefficient of variation 0.63 against Thelen 1981's about 1.4: written down, not fitted. In the flexion it adds a step along the limb's flexion joints (the withdrawal's: a leg's hip pitch, knee and ankle pitch; an arm's shoulder pitch and elbow), in the extension the opposite, in the pause nothing. Its amplitude A is the limb's gate's p_act × 0.09 rad (0.026 rad a tick at the born p_act), so the gate's tonic readiness drives it, as the brainstem's drive enables the cord's generator; the extension steps at 2A/3, so a kick is a flexion and a return with no net excursion (A69; built in 6d20f67; as 903cb75 built it, the extension steps A, a net A toward extension each cycle). **The legs share one rhythm** (`Effector.spg_rhythm`), the right leg half of each cycle behind the left, as newborns' kicks alternate (Thelen 1979; in 74% of kicks, Sylos-Labini et al. 2020), so the right leg's own intervals are narrower (3.613 ± 1.306 s against the left's 3.618 ± 1.785 s on C38's setup). **Each arm keeps its own rhythm**, its phase drawn at birth from the seed (uncoupled, after Kuniyoshi and Sangawa 2006), no longer locked to the legs. Each cycle is drawn from a seed of its own (the organs' `spg_seed`), so the rhythm is a function of the tick alone: it draws nothing from the life's streams, runs on through the night, and after a load is found again from birth. R6h's first generator, a square wave of 7 ticks (1.05 s), had no source. Summed at the cord like the grasp (A35): the gate draws every tick and its acts keep their eligibility, an own act against the step cancels it, and a withdrawal's tick has none. It has no posture, balance or gravity term: a rhythm, not a walking controller. |
 | a born cry | kept (A47; reverses the G1 amendment's refusal) | Brainstem, present at birth: the cry is innate and patterned by the periaqueductal grey (Jürgens 2002). On a pain tick (its charge line went with the charge, A88), the tract's born cry posture (the lungs pushing, the glottis pressed, the pitch raised, the jaw open) is added to the tract's targets, breathing in groups from its reservoir. Summed like the grasp: the tract's gate draws every tick, and its own act that tick overrides the cry's step, so the cortex can hush it. Its ticks are logged as reflex; a cry is never a vocal turn, and no smile answers it (A13). The charge line (0.2) is below the parent's feeding line (0.35), so the cry is the body's own alarm, never timed to her. Its pattern and line are settled from their sources before birth (C53). The parent hears it as distress (A13). Built in R6h (5944b61, 8ca045a): the posture is the tract's big step up, +0.6 of the range a tick, on the lungs, the glottis, the pitch and the jaw (ours, from its sources' description); the breath groups are 5 ticks out and 2 in (Robb, Sinton-White and Kaipa 2011, Int J Pediatr Otorhinolaryngol 75:1265: newborns' pain cries at 57 breaths a minute, the inspiration 27% of the cycle), the lungs drawn back while breathing in, and the expiration is cut short when the breath runs out; the tract's own act overrides it articulator by articulator. Its breath clock is saved with the body (A70; built in 103bf06). |
 | twitches in active sleep | kept (A46) | Brainstem, in active sleep from before birth (Blumberg, Marques and Iida 2013; in human infants, Sokoloff et al. 2020). In the live, dark night's REM phases, one joint at a time takes one small step (0.09 rad, its sign drawn), at about 10 a minute (Sokoloff et al. 2020's rate, read exactly before birth, C52); the tract and the gaze have none. The joint and the sign come from a born generator seeded by the body's seed. Its ticks are logged as reflex. Each twitch and its reafference teach `act_inv`, the forward half and the cerebellum (3.6, R8). |
-| righting, parachute, equilibrium reactions | refused | Balance controllers. Infants mature these partly innately; the laws make ours learned, so our child's task is honestly harder than an infant's. |
+| righting, parachute | refused | Balance controllers. Infants mature these partly innately; the laws make ours learned, so our child's task is honestly harder than an infant's. |
+| equilibrium reactions | kept for a movement (A240; reverses this table's refusal for them, the owner's word 2026-10-28: "you can change archectrure if makeing it more biological but not to only compinsate for failing") | Brainstem and spinal, maturing from about 7 months, there by the age a toddler squats to pick a toy up. While a learned movement holds the legs, the ankles' pitch and the hips' and ankles' roll carry the centre of mass back over the feet (the ankle strategy front to back, the hips' load and unload side to side), and the postural tone (A195) holds the waist and legs about the movement's commanded pose instead of giving way to it. Without them nothing in it could balance a squat: its movement layer copies angles by phase, and balance is feedback. |
 | asymmetric tonic neck reflex | refused | A hand-written head-to-arm coupling, and the G1 has no neck. Measured on the custom child, it cut rolls from 1.10 to 0.77 a minute. |
 | symmetric tonic neck, tonic labyrinthine | refused | Posture-tone rules |
 | Moro (startle) | refused | No use here; a fall is already a large forecast error. |
@@ -6526,3 +6527,439 @@ pre-registered copy rule (docs/archive/PREREGISTRATION_P3.md 8c: own-state yaw 0
 owner's law (no fancy rules; the architecture biology uses) has no room for a switch that failed its test: the code is removed from
 mouth.py, critics.py, night.py and persistence.py with its test; `_actor_tag_step` takes no key again. The switch-off path is
 unchanged: the behaviour guard's sim profile reads f3ee3d6289336335ecc7f147 before and after, the language default 7c54199e3c72cf77d45a8e94.
+
+### A240. A movement's waist and legs: the referent tone and the equilibrium reaction (2026-10-28, Workshop 11)
+
+**Why.** The owner asked whether her demonstration of the squat was something the child could copy at all ("are we forcing in. way
+robot can not able to imitate?"). It was not. Her hold at the pelvis carried and balanced her squat: lift 32 N on average (up to 187),
+lead up to 56 N, righting about 8 N m, at a share of 0.75 to 0.95. With that hold off and her joint targets kept (`--her-plan --let-go
+lift`, 8 dry passes) it fell 8 of 8 and picked up nothing. Replayed through its servos alone (no brain, no hold) her squat fell by tick 8
+of 62, the waist lagging 0.57 rad. Two things in the body were missing, both an infant's at the age it squats:
+- **The tone gave way to a movement.** A195's postural tone holds the waist and legs only about the born stance, only upright (within
+  about 23 deg), and is switched off for any limb a movement's program holds (world.apply's `posture_` dropped them). So a learned squat
+  ran on bare servos (kp 40 to 100). In a body the brain's command resets the stretch reflexes' thresholds, so the reflexes act about
+  the commanded posture and do not fight the movement (Feldman's referent control; Asatryan and Feldman 1965).
+- **Nothing balanced a squat.** Its movement layer copies joint angles by phase, open loop. Balance is feedback. Even with every joint
+  within 0.13 rad of her plan (the tone about her targets) its weight ran 9 to 18 cm ahead of the plan's and it tipped over its toes.
+
+**What.** In world.py, below the tick, while a learned movement holds the limbs:
+- **The referent tone** (`_referent_tone_step`, every physics step): the waist, legs and arms (shoulders and elbows; a wrist's servo
+  goes to its commanded angle without it: under it the wrists chattered at their pain line) are driven toward the movement's
+  commanded pose (`move_ref`, the tick's targets; a hand on them moves it) by A195's law, POSTURE_STIFF times the distance less
+  POSTURE_DAMP times the joint's speed, at most POSTURE_MAX. The legs' sideways joints and their twist (hip roll, ankle roll, hip yaw)
+  and the waist's turn are held softly, at POSTURE_ROLL, A196's rule. The push is held so that the servo's torque with the cerebellum's
+  stays under TONE_LOAD (0.9) of the pain line at every step: the tendon organ's graded autogenic inhibition (Houk and Henneman 1967).
+  A139's tick-long release after a tick at the load line is the standing tone's, not this one's: in a movement it set the waist going
+  on and off tick by tick at its pain line as it rose (its motor -30, -10, -26, -7 N m) and shook the held block out.
+- **The legs kept on the feet** (`_feet_kept`, when the commanded pose changes): the commanded pose is stood on the feet where they
+  stand (its pelvis placed so its feet best meet them), and each leg's six joints are solved so that its foot meets its own exactly.
+  Two legs with both feet down are one closed chain.
+- **The equilibrium reaction** (`_equilibrium_prep` a tick, `_equilibrium_step` every 10 ms): the legs' commanded pose carries the
+  centre of mass back over the feet's middle, EQ_KP (0.5) of its miss less EQ_KD (0.4 s) of its speed, by the least move of all the
+  legs' joints and the pelvis that does it with both feet kept where they stand, at most EQ_MAX (0.25 rad), eased under a felt hold as
+  A214 eases the tone's balance responses. The ankle and hip strategies (Horak and Nashner 1986) and the hips' load and unload (Winter
+  1995), the muscles' answer to the centre of mass's place and speed (Welch and Ting 2008; Peterka 2002). Its centre of mass is the
+  body schema's. Like A195's it has no latency of its own: in the replays a 20 to 50 ms lag tipped it (open).
+- **The hold felt is an outside one.** The tone's share under a hold (A195, A214) read every touch on the torso and pelvis, its own
+  thighs too: in a squat its balance responses switched themselves off. It now reads only what presses the trunk from outside (a
+  support, her hands, her holds).
+- **Her pose hold gives way to a movement** (ghost.py NB1): it wrote the standing pose into the legs' servos every step, which pinned
+  the legs straight once her hands moved the commanded pose instead of the servos.
+- **One hand homes** (`_pilot`): the reach's homing steers only the open hand nearer the goal its eyes hold, the parietal reach region
+  picking the effector (Cui and Andersen 2007). With both homing, the idle arm drifted toward the block and her hands held it back
+  (her share at it 0.37-0.47). test_moves.py: only the hand nearer the goal homes.
+
+**Tried and not kept** (each read in the world's ticks and frames, Workshop 11 dry runs):
+- At A195's 10 ms step the tone's targets jumped between steps: the waist's gear chattered at its pain line, the hand swung 4-6 cm a
+  tick over the block, her catch 0.44-0.68. Every 2 ms: her catch 0.00-0.06, no fall in 5. With the damping scaled to the stiffness as
+  well, the waist's motors swung +-70 N m tick to tick (the cerebellum learning from the tone's corrections) and it tipped by tick 12.
+- The reaction through the ankles' pitch (the pelvis following by least squares) and the hips' and ankles' roll: the two legs'
+  answers did not fit both feet on the floor. With every leg joint at full stiffness the legs pushed the feet 11-17 cm across the
+  floor, both soles down and loaded, the reaction on or off. The ankles' roll alone tipped a foot onto its edge (A201's finding); the
+  feet kept strictly with the ankles alone moved its weight 1.3 cm in 10; the whole legs without the feet kept fell in every replay.
+- Her gentleness cap (`her_gentle`, HER_LOAD over POSTURE_STIFF) on the commanded pose: the pose followed its falling trunk, its
+  waist's pitch swinging 0.3 rad a tick. Her hands now show the pose, short of each joint's range's ends.
+- The arms on bare servos: a reaching arm sagged and her fix wound to its cap. They are now under the tone too.
+
+**The workshop with it** (Workshop 11, her plan, 3-8 dry passes each): her hold at the pelvis is only a catch by the support margin; her
+hands move the legs', waist's and arms' commanded pose; down and up in 30 ticks each (20 pinned the waist at its 50 N m: its hips
+sitting back threw its trunk forward, the pose's static load under 23). With all of it: no fall, her catch's share 0.00-0.07 in most
+passes, no pain in the slow squat's best runs, the feet within about 10 cm of where they stood, its pelvis within 8 cm of her plan's.
+It does not yet pick the block up: at the bottom its hand comes within 2.4 cm of the block's middle and is then held 5 cm short, its
+right forearm against its left knee, her fix at its cap (FIX_MAX 0.8). The plan keeps the arm 3.8 cm off the knees; in its own squat
+the knees stand a few centimetres nearer.
+
+test_balance.py (the reaction carries a forward lean back through the ankles alone; the tone's law and the tendon organ's pull); the
+workshop and movement tests unchanged and green.
+
+**A240b (10-28 night): the commanded pose changes continuously and reaches each joint through its muscles' lag.** Long runs with all
+of A240 picked the block up in half the passes and hurt 4-23 ticks a pass, nearly all at the waist's pitch (its gear 0.93-1.02 of its
+50 N m pain line). A probe of the waist's motor at every 2 ms step (world.probe, an instrument: `PROBE=joint` in a workshop's
+environment) showed no slow overload: each 150 ms tick began with a kick (its speed to 4 rad/s within a step, its motor +-50 N m) that
+died away within the tick. The commanded pose (her hands', a movement's, the feet kept under it) changed a tick at a time, and the tone
+(8 x the servo's gain) turned each tick's jump into a torque step; the same state replayed with the tone alone was quiet. A body's
+motor command changes continuously and a muscle's force builds and fades over tens of ms after its command (excitation-contraction
+coupling: Zajac 1989). Now `_referent_tone_step(s, n)` takes the tick's command from where the last tick's ended to the command as it
+stands at each step (her hands write it at every step, after the tone: a ramp frozen at the tick's first step never let her writes in,
+and its arm hung 0.5 m over the block), and each joint follows that through a first-order lag of TONE_TAU (0.04 s, ours, within the
+muscles' 10-50 ms). With both, the waist's motor ran -13 to +15 N m through the pick-up, smooth within each tick, and Workshop 11's
+saving run picked the block up in each of its first 9 passes with no fall and one pain tick a pass (the left wrist's pitch at the
+movement's first tick). Tried and not kept: the lag alone (40 ms against a 150 ms tick: the kick halved, the squat's middle still at its
+pain line). That last pain tick was the tone's memory: its lag and ramp were kept from the last pass's end (cleaned only while a
+movement ran) and pulled the wrist toward where it had been, its motor at its 5 N m limit and its speed to 7 rad/s. Now they let go
+whenever no movement holds a limb, and a limb a movement takes is begun from the push its servo was giving (the referent that push
+stands for under the tone's law: its muscles' force goes on as it was, not dropped and taken up again).
+
+### A241. A heard name turns the eyes to its thing (2026-10-28 night, Workshops 12b and 13)
+
+The owner's goal for Workshop 13: "we say pick up (object) and it looks for it and grabs it". Workshops 3-10 taught it to say a toy's
+name while looking at it (production); nothing let a heard name move its eyes (comprehension): the eye layer (body/sim/gaze_layer.py)
+pulls toward the visible thing of the highest learned priority, and every toy's priority stood at 0.98-0.996.
+
+**What it is.** Infants of 12-18 months look to the thing a heard word names (looking while listening: Fernald et al. 1998), having
+learned which word goes with which thing from the words heard while they looked across many scenes (cross-situational word learning:
+Smith and Yu 2008); a word's object then draws attention top-down (Desimone and Duncan 1995). The eye layer now holds the words it hears
+(`hear`: the words channel's whole words, world.WORD_ROWS, each a trace fading over TRACE_TICKS = 100 ticks; speech after GAP_TICKS of
+quiet begins an utterance and lets the last one's words go, the phonological store's displacement) and, for each word, a learned
+association with each thing. A thing's pull is its priority plus WORD_GAIN times its prediction by the words held; the pull goes to the
+highest, its step's share that at most 1. Each tick its eyes rest on a thing with words held (`word_lesson`), each visible thing's
+prediction steps toward 1 for the thing looked at and 0 for the others (the delta rule over the words held: Rescorla and Wagner 1972):
+"look", "at" and "the", heard with every thing, come to predict none, and a name takes the credit. Born with no associations.
+
+**Tried and not kept.** Traces held across utterances (no displacement): the last thing's name was still held as the next was looked
+at, and the scene test's associations came out mixed (a name 0.41 for its thing, 0.25 for another). With displacement: 0.81 and
+below 0 for the others, the article 0.27-0.30 for all.
+
+**Its workshop.** Workshop 12b (tools/levels/workshop12b.py, workshop1's find task): the seven toys whose names are whole words of the
+channel on the floor in an arc in its view, shuffled each pass; she says "look at the <toy>"; its eyes on it within T_FIND (12) ticks
+of her line on their own earn the treat; else her hand on its head turns them there; either way they rest there T_HOLD (15) ticks.
+test_gaze_words.py.
+
+### A242. The starts (2026-10-28 night, Workshop 13)
+
+Only her hands started its walk from standing (ghost.walk_block) and its pick-up (moves.start); with her hands off nothing would begin.
+**What it is.** The basal ganglia choose which motor program runs and release it (the walk by disinhibiting the locomotor region:
+Roseberry et al. 2016; a reach through the motor thalamus: Mink 1996); an action repeatedly started in a context comes to be started by
+that context alone, a habit (Yin and Knowlton 2006; Graybiel 2008), and a start is a signal rising to a threshold at a rate the context
+sets (Carpenter and Williams 1995). body/sim/start_layer.py: for each movement a hand has started (the walk, each hand's pick-up), a
+learned rate of its start a tick from the context (the words held, a goal held, the goal far or at its stopping place, its side); each
+tick it could start, the prediction steps toward 1 if a hand started it and 0 if not (the delta rule, normalized); its own signal rises
+by the rate and starts it at 1. Saved with the body. In Workshops 11, 12 and 12b it learns from her starts and starts nothing itself
+(its would-be start logged against hers); in Workshop 13 it starts them. The walk's stop in Workshop 13 is the gait standing once its
+command has fallen under the walk's (the locomotor drive under its threshold: Shik et al. 1966), the pace layer having eased it near
+its goal. test_start_layer.py.
+
+### A243. The trunk recruited in the reach's homing (2026-10-29 night, Workshop 11)
+
+Its own pick-up (the movement layer's program, followed from its 41st run) picked the block up in about 6 of 10 passes. The misses:
+blocks 6-16 cm across its feet's middle, where its hand, homing by its arm's joints alone (`_pilot`, A240's one-hand homing), stopped
+4-9 cm short with its forearm against its knee; and two drops of a fingertip pinch as the arm finished its rise. A reach to a target
+off the arm's line turns the trunk with it, the hand's path kept as the trunk and arm move as one (Kaminski, Bock and Gentile 1995;
+Adamovich et al. 2001), and infants' reaching recruits the trunk as its control grows (Rachwani et al. 2015). Now, while a movement
+holds the waist, the waist's turn joins the homing arm's joints in the damped least squares that steers the hand onto the goal, its
+column weighted PILOT_TRUNK (0.5: the arm moves most), at most PILOT_TRUNK_MAX (0.25 rad), fading with the arm's homing. Its offset is
+added to the program's waist target as the arm's are to the arm's; under her plan her hands' pose replaces it. Her re-aim at the bottom
+of her plan now turns the trunk back at most REAIM_TWIST (0.15 rad) from her plan's turn: turned back 0.25 rad, the trunk swept the
+hand into the block and knocked it 25 cm away in 3 of 6 re-aims. test_moves.py.
+
+### A244. The grip's answer to a slip, and the touch that stops the reach's descent (2026-10-29 night, Workshop 12)
+
+Its own pick-up let the cup slide out of a fingertip pinch on the way up in 2 of 6 passes, the block in 2-3 of 15. Slips felt at the
+fingertips raise the grip force within 60-80 ms, automatically, and the grip stays raised for the rest of the lift (Johansson and
+Westling 1984, 1987). Now each hand's fingers' push from a thing that can move (`_grip_ext`: not the floor, not the furniture) is
+summed each 10 ms; past GRIP_HOLD_N (1 N) of its recent peak (decaying 1% a window), a fall under GRIP_SLIP_FRAC (0.6) of that peak
+steps each closing joint GRIP_SLIP_STEP (0.04 rad) further closed, at most GRIP_SLIP_MAX (0.3), never past STRAIN_LINE of its pain line
+past where it is; kept while the thing is held, let go when nothing is. And a hand whose fingers touch the floor homes no deeper: the
+touch stops the descent while the eyes still steer it across (`_floor_touch`; until A244b the homing pushed its fingers into the floor
+toward the thing's middle). Saved with the world's state.
+
+**What it did not fix.** The cup: 3 of 15 in Workshop 12 (its own movement), 0 of 4 dry with both. Its hand closes 2-3.5 cm short of
+the cup's middle and 2 cm over it, its fingertips on the cup's near rim; squeezed at the reflex's full step the round rim still slides
+out at 0.12-0.25 m up. The block's flat faces forgive a grasp that far off; a round thing needs its hand over the middle (the next work:
+the hand centred over a thing before it descends, its fingers' aperture to the thing's size: Jeannerod 1981).
+
+### A245, A246. Its turn by its speed; its goal held against a lesser thing (2026-10-29 night, Workshop 13)
+
+**A245.** The steering layer's wanted turn is now its learned k x the goal's bearing x its walk's speed over its pace's drive (the
+path's curvature its own: steering by heading change per distance, not a turn rate). Crawling up to a toy at a fixed turn rate, the
+toy's bearing growing as it neared, it turned in place and stalled 5-9 cm short of its stopping place. And the pace layer's CRAWL is now
+0.6 of its drive (0.18 m/s): at 1/3 (0.1 m/s) its gait carried it 1-2 cm a second, 7-9 cm short of its place in 2 of 3 test passes.
+**A246.** Its eyes resting on a named thing it wants less than its held goal (the eye layer's score: priority and the words held) leave
+the goal as it is (a goal held in working memory against distraction: Miller and Cohen 2001). Walking up to the block its eyes, the
+block gone below their view, rested on the cup, and it went on to the cup.
+
+### A247, A248. The homing held through the grasp; its homing teaches its program (2026-10-29, the cup)
+
+The cup (Workshop 13: reached 5 of 5, lifted 0 of 5) was found, in dumped ticks' contacts, to fail two ways. Its hand came over the
+cup's middle as it descended, then slid 1.5-3.5 cm back as its fingers began to close, and thumb and middle finger met the cup's near
+side and pushed it away; and the reach's homing sat at its cap (the elbow's offset 0.45 rad, the shoulder 0.38, the trunk's turn 0.23
+of 0.25) every pass, the program aiming where its own squat never put the hand.
+
+**A247.** A hand closing within PILOT_HOLD_R (0.06 m) of the goal its homing steered it onto keeps the correction (the reach's transport
+held as the grasp closes: Jeannerod 1981); until now the correction faded at grasp onset and the hand slid back to the program's path.
+**A248.** Each tick its own movement runs (`own_movement`: a workshop sets it off under her plan, where her hands carry the arm) while
+its homing steers or holds a limb, the program's pose at that phase steps toward the pose with the homing's offset, at HOMING_TEACH of
+a hand's lesson: the corrective command of a feedback controller trains the feedforward program (feedback-error learning: Kawato,
+Furukawa and Suzuki 1987). (Its reaching arm's lessons from her hands stay off while its own movement runs: 10-28, her fix learned as
+a jump at the bottom on top of the homing's same correction threw the hand 16 cm off the block.)
+
+With both, dry, Workshop 12 (her help where it falls short): the cup picked up 5 of 6 (3 of 15 before), its hand within about 1 cm of
+the cup's middle as it closed, the homing's offsets shrinking pass by pass (the shoulder's 0.36 to 0.19 rad); the miss, an overshoot of
+3 cm past the cup once the program had taken up the corrections. test_moves.py.
+
+### A249. A movement for each thing (2026-10-29)
+
+Trained on the cup with A248, the left hand's one pick-up program learned to bring its hand down centred and low over the cup (11 of 15
+picked up in Workshop 12, 3 of 15 before), and the block, which it had picked up 5 of 5 in Workshop 13, failed 2 of 3: centred, its
+hand turned across the block's diagonal (9.9 cm, wider than its open fingers) where her plan's had crossed its faces (7 cm), its
+fingers resting on the block's top edges. Grasps differ by the thing and are remembered by it: the object's identity recalls the motor
+parameters learned for it (Gordon, Westling, Cole and Johansson 1993). Now `MoveLayer.variant(name, thing)`: the program for a thing
+(`pick_l:cup`), born the first time it is wanted as a copy of the hand's program (its pose, command and runs), learning on its own
+after; the workshop's pick-up runs the variant for the thing it goes to (its held goal in Workshop 13), and its starts still learn the
+hand's movement whatever the thing. The block's variant, born from the cup-trained program, is taught again from her plan (Workshop 11,
+`--her-plan`), the cup's keeps the cup's training. test_moves.py.
+
+**A248, taught at the reach's end only (10-29 late morning).** Taught on the way down too, the cup's program learned to get to the
+cup sooner and lower: by the run's 10th pass its hand was at the cup's height beside it 6 ticks before the bottom, its fingers pushing
+the 31 g cup 2-13 cm along the floor before they closed, and the cup was held 0 of 4 dry where the same program had held it 11 of 15.
+The corrections a reach learns are its end point's (visuomotor adaptation learns the end-point error): now taught only while the hand
+is within HOMING_TEACH_R (0.03 m) of the thing or holding it as it closes. The cup's variant is taught its descent again from her plan.
+
+### A250. The grip's set force (2026-10-29)
+
+Each closing finger joint of a hand a movement holds pushes at most GRIP_SET (0.3) of its pain line past where it is, raised by the
+slip reflex (A244, now a movement's hand's too, let go after 100 ms with nothing pressing the fingers): the fingers' tendon organs, a
+grip's force set a modest margin over the slip point (Johansson and Westling 1984). In Workshop 12 her grip had held its fingers to the
+same cap (read as near none of hers: it only held them back); with her hands off in the test, its fingers drove to the angles learned on
+the block and the thumb's base swung -0.73 to +0.53 rad round the cup. (Scoped to a movement's hand: on every hand, the slip reflex's
+lingering squeeze closed a fist harder and fired the palmar grasp in A171's test.)
+
+**Tried and not kept (A251).** The homing hand more than 1.5 cm across from its goal kept its fingertips over the thing's top (a reach
+coming over a thing before it comes down): at the bottom it held a hand 1.5-3 cm off 2-6 cm too high, and the fingers closed over the
+cup (Workshop 12's cup 1 of 4).
+
+**Her grip on a round thing (10-29 noon, Workshop 12).** Her grip's closed hand (HAND_HOLD_R) squeezes the thumb's base 0.34 rad across
+the palm, set on the block, whose flat face stops the thumb so the squeeze only presses. Round the cup nothing stops it: in its own
+pick-ups after her plan had taught the cup's variant that grip, the thumb's base swung from 0.01 to 0.52 rad as the cup went up, and
+the cup slid out at the top (2 of 6 lifted that way). A cup is held with the thumb opposite the fingers: for ROUND_THINGS her grip now
+keeps the thumb's base at 0 (HAND_HOLD_ROUND_R), the other joints as before, and the cup's variant is taught again from her plan.
+And the reach's end where the homing teaches (A248) is now 6 cm: at 3 cm it never taught where the homing, its elbow and the trunk's
+turn at their caps and the forearm on the thigh, held the hand 3-4 cm off the cup's middle.
+
+**Taken back out, 10-29 afternoon.** A245 (its wanted turn scaled by its walk's speed) had been added against turning in place at the
+pace layer's 0.1 m/s crawl; at the 0.18 m/s crawl since, it left the thing 8-19 cm to its left at the stop (1-3 cm before it), past its
+pick-up's reach for the cup; without it the stop still comes at its learned place (0.29 m) and the thing 8-10 cm across. A248 (its
+homing teaching its program), taught at the reach's end at 0.15: the programs and the homing then both made the same correction and
+the hand overshot the block 5-10 cm (its own pick-up 4 of 10, 17 of 20 before); off (HOMING_TEACH 0), its law kept and tested, the
+variants taught their shape again from her plan. Kept: A247 (the homing held through the grasp), A249 (a movement for each thing), A250
+(the grip's set force), A244 (the slip reflex, a movement's hand's), her grip's round hold.
+
+### A252. The side it comes up to a thing on (2026-10-29)
+
+The steering layer (body/sim/goal_layer.py) keeps, for each held goal, the side it comes up to that thing on (`SteerLayer.sides`): its
+aim is the goal's point moved that far across the way to it (`HeldGoal.bearing(..., side)`), so it walks up with the thing that far to
+its left, before its reaching hand. Taught where a hand stops its walk (`stopped_side`: the goal's place across from its feet's middle
+then, the side stepping toward it by RATE_D x her share; the first, set there), as the pace layer learns where to stop for it (a
+child learns to come up to a toy it will pick up with the toy before the hand that will take it). Her share: her share in the walk
+that brought it there (the mean of her hand's share on the walk command over the walk). 10-29 evening: at her share on the stop's own
+tick, near 0 once its own pace stops where hers would, the cup's side stayed at 0.019 m through 10 passes in which her hand walked it
+up with the cup 6-12 cm to its left. (In Workshop 13 its own walk left the cup 7-17 cm to its left all the same: its steering's aim
+point and its gait's veer.) test_goal_layer.py.
+
+### A253. The reach's homing on the forward model's hand (2026-10-29 evening, Workshop 13)
+
+The reach's homing (the "automatic pilot": A240, A243, A247) stepped the arm by the gap between the goal and where the hand is. A
+movement running its own reach carries the hand toward the goal too, and the two added up: from 25 cm off the homing's offsets took up
+the gap the program was about to close, and at the bottom the hand stood 5-9 cm past the cup toward its knees, then slid back across at
+the cup's height into it (Workshop 13, the brain after Workshop 12's cup taught from her plan: the cup lifted 4 of 5, each after a
+3-7 cm push). The online control of reaching works on the predicted end of the movement: a forward model of the arm driven by the
+efference copy gives where the hand is going, and the correction is the target less that prediction (Desmurget and Grafton 2000;
+Wolpert, Miall and Kawato 1998). Now, before the reach's end, the homing's miss is the goal less the hand's grasp point under the
+running program's pose at its end, the homing's offsets added, the body stood on its feet where they stand (`_program_hand`), stepped
+through the arm's joints as they will be there; at and past the end, the hand as it is. The reach's end, found once a run: the phase
+the program's fingers begin to close (their mean closing REACH_CLOSE, 0.1 rad, past its least after it: the transport ends as the grasp
+closes, Jeannerod 1981; Haggard and Wing 1991); a program that does not close the hand, the first phase its hand is within
+REACH_END_TOL of its lowest. PILOT_PREDICT=0 turns it off. test_moves.py.
+
+Dry, Workshop 13 (data/workshops/workshop13/test_20261029_140215_*, with the test's stop and the block's program taught again, below):
+its hand comes down over the thing (over it 8-11 cm up at tick 20 of the movement, 1-2 cm up at 28) and closes 1.1-2.3 cm from its
+grasp point: **"go pick up the cup" 5 of 5 lifted, "go pick up the block" 5 of 5**, the thing moved 0-2 cm, all its own.
+
+**The reach's end at its lowest, first.** Its end first taken as the program's hand's lowest point, the cup's program held still from
+there through the grip and the cup was lifted the same, but the block's went on 12 cm across and 6 cm on after its lowest point before
+its fingers closed, and the block was lifted 3 of 5. The block's program carried that sweep from one pass of her plan: at the bottom
+her re-aim (the pose solved again from where it is, blended in over 4 ticks) swung its hand 22-33 cm up and round the block, and the
+program learned the pass at her share like any other (below).
+
+**The test's stop at its place (10-29 evening).** Workshop 13's own stop came when its held goal was within 2 cm of its learned
+stopping place: its walk stood 2-5 cm farther from the thing than her stops had left it in the teaching, the cup up to 27 cm ahead of
+its feet, past its program's reach, and its forearm came down on its own knee and was shoved 5-7 cm off the cup (2 of 5 missed). Now the
+stop comes at the place itself (a stall within the place's zone still stops it).
+
+**Her re-aim kept only when her hands can blend into it (10-29 evening, tools/levels/workshop1.py REAIM_SWING).** Her re-aim is now kept
+only if the hand, along the blend from her old pose to the new (each stood on its feet), stays within REAIM_SWING (0.03 m) past the
+farther of its misses before and after; a pose re-solved far from the old in its joints is dropped and her plan goes on as it was.
+Workshop 11 again from her plan (10 passes, 10 of 10 lifted, her re-aims kept in 3 within the swing): the block's program now holds its
+hand within 2 cm of its lowest point through the grip.
+
+### A254. Words learned from her speech (2026-10-29 evening; the owner: "we need it to generalize to new objects")
+
+The words channel gives it 50 words whole (the born scaffold); every other word she says comes spelled, a letter a tick and a space
+after, and the layers below the brain read whole words only: "round", "pick" and "go" reached none of them. body/sim/word_forms.py: a
+run of letters closed by a space is a word form; a form heard LEX_MIN (3) times becomes a word with its own symbol (1000 on, in the order
+learned), heard at its closing space as a born word is: the eye layer holds it in working memory, the starts read it (start_layer
+N_LEARNED slots; an older save's weights padded with none). An infant pulls the recurring sequences out of the speech it hears and keeps
+them as words (Saffran, Aslin and Newport 1996; Jusczyk and Aslin 1995) and maps a new word after one or two hearings (Carey and Bartlett
+1978). Its 50 born words are left as they are (rewriting them would be writing into its brain). Saved with the body. test_word_forms.py.
+
+### A255. What it has heard about each thing (2026-10-29 evening)
+
+body/sim/concepts.py: each word heard (born or learned) is credited CREDIT_LAG (6) ticks later, once, to the named thing its eyes rest on
+then (none if on none): the eyes reach a named thing within about a second of the word (Allopenna, Magnuson and Tanenhaus 1998) and an
+infant links a word to what it attends then (Baldwin 1993). A thing's profile: each word's share of its hearings that were about the
+thing less the share chance gives a thing (one over the things it knows), PROFILE_MIN (0.05) or more: a word's referents as
+cross-situational learning counts them (Smith and Yu 2008); "the", "is", "and" said of everything come to none, the name and what it is
+like stand out. Two things' likeness: their profiles' cosine over the words in two things' profiles or more (a name, or a word said of
+one thing only, says nothing of what else it is like); `most_like`, at LIKE_MIN (0.3) or more. Kept its whole life, by the word.
+
+Tried first and not kept: (1) the eye layer's word-to-thing predictions as the things' profiles: under the delta rule a thing's name,
+already predicting it, blocks a word said with it ("round" with "cup") from predicting anything (Kamin's blocking); (2) a running mean of
+the words' traces while its eyes rest on a thing, less a slower mean over all: forgot a description within one session of other talk
+about the thing; (3) each word's share of what was said with the thing, less its share at large: a long session of "go pick up the
+block" took "square" out of the block (its share diluted). test_word_forms.py checks a session of 400 such lines leaves the car as like
+the block as before.
+
+### A256. A new thing's body memories recalled from the thing it is like (2026-10-29 evening)
+
+A thing never stopped at nor picked up had nothing of its own below the brain: no stopping place (walked into), no side to come up on,
+its pick-up born a copy of the hand's first program. A new object's handling comes from the known objects it is like (what we know of
+an object sets the forces and the grip before we touch it: Gordon, Westling, Cole and Johansson 1993; words alone change a grip:
+Glover, Rosenbaum, Graham and Dixon 2004). Now: a goal held with no stopping place recalls the stopping place and the side of the
+thing most like it among those that have one (`_recall_goal`, once a life's run, the recall kept in `world.recalled`); its pick-up
+(`movement_for`) is born from the movement for the thing most like it among those with one (`moves.variant(..., like=)`), else from
+the hand's program as before. Its own lessons go on from there. test_word_forms.py.
+
+### A257. The grip turned to the thing's seen shape (2026-10-29 evening)
+
+This hand closes along its own length (its thumb by the wrist, its fingers at the far end). Its pick-ups were learned on the block and
+the cup, and the block's closes about 80 degrees across its way forward: the car as it lies in the room (its length within 20 degrees of
+its way forward) it closed across its 7 cm width, and the car turned a quarter round it closed along its 14 cm length, 0 of 5. The
+hand's turn is set with its transport as it reaches, to the object's axis as it is seen, and follows the object turned on the way
+(Desmurget, Prablanc, Arzi et al. 1996; Jeannerod, Arbib, Rizzolatti and Sakata 1995: the parietal-premotor grasp circuit reads an
+object's orientation and shape). Now `seen_shape`: a thing's outline from above (the room's, as the eye layer's things are the room's: a
+stand-in for its seeing them) is long (one way LONG_RATIO, 1.5, or more its width), else a box square and a rounded thing round (a
+cylinder, a ball, a rounded body: any grip); `_grip_turn`: the turn about the vertical that brings the hand's length across a long
+thing's narrow way, or square to a box's side, the nearer way round (none for a round thing, nor a hand whose length is not near level:
+TURN_FLAT, a grip from above). The homing's least squares (A240, A253) carries it as a fourth row beside the hand's place (GRIP_TURN_W,
+0.05 m a rad), at the reach's end as the forward model has it, while the hand comes (set by the reach's end, the hand then closing where
+it is), the wrist's roll free to GRIP_TURN_MAX (1.6 rad) for it (the other joints to PILOT_MAX). GRIP_TURN=0 turns it off.
+test_word_forms.py.
+
+First tried at LONG_RATIO 1.25 and turning on as the fingers closed: the duck (1.33 and rounded) was turned, its grip twisting on it
+as it closed and pushing it 1-4 cm: 4 of 5 and, turned a quarter round, 2 of 5 (5 and 4 of 5 with no turn).
+
+Dry, Workshop 13 (test_20261029_1545*, 1550*): the car turned a quarter round **5 of 5** (0 of 5 with no turn; its wrist rolled about
+0.9 rad as it came down); the car as it lies 3 of 5 (3 of 5 with no turn: in each miss the car came up and slipped out of a
+two-fingertip grip near the lift's top, pivoting about it as the palm tipped back); the block 5 of 5, its grip squared to a face; the
+duck (round) and the cup (round) as with no turn: 5 and 4 of 5, the duck turned 4 of 5.
+
+### The reach aimed at a thing's middle (2026-10-29 evening, tools/levels/workshop1.py)
+
+The eye layer's point for a thing in the pick task and the test (where its reach homes) is now the thing's centre of mass (MuJoCo's
+xipos), not its body's frame (xpos): a stand-in for the middle of the thing it sees, as the frame never is. The car's frame lay 0.7 cm
+under its centre of mass: gripped below it, the car stood on the grip like an inverted pendulum, tipped over it as the palm tipped back
+near the top of the lift and fell. People choose grasps through an object's centre of mass, so the grip carries no torque (Lederman and
+Wing 2003; Kleinholdermann, Brenner, Franz and Smeets 2007). The block and the cup are the same either way. Dry, Workshop 13: the car
+4 of 5 (3 of 5 at its frame; the pass that missed every time now held), the duck 4 of 5 (5 of 5; its miss a late start after its eyes
+went duck, ball, duck).
+
+A258, the grip's answer to a twist, tried first and not kept (body/sim/world.py's note): the car still pivoted out at 6-15 rad/s with the
+grip at its cap, 2 of 5 against 3 of 5 without. The twist is kept as a reading.
+
+### A259. Joint attention (2026-10-29 evening, Workshop 16)
+
+A246 holds the goal against a thing its eyes rest on that it wants less. A thing it had never seen wants nothing (its eye layer's
+priority 0), so a new thing her hand turned its eyes to stayed a lesser thing than the toy it already held, and nothing it heard there
+was learned of it: in Workshop 16's first dry passes the can's name went to the ball. A parent turning a child's eyes to a thing and
+naming it makes it the thing they share, whatever the child attended a moment before (Baldwin 1993; Tomasello 1995). Now a thing within
+JOINT_R (0.05 m) of where a hand on its head turns its eyes is held as its goal (A246 aside); in the test no hand is on its head.
+Dry: "can" came to predict the can 0.18, 0.26, 0.32, 0.36, 0.46 over its first five namings (0 before, the ball's instead).
+
+### A260. Gaze anchoring (2026-10-29 evening; the owner: "keep its eyes on the toy it's reaching for until its hand has it, then on the toy in its hand")
+
+The frames of every Workshop 13 test showed its eyes leave the toy as its fingers closed, 13-59 degrees, for the block, the ball or its
+own arm: squatting, the toy went out of its view, the eye layer pulled to a valued thing still in view, the born saccade (A186) went
+unchecked off the thing, and the brain's own gaze acts (up to 0.2 rad a tick) carried them on. The eyes stay on the target of an ongoing
+reach until the hand is there (gaze anchoring: Neggers and Bekkering 2000), fixate the grasp site and then the thing as it is moved
+(Johansson, Westling, Backstrom and Flanagan 2001), and rest on the object being acted on (Land, Mennie and Rusted 1999). Now
+(`world._anchor_point`), while a movement runs on its held goal (the reach, the grasp, the lift): its eyes are pulled to the goal alone,
+in view or not, as far as they turn (the eye layer's step); the born saccade away from it is cut; the brain's own gaze act is held, as a
+running movement's limbs are (A231); and once a hand holds the goal the point is the thing's own middle where it now is (the grip's
+body, its centre of mass). Not on the walk there: anchored from the walk's start, on a pass where its eyes were on the ball as her line
+began, it never turned to the can she named at the line's end, and picked up the ball. GAZE_ANCHOR=0 turns it off. test_word_forms.py.
+
+### A261. Fixation suppresses the VOR's quick phase (2026-10-29 evening)
+
+Anchored, its eyes still jumped 18-19 degrees off the toy every few ticks. The toy lies beyond its eyes' reach through much of a
+pick-up (the windows cannot leave the 58-degree images: pitch reach 20 degrees, yaw 38; the G1 has no neck): beneath it by 13-16
+degrees as the pick-up starts, standing over the toy; to its left by 3-18 in the squat (the trunk turned 24 degrees right with the left
+arm's reach, her plan's: pickup.squat_path, as little turn as the reach needs); beneath it by 8-25 in its hand at the lift's end (the
+yaw and the pitch read apart from 20:00, `toy_out_yp`). The eyes sat at the reach's edge,
+and the head's every sway carried the VOR's slow phase past it: the quick phase jumped them half the reach back, away from the toy. A
+fixated target suppresses vestibular nystagmus (visual suppression of the VOR, lost with the flocculus: Takemori and Cohen 1974). Now
+while anchored the VOR runs its slow phase alone and the eyes stay at the edge nearest the toy; a counter-turn cut at the reach teaches
+the flocculus nothing (A174), as a quick phase's does not. test_word_forms.py.
+
+The reading (tools/levels/workshop1.py): `gaze_err` is read at the floor point where the pass's thing lay, so a toy lifted into its
+hand read 10-30 degrees off with its eyes on it. Each tick now also records `gaze_toy`, its gaze off the thing where it is now (the pick
+task's toy: its centre of mass), and `toy_out`, how far the thing lies beyond its eyes' reach (no gaze puts it nearer); the frames'
+label and the red ring in its view show the thing where it is now.
+
+Dry, Workshop 13, pick ticks 20-60 (the reach's end, the grasp and the lift's start; the means of five or ten passes):
+
+| | no anchor | A260 | A260 + A261 |
+| --- | --- | --- | --- |
+| eyes off the toy (deg) | car 20-35, cup 24-57 | can 11-15, max 29 | can 8-9, car 1-6, block 4-9, duck 5-7, cup 6-10 |
+| of it, beyond the eyes' reach | car 2-6, cup 5-13 | can 6-9 | all but 0.2-0.6 |
+| lifted | car 7 of 10, cup 10 of 10 | can 5, cup 5, block 5, duck 5 of 5; car 2 of 5 | can 5, block 5, duck 5 of 5; car 9 of 10; cup 9 of 10 |
+
+The car's 2 of 5 under A260 alone: its run is deterministic (with no anchor the earlier test's 4 of 5 came again, pass for pass), and
+the anchored passes went their own way from pass 0's pick-up on; in passes 3 and 4 the car was gripped 1.5 cm off its middle and
+slipped out near the lift's top (the car's fingertip grip, A257's note). The cup's miss (the same pass in five and in ten): its arm came
+down on its left knee and knocked the cup 8 cm aside, gripped off its middle (the cup's old miss). Car and cup together: 18 of 20 anchored, 17 of
+20 not.
+
+A262, THE TRUNK JOINING THE EYES, tried and not kept (10-29 evening; its code not kept, described here): anchored on a point
+its eyes must pitch past 15 degrees down to fixate, the waist's pitch stepped forward by half the rest a tick (at most 0.04 rad a tick,
+0.40 in all) and back as the point came up, as the head joins the eyes for a target past their range (Guitton and Volle 1987), the
+G1's waist its neck (g1scene.py). Dry Workshop 13: at the pick-up's start the toy came within reach by its 10th tick; in the squat it
+needed none (the toy to the left there, not beneath); at the lift's end 23 degrees of lean left the toy 8-25 degrees beneath the reach
+still; and the lean grown at the start and let go 4-8 ticks later as the squat took the trunk down moved the shoulder under the
+reaching hand: the duck 3 of 5 (5 of 5 without), its hand 5-6 cm past it and 6-8 cm high, its forearm on its hip and knee. The can 5,
+the block 5, the cup 4 of 5. Where the toy is held is Workshop 17's (docs/LEVELS.md).
+
+### A263. A request's words not driven onto the thing it looks at (2026-10-29 evening, Workshop 17)
+
+The eye layer's words (A241, body/sim/gaze_layer.py `word_lesson`) learn by the delta rule: each tick its eyes rest on a named thing
+with words held, each thing's prediction by the words steps toward 1 for the thing looked at and 0 for the others in view. The
+prediction corrected was the words' associations weighted by their traces (the pull's, `predicted`). A fixation held long after the
+words, the traces fading, read the thing as ever less predicted, and every word held was driven toward it: the name's credit blocked
+nothing. Anchored on the toy through its 95-tick pick-up (A260), one saved pass of "go pick up the block" took "up" 0.38 -> 1.0, "the"
+0.08 -> 0.74, "go" and "pick" 0 -> 0.5 toward the block; asked next for the cup, its eyes went to the block and it picked the block
+up, and "cup" came to call its eyes to the block too (0.18; 0.56 after four such passes). Rescorla and Wagner's (1972) prediction is
+the sum of the cues present, each cue's salience setting only how much it learns: now the words held are summed whole, a word present
+while it is held, its trace its salience. A name that predicts its thing blocks the request's words from taking the credit (Kamin
+1969), as the layer's own docstring had it ("a name takes the credit"). test_gaze_words.py (on the same scene the old rule took "up"
+0.38 -> 0.79, "the" -> 0.49; now 0.32, 0.02). Dry, three passes of "go pick up the block" (the layer's learning carried from pass to
+pass): "up" 0.30, 0.29, 0.28 toward the block, as toward the cup; "the" and "pick" toward neither. After Workshop 17's ten saved
+passes (block, cup, duck, car, can in turn, twice): "up" 0.23 toward the block and the cup alike (0.38 and 0.36 before), "the" and
+"pick" toward none. "go" toward the drum its eyes glance at on it, 0.73 -> 0.81: its own, not taken by the request.
+
+Not yet right (10-29 night): its eyes reaching a thing before its name is said (the can, straight ahead, at tick 6-8 of her 12-tick
+line) credit the request's words to it while the name is not yet held, and once the name is, the words held predict it more than whole
+and the delta rule lowers each, the name too (overexpectation: Rescorla and Wagner's own prediction): after Workshop 17's six saved
+passes asking for the can, "can" 1.0 -> 0.55 toward the can, "go" 0.28 and "pick" 0.18 toward it; within a dry test of five more, "can"
+0.47 -> 0.25 and "go" 0.39 -> 0.72 (the earlier its eyes reach it, the more). The names it was not asked for before they were said held
+at 0.97-0.98. The lesson every tick its eyes rest on a thing with words held, through a fixation of a hundred ticks, is what drives
+both this and the drift above; a word mapped onto the thing attended in the second after it is heard, once (as A255 credits each word,
+CREDIT_LAG), is the form a child's word learning takes (Baldwin 1993; Smith and Yu 2008) and the likely remedy.

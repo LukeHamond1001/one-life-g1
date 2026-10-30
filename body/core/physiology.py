@@ -339,6 +339,9 @@ MOTOR = dict(
     habit_by_credit=0,   # A141 (C149): by day act_pred's lesson at each position is weighted clip(1 + G, 0, 1) as the night's replay weights it
                          # (G dopamine's credit over the following ticks, sleep.credit_after on the day's record): an act followed by net harm
                          # is not cloned into the habit by day either; the G1 sets 1 (life day 40: the day cloned every act at weight 1)
+    driven_felt=0,       # DRIVEN_FELT (2026-10-27, the owner: "when her hands move or hold a limb, it learns what the limb actually did,
+                         # not what it tried"): at a position whose move the world drove (A230's flag: the gait, a reflex, a parent's
+                         # hands), act_pred's lesson is act_inv's reading of the move felt, a rest so read included (timing `_timing_loss`)
     sharp_earned_norm=0, # C148: the proposal's certainty (its norm) is earned too: a joint's logits read s^g x cosine x |pred|^g with g its earned
                          # exponent (rel x variety), so a joint that has shown nothing draws from the cosines alone, however sure the forecast of its
                          # own habit; the G1 sets 1 (life day 40: three arm joints at one setting 76 to 98% of ticks under sharpness 1.0 to 1.5)

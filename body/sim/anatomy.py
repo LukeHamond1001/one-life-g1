@@ -697,6 +697,10 @@ SIM_CFG = dict(
                                    # dawn 29 (the private-speech ruler with --covert)
     sharp_per_joint=1,             # A140 (C117): each joint's decisiveness its own, earned by its kappa and its settings' variety (mouth._motor_sharp)
     habit_by_credit=1,             # A141 (C149, 2026-09-30): the day's habit lesson weighted by dopamine's credit as the night's is (cortex._habit_weights)
+    driven_felt=1,                 # DRIVEN_FELT (2026-10-27, the owner: "when her hands move or hold a limb, it learns what the limb actually did, not
+                                   # what it tried"): a move the world drove (A230's flag; a push shown into the walk command) is learned as felt
+                                   # (timing._timing_loss); Workshop 1's A/B from NB2's save, 60 passes: the arms' own settings the harness's 0.71 to
+                                   # 0.84 against 0.63 to 0.59 without, their own moves 29% to 14% against 37% to 41%
     actor_slow_lr=1e-3,            # A142/C153 (2026-09-30): the actor's 64-tick tag captured by phasic dopamine (mouth._actor_tag_step, critics): at
                                    # 60 ticks after an act its credit through the tag (1e-3 x 0.39) equals the fast trace's (0.02 x 0.02); ours
     sharp_earned_norm=1,           # C148 (2026-09-30): the proposal's certainty earned by the same exponent (model.ActTable.logits): a joint that has

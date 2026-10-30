@@ -560,3 +560,10 @@ always on, no gradient and no draw): the sim pin MOVES in its work section alone
 066195ecb1e4 and cfg 2c359b22d0c9 unchanged), one-thread 042585dc688fdaa108b0ddfe (was 7768236df6818f0bf388b830), consts ed20f0327da0
 unchanged. Checked: the same tree with the report's gauge_held entry removed gives the threaded 755c51ec2826bdfa4b50c2e0 exactly. The
 language default re-run: 7c54199e3c72cf77d45a8e94 (kept).
+Level 1 (2026-10-27, on main's bb87fcb4, the levels' branch): the sim pin re-taken. It had moved at c8810d04 (Grounding v8, 2026-10-26:
+the rows begun again under A202t's looks) without a re-pin, in its work section alone: threaded a233c0cf2a4888ee1deac61e (was
+880475fecdb6bed21a5dbb58; work a56a1566de2a, was ed8da520b871; organs ac7e78be3d9e, store a3a706da3969, optim 32ae709f94d0, rng
+066195ecb1e4 and cfg 2c359b22d0c9 unchanged), one-thread 0f5e52fa6a6bc96fbf042a0f (was 042585dc688fdaa108b0ddfe), consts ed20f0327da0
+unchanged. Bisected over the body's commits since acece494: a479aeee and ef92d202 give the last pin exactly, c8810d04 and every later
+commit (0be6331c, 2fb6dd81, 0254c5e2, the cleanup bb87fcb4) the new one. Level 1's own change (body/sim/ghost.py room_turns, on by
+default) lies outside the stub world: the tree with it gives the same digests.

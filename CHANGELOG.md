@@ -3,6 +3,36 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.211.0 (2026-10-29): from a walk to "go pick up the <thing>": the levels, the workshops and the layers below the brain
+
+Not a dawn of the life: the code as it stands on the night of 2026-10-29, the brain raised by the owner's workshops from a copy of
+NB2's newest save. In groups, with their records (`docs/LEVELS.md`; `docs/SIM_DESIGN.md`, the entries to A263):
+
+- **The cleanup (2026-10-27, the owner's word).** Old architectures, the pretraining runs and the old probes leave the tree: `legacy/`,
+  `tools/pretrain`, most of `tools/life`, and the old probes in `tools/measure`, `tools/live`, `tools/harness` and `tools/compare`.
+- **Level 1 (2026-10-27).** NB2's brain walking forward, eyes on the path (`tools/levels/level1_walk.py`): its saves (one life saved
+  whole, two versions of the brain only), its pay, held standing before she lets go, a control room in place of pictures, the lift that
+  ends standing. Its tests failed; the levels became workshops, in which the parent moves its body and never writes into its brain.
+- **Workshops 1 to 10 (2026-10-28).** Her hands walk it into a red circle and a longer way, and eight toys are named to it flashcard
+  fashion until it says each back; the layers below the brain that learn from her hands (the arms, the stance, the eyes, the pace, the
+  voice: `body/sim/arms.py`, `gaze_layer.py`, `pace_layer.py`, `goal_layer.py`, `voice_layer.py`).
+- **Workshops 11 to 13 (2026-10-28 and 29): picked up off the floor.** The pick-up taught by her hands and run off by a movement layer
+  below the brain (`body/sim/moves.py`, `pickup.py`), its starts learned (`start_layer.py`), a heard name turning its eyes (A241), the
+  reach homing on the forward model's hand (A253). The test, "go pick up the <thing>", every toy it knows on the floor: the block and the
+  cup.
+- **Workshops 14 to 16 (2026-10-29): a thing it has never picked up.** Words learned from her speech (A254, `word_forms.py`), what is
+  said of each thing and the things' likeness (A255, `concepts.py`), a new thing's body memories recalled from the thing it is like
+  (A256), the grip turned to the thing's seen shape (A257), joint attention (A259), the reach aimed at a thing's middle. The duck and the
+  car, never held, picked up when asked; a new toy, the can, named, described and picked up.
+- **Its eyes on the thing it picks up, and Workshop 17 (2026-10-29 night).** Its eyes anchored on the thing through the reach, the grasp
+  and the lift (A260), the VOR's quick phase suppressed while it fixates (A261); the trunk joining the eyes tried and not kept (A262).
+  Her plan's lift now ends with the toy held up before its eyes (`pickup.py` CARRY_*), taught in Workshop 17 (the test as it is, her
+  hands on its way up alone). The eye layer's word lesson made Rescorla and Wagner's (A263): a fixation held long after a request no
+  longer drives the request's words onto the thing. Dry tests after: the cup 10 of 10, the car 10 of 10, the block, the duck and the
+  can 5 of 5 each; through the rise the toy 1-4 degrees beneath its eyes' reach (8-25 before).
+- **Open.** A name whose thing its eyes reach before it is said erodes ("can" 1.0 -> 0.55 toward the can); on its own its elbow sags
+  under a held toy, the toy 10-11 cm below her carry; in the squat the toy lies left of its eyes' reach.
+
 ## 0.210.0 (2026-10-27): NB1 and NB2, two newborns on the box task; the code review's fixes
 
 Not a dawn of the life: the code as it stands when NB2 was stopped (2026-10-26 23:37), before a new training method. In groups,

@@ -488,7 +488,8 @@ TOYS = dict(
     stacker=((-.98, -1.28, 0), "the rings' plastic clack"),
     drum=((1.62, .32, 0), "a boom when hit on top"),
     ring=((.98, -1.34, 0), "a crinkle when handled"),
-)
+    can=((-.62, .48, 0), "a hollow plastic tap when it strikes something"),   # 10-29 evening: a toy it had never seen (the owner: "teach
+)                                                                              # what objects name is then put it with other objects")
 # NO BOTTLE, NO DOCK (A88, the owner's decision 2026-09-26: "no bottle no charger. objects are for teaching"). The bottle and its
 # charging dock beside the lying G1's right hand (S5a's build) are gone with the charge: every object in the room is hers to teach
 # with or a registered test's, and none meets a need.
@@ -506,7 +507,7 @@ TOYS = dict(
 # size is the owner's call (SIM_DESIGN.md B1), and the design uses B1's default until the owner says otherwise. B1'S PREMISE
 # FOLLOWS FROM THE PHYSICS: the hand holds the cup at its own size, so the shrink no longer has the reason it was made for (a
 # world fitted to the body with no need), and of the four toys B1 names only the bear and the drum are not held.
-TOY_SCALE = dict(ball=1.0, block=1.0, duck=1.0, cup=0.8, rattle=1.0, car=1.0, bear=1.0, stacker=1.0, drum=1.0, ring=1.0)
+TOY_SCALE = dict(ball=1.0, block=1.0, duck=1.0, cup=0.8, rattle=1.0, car=1.0, bear=1.0, stacker=1.0, drum=1.0, ring=1.0, can=1.0)
 TOY_MESHES = dict(cup=("cup_rim", "cup_handle"), drum=("drum_rim",), ring=("teether",),
                   stacker=("ring0", "ring1", "ring2", "ring3", "ring4"))
 ARGS = dict(a[2:].split("=", 1) for a in sys.argv[1:] if a.startswith("--") and "=" in a)
@@ -602,6 +603,9 @@ def _toy_geoms(k):
                       f'<geom type="cylinder" pos="0 0 .0552" size=".07 .0006" material="t_white" {VIS0}/>',
                       f'<geom type="mesh" mesh="drum_rim" pos="0 0 .052" material="t_yellow" {VIS0}/>',
                       f'<geom type="mesh" mesh="drum_rim" pos="0 0 -.052" material="t_yellow" {VIS0}/>']
+    if k == "can":      # a toy can: a red cylinder with a white band (10-29 evening)
+        return .04, [f'<geom name="can" type="cylinder" size=".033 .04" mass=".05" material="t_red" condim="6" friction="1 .01 .002" {TOY}/>',
+                     f'<geom type="cylinder" pos="0 0 0" size=".0332 .012" material="t_white" {VIS0}/>']
     if k == "ring":     # a teething ring: a torus (its hull is touched)
         return .016, [f'<geom name="ring" type="mesh" mesh="teether" mass=".04" material="t_pink" {fr} {TOY}/>']
     raise KeyError(k)

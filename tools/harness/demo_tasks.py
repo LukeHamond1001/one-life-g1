@@ -234,7 +234,7 @@ def enter_room2(world, expert, gen, lane, rng):
     return moved_
 
 
-def build(out, seed, claim2=False, objects=0, screen=False, bare=False):
+def build(out, seed, claim2=False, objects=0, screen=False, bare=False, more=None):
     DM.DEMO_WALK = False; DM.DEMO_REACH = False                  # the expert alone drives the child: the life's walk and reach hands
                                                                  # (E1, E2) off in a demo world (their pushes are not the recorded acts)
     from body.sim.voice import synth as V
@@ -252,6 +252,8 @@ def build(out, seed, claim2=False, objects=0, screen=False, bare=False):
             sc_(spec)
         if br_ is not None:
             br_(spec)
+        if more is not None:                                                                                 # A WORKSHOP'S OWN (2026-10-27:
+            more(spec)                                                                                       # Workshop 1's red circle)
     world = W.G1World(seed=seed, extra=extra_, xml=G.scene_path("door", "a"))
     if br_ is not None:
         X.hide_parent(world.m)                                                # (her body joins the spec after the extras: hidden on the model)

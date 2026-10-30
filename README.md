@@ -18,18 +18,20 @@ open ruler.
 The life above is the first chapter: 206 days of one body learning from her face alone (`docs/archive/`, the release branch). The
 second chapter started on 2026-10-19 and closed on 2026-10-21: **pretraining the same architecture from recordings** — an expert
 drove the body through a teacher's tasks (coming, looking, naming, echoing) and a fresh brain relived those recordings as one
-timeline, the recorded senses as its senses and the recorded acts as its own, sleeping every 24,000 ticks (`tools/harness/demo_train.py`;
+timeline, the recorded senses as its senses and the recorded acts as its own, sleeping every 24,000 ticks (the relive trainer, `tools/harness/demo_train.py`, now in the git history;
 docs/archive/PREREGISTRATION.md to _P5). It learned to see, hear words and forecast from the record (a night-1 jump over the newborn
 on every ruler) but could not learn to choose from it — the choosers' lesson is "my act and what followed" (R3, docs/archive/PREREGISTRATION_P3.md).
-The recordings were deleted at the owner's word; what remains of that chapter is one brain, `data/demo/student7`.
+The recordings were deleted at the owner's word; that chapter's one brain (`data/demo/student7`) went to the Trash on 2026-10-27 with
+the other earlier lives' brains (two versions only, from that day: the current level's and the previous level's, `docs/LEVELS.md`);
+their records stay.
 
 The third chapter is **the living program** (`docs/PREREGISTRATION_LIVE.md`, `docs/PREREGISTRATION_P6.md`): that brain lives with
 learning on in a bare world (a floor, the toys, a box, a tablet; the teacher's body unseen and still), a lever pays what it does right,
 the teacher pushes it when it is stuck, and the tablet before its eyes plays a film of its own body doing the task from the room camera,
 then vanishes. Nothing is said. The question is whether it learns to act from watching itself: paid examples first, then a clip it was
 never paid for. The task now is **the box** (`tools/harness/demo_box.py`): the clip shows its own arm putting an object into the box;
-the object is handed into its hand, the box set by that hand; does it put it in. `tools/live/resume_p8.sh` starts or resumes the run
-(P8, `data/demo/p8`); `data/demo/p8/tasks_live.jsonl` is its record, the probes (clip only, no push, no pay) its measure.
+the object is handed into its hand, the box set by that hand; does it put it in. P8 ran from `tools/live/resume_p8.sh` (now in the git
+history; its data `data/demo/p8`); `data/demo/p8/tasks_live.jsonl` is its record, the probes (clip only, no push, no pay) its measure.
 
 ## Replay it yourself
 
@@ -136,12 +138,13 @@ lists every red test by group with its reason, and they stay in the tree until e
 ## Map
 
 - `body/core/` the brain · `body/sim/` the world, the G1, her body and her teaching (`body/sim/lang/`) · `body/tests/` the suites
-- `tools/harness/` the demo sim, the task generator and expert, the relive trainer, the student's test and living run, the curve,
-  the film, the screen · `tools/live/` the living run's scripts · `tools/pretrain/` the relive's (finished) · `tools/compare/` the
-  withdrawn baselines · `tools/measure/` the guard and its pins, the rulers, the sim's instruments · `tools/life/` the diary life's
-  runner, replay and probes (`tools/README.md` is the index)
+- `tools/harness/` the demo sim, the task generator and expert, the student's test and living run, the film, the screen ·
+  `tools/live/` the newborns' start scripts and the live page · `tools/levels/` the levels (`docs/LEVELS.md`) · `tools/compare/`
+  the baselines (behavior cloning, Dreamer, a diffusion policy) · `tools/measure/` the guard and its pins, the rulers, the sim's
+  instruments · `tools/life/` the diary life's runner and replay (`tools/README.md` is the index)
 - `docs/` the architecture, the ledger, the living pre-registrations; `docs/archive/` the finished ones · `assets/` the tokenizer and the images
-- `legacy/` the two earlier lives of the architecture: the one-token organism (2026-08) and the language body (2026-09), kept as they were
+- The earlier lives' code (the one-token organism, the language body), the pretraining runs' scripts and the old probes left the tree
+  on 2026-10-27; they stay in the git history and in the public releases up to 0.210.0
 
 ## Roadmap
 

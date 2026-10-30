@@ -4012,3 +4012,78 @@ def test_an_effector_that_joined_and_one_re_declared_load():
     _live(R, ticks=10); assert R.ticks == L.ticks + 10
     print(f"anatomy 33: a save of two effectors loads with a third joined ({len(new_G)} organs born fresh beside {len(kept_G)} kept whole,",
           f"{len(grown_)} buffers grown) and with one re-declared (the grip's gate born fresh, said once; {len(kept_R)} kept whole); both live on")
+
+
+def test_a_move_the_world_made_is_learned_as_felt():
+    """DRIVEN_FELT (2026-10-27, the owner: "when her hands move or hold a limb, it learns what the limb actually did, not what it tried"):
+    at a position whose move the world drove (A230's flag, the frame after it), act_pred's lesson is act_inv's reading of the move felt,
+    whatever the child tried there, and a rest so read is a lesson too (A229's case turned); off, its default, the lesson is as before to
+    the bit with the flags beside it. The tiny arm's windows (anatomy 31's): its still rests, read as the rest (A229: no label), driven
+    become a label at every position but the last (its next sense not felt); its own acts, driven, are labels in their place (the own
+    part 0 but at the last); a guided position keeps its own lesson; the day's window keeps the flag the frame shows (`_sense_driven`),
+    none where the frame shows none"""
+    LR = float((_served_cfg() or PHYSIOLOGY)["live_lr"])
+    L, w, W = _arm_fixture(LR)
+
+    def rep(win, drv, on, extra=None):
+        L.cfg["driven_felt"] = int(on)
+        L.win.clear()
+        L.win.extend([dict(x_, **({"drv:arm": int(drv(t_))} if drv is not None else {}), **((extra or {}).get(t_, {}))) for t_, x_ in enumerate(win)])
+        obs, whos, bundles, _ = L._window_tensors()
+        with torch.no_grad():
+            C = L.m.stream(L.m.inputs(L.anatomy, obs, whos, bundles))
+        loss_, rep_, lab_ = L._timing_loss(1, C, obs)
+        return rep_, (None if loss_ is None else float(loss_.detach())), (None if lab_ is None else float(lab_.detach()))
+
+    T = len(W["rests"])
+    base = rep(W["rests"], None, False); off = rep(W["rests"], lambda t_: 1, False); on = rep(W["rests"], lambda t_: 1, True)
+    assert base == off, (base, off)                                          # (off: the flags change nothing)
+    assert off[0]["s_lab"] == 0.0 and abs(on[0]["s_lab"] - (T - 2) / (T - 1)) < 1e-9, (off[0], on[0])   # (held still: a lesson)
+    To = len(W["own"])
+    own_off = rep(W["own"], lambda t_: 1, False)[0]; own_on = rep(W["own"], lambda t_: 1, True)[0]
+    assert own_off["w_own"] > 0.5 and own_on["w_own"] <= 1.0 / (To - 1) + 1e-9 and own_on["s_lab"] >= (To - 2) / (To - 1) - 1e-9, (own_off, own_on)
+    half = rep(W["own"], lambda t_: t_ % 2, True)[0]                         # (driven every other move: the rest keep their own lesson)
+    assert own_on["w_own"] < half["w_own"] < own_off["w_own"] and own_off["s_lab"] < half["s_lab"] < own_on["s_lab"], (own_off, half, own_on)
+    gd_ = {t_: {"gdd:arm": True} for t_ in range(To)}                        # (a guided window keeps its own lesson, driven or not)
+    assert rep(W["own"], lambda t_: 1, True, gd_)[0] == rep(W["own"], lambda t_: 1, False, gd_)[0]
+    L.cfg["driven_felt"] = 0
+    from body.core.world import WorldLoop
+    run = WorldLoop(L)
+    L.win.clear(); run.step()
+    assert "drv:arm" not in L.win[-1]                                        # (the tiny world's frame shows none)
+    L._sense_driven = lambda e_: True if e_.name == "arm" else None
+    run.step()
+    assert L.win[-1].get("drv:arm") == 1 and "drv:grip" not in L.win[-1]
+    print(f"driven felt: the still rests driven {on[0]['s_lab']:.3f} of positions labels (undriven {off[0]['s_lab']}); the own acts driven, "
+          f"their own part {own_on['w_own']:.3f} against {own_off['w_own']:.3f}; half driven between; a guided window unchanged; the day's window "
+          f"keeps the frame's flag")
+
+
+def test_a_move_a_push_was_shown_into_is_learned_as_felt():
+    """DRIVEN_FELT on a pusher (the G1's walk command, whose world shows the push into each move, A228b): a move with a push shown on
+    any of its joints is the world's too (her hand on the command), learned as felt; a push known and nothing on every joint, or none
+    known, leaves the lesson as before. The tiny arm made a pusher of two joints (one push number a joint), its own acts' window"""
+    LR = float((_served_cfg() or PHYSIOLOGY)["live_lr"])
+    L, w, W = _arm_fixture(LR)
+    arm = L.anatomy.motors[0]
+    L._tape_pushers = lambda: [(0, arm, 2)]
+
+    def rep(push, on):
+        L.cfg["driven_felt"] = int(on)
+        L.win.clear()
+        L.win.extend([dict(x_, **({} if push is None else {"push:arm": torch.tensor(push(t_), dtype=torch.float32)})) for t_, x_ in enumerate(W["own"])])
+        obs, whos, bundles, _ = L._window_tensors()
+        with torch.no_grad():
+            C = L.m.stream(L.m.inputs(L.anatomy, obs, whos, bundles))
+        return L._timing_loss(1, C, obs)[1]
+
+    To = len(W["own"])
+    pushed = lambda t_: [0.01, -0.02]                                          # (her hand on both joints at every move)
+    off, on = rep(pushed, False), rep(pushed, True)
+    assert off["w_own"] > 0.5 and on["w_own"] <= 1.0 / (To - 1) + 1e-9 and on["s_lab"] >= (To - 2) / (To - 1) - 1e-9, (off, on)
+    one = rep(lambda t_: [0.01, 0.0], True)                                    # (a push on one joint: the move the world's, the other its own)
+    assert one["w_own"] <= 1.0 / (To - 1) + 1e-9 and one["s_lab"] >= (To - 2) / (To - 1) - 1e-9, one
+    zero_on, zero_off = rep(lambda t_: [0.0, 0.0], True), rep(lambda t_: [0.0, 0.0], False)   # (a push known and nothing: as before)
+    assert zero_on == zero_off, (zero_on, zero_off)
+    assert rep(None, True) == rep(None, False)                                 # (no push shown at all: as before)
+    print(f"driven felt, pushed: own part {on['w_own']:.3f} against {off['w_own']:.3f}; a push on one joint {one['w_own']:.3f}; none pushed unchanged")

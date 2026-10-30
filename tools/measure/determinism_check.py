@@ -31,7 +31,7 @@ Options:
   --cfg PATH   instead of a save, a frozen pickle of a save's cfg (a plain dict), so a change of the serve's flags cannot move the
                digest (SIM_DESIGN.md 8.3: the pins take tools/measure/pins/served_cfg.pkl); a relative PATH is read from the check's own tree
   --tmp DIR    where the round trip's and --full's temporary saves go (default: the system's temporary directory); removed after
-usage: python3 tools/measure/determinism_check.py [--flags legacy/language_body/ops/BASE_FLAGS.txt] [--ticks 400] [--profile default|served|switches] [--full]
+usage: python3 tools/measure/determinism_check.py [--flags tools/measure/pins/language_body/BASE_FLAGS.txt] [--ticks 400] [--profile default|served|switches] [--full]
        [--roundtrip] [--save data/watch2.pt | --cfg tools/measure/pins/served_cfg.pkl] [--tmp DIR]"""
 import sys, os, io, hashlib, pickle, zipfile, tempfile, shutil, collections
 HERE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); sys.path.insert(0, HERE)
@@ -75,7 +75,7 @@ def save_cfg(path):
 def served_save():
     for root in (os.getcwd(), MAIN):
         try:
-            toks = open(os.path.join(root, "legacy", "language_body", "ops", "serve_command.txt")).read().split()
+            toks = open(os.path.join(root, "tools", "measure", "pins", "language_body", "serve_command.txt")).read().split()
             return os.path.join(root, toks[toks.index("--load") + 1])
         except Exception:
             pass
@@ -93,7 +93,7 @@ if profile == "sim":
     import sim_profile                                              # the sim profile lives beside this check (tools/measure/sim_profile.py)
     sim_profile.main()
     sys.exit(0)
-flags = arg("flags", os.path.join(HERE, "legacy", "language_body", "ops", "BASE_FLAGS.txt")); ticks = arg("ticks", 400)
+flags = arg("flags", os.path.join(HERE, "tools", "measure", "pins", "language_body", "BASE_FLAGS.txt")); ticks = arg("ticks", 400)
 save_only = None
 cfg_pin = arg("cfg", "")
 if cfg_pin and (profile == "default" or arg("save", "")):

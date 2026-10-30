@@ -159,6 +159,10 @@ class CortexMixin:
                             pu_ = self._sense_push(e_)                          # block, put in after the loop and above these lines, had made
                             if pu_ is not None:                                 # them its body, so the push was kept only on a silenced
                                 self.win[-1]["push:" + e_.name] = pu_.detach().float().cpu()   # voice's ticks and for the last effector)
+                        if e_.inverse and hasattr(self, "_sense_driven"):       # A230 (driven_felt): whether the world drove its joints in
+                            dv_ = self._sense_driven(e_)                        # the tick before, the move into this position (the night's
+                            if dv_ is not None:                                 # tape keeps the same, sleep `_tape_driven`)
+                                self.win[-1]["drv:" + e_.name] = int(bool(dv_))
                         if (st_.get("now") or {}).get("guided"):                # D1e: a guided act at this position (never in a life)
                             self.win[-1]["gdd:" + e_.name] = True
                             if (st_.get("now") or {}).get("watched"):           # W1: read from the senses by the inverse model
@@ -266,6 +270,9 @@ class CortexMixin:
             kl_ = "lbl:" + e_.name                                     # D1y: the label at each position (-2: the act done; -1: none)
             if any(kl_ in w for w in win):
                 obs["@lbl:" + e_.name] = torch.tensor([int(w.get(kl_, -2)) for w in win], dtype=torch.long, device=self.dev)
+        if lesson and any(("drv:" + e_.name) in w for w in win for e_ in self.anatomy.motors):   # A230 (driven_felt): the world's drive into
+            obs["@driven"] = torch.tensor([[int(w.get("drv:" + e_.name, -1)) for e_ in self.anatomy.motors] for w in win],   # each position,
+                                          dtype=torch.int8, device=self.dev)            # per effector (-1: not shown), as the night's batches hold it
         if lesson and any("lbl:words" in w for w in win):       # D1y: the positions whose words are no lesson (-1; else -2)
             obs["@lbl:words"] = torch.tensor([int(w.get("lbl:words", -2)) for w in win], dtype=torch.long, device=self.dev)
         pus_ = [(e_, int(w_)) for _, e_, w_ in self._tape_pushers()] if (lesson and hasattr(self, "_tape_pushers")) else []

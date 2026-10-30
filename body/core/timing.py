@@ -1002,6 +1002,8 @@ class TimingMixin:
         gr_teach = None                                                    # (D1u: the guided rests taught, under its switch)
         s = self._window_sense(e, obs) if e.sense is not None else None
         gain = 0.0
+        drv_ = None                                                        # (driven_felt: the positions whose move the world drove)
+        psh_ = None; lab_fo_ = None                                        # (driven_felt: the moves a push was shown into; their labels)
         if e.inverse:
             gain = float(st["inv_gain"])
             with torch.no_grad():
@@ -1029,16 +1031,56 @@ class TimingMixin:
                     # 'small back' on 93 of 174 labelled positions in 500 ticks of the dawn-201 copy, its standing speed folded above)
                     rd_ = [int(x_) for x_ in tab.digits(torch.tensor(rest)).tolist()]
                     P1_ = pu_[1:, sl_[0]:sl_[0] + sl_[1]].to(dg_[0].device); K1_ = pk_[1:].to(dg_[0].device)
+                    stills_ = []
                     for j_ in range(len(e.factors)):
                         still_ = K1_ & (P1_[:, j_].abs() <= 1e-12)
+                        stills_.append(still_)
                         dg_[j_] = torch.where(still_, torch.full_like(dg_[j_], rd_[j_]), dg_[j_])
+                    if int(self._motor_const("driven_felt")):
+                        # (driven_felt: a move a push was shown into is the world's too, her hand on its walk command; at an own act the
+                        # joints nothing pushed moved by its own act alone: their own settings, not the rest A233 reads for a rest)
+                        psh_ = K1_ & ~torch.stack(stills_, 1).all(1)
+                        ad_ = tab.digits(acts[:-1].cpu()).to(dg_[0].device)
+                        lab_fo_ = tab.flat_many([torch.where(stills_[j_], ad_[:, j_], dg_[j_]) for j_ in range(len(e.factors))])
                 lab = tab.flat_many(dg_)                                    # [T-1]: what moved it from t to t+1
             rested = ~own
+            if int(self._motor_const("driven_felt")) and (obs.get("@driven") is not None or psh_ is not None):
+                # DRIVEN_FELT (2026-10-27 22:5x, the owner: "dont we just force arms same way as legs. think of this is parent holding child
+                # certain way performing action of walking into red circle"; "change the brain so that when her hands move or hold a limb,
+                # it learns what the limb actually did, not what it tried"). A MOVE THE WORLD MADE IS LEARNED AS FELT: at a position whose
+                # move the frame after it shows the world drove (A230's flag: the gait on the legs and the waist, a reflex on the arms and
+                # the hands, a parent's hands), the lesson is act_inv's reading of the move the limb made, whatever the child tried there
+                # (its own act was not what moved it), a label at act_inv's reliability as a rest's is (A229), and a rest so read is a
+                # lesson too (A229's own case turned: held still against its own act, stillness is what it felt). Until now a driven own
+                # act taught the act tried (its babble under her hold) and a driven rest held still taught nothing: the legs learned the
+                # walk through the leg layer below the brain and the arms learned nothing (Workshop 1's first run, 10-27 22:35: its arms'
+                # own settings the harness's on 0.63 then 0.59 of their joints). A guided, corrected or labelled position keeps its lesson
+                drv_ = torch.zeros_like(own)
+                if obs.get("@driven") is not None:
+                    dvv_ = obs["@driven"]
+                    dv_ = (dvv_[:, i - 1] if dvv_.dim() == 2 else dvv_).to(own.device) == 1
+                    drv_[:-1] = dv_[1:]                                    # (the flag at t + 1 is the move from t to t + 1's)
+                if psh_ is not None:
+                    drv_[:-1] = drv_[:-1] | psh_.to(own.device)            # (a push shown into the move: her hand on its walk command)
+                for k_ in ("@gdd:" + e.name, "@tch:" + e.name):
+                    if obs.get(k_) is not None:
+                        drv_ = drv_ & ~obs[k_].to(own.device).bool()
+                if lbl_ is not None:
+                    drv_ = drv_ & (lbl_.to(own.device) == -2)
+                if bool(drv_.any()):
+                    rested = rested | drv_
+                    if lab_fo_ is not None:
+                        lab = lab_fo_.to(lab.device)                       # (equal to A233's at every rest: a rest's own settings are the rest)
+                else:
+                    drv_ = None
             tgt[:-1] = torch.where(rested[:-1], lab, acts[:-1])
             wt = torch.where(rested, torch.full_like(wt, gain), wt)
             if bool(rested[-1]):
                 wt[-1] = 0.0                                               # its next sense is not yet felt: no label
-            wt[:-1] = torch.where(rested[:-1] & (tgt[:-1] == rest), torch.zeros_like(wt[:-1]), wt[:-1])   # A229: a rest read as rest, no label (below)
+            z_ = rested[:-1] & (tgt[:-1] == rest)
+            if drv_ is not None:
+                z_ = z_ & ~drv_[:-1]                                       # (driven_felt: a driven move read as the rest is a lesson)
+            wt[:-1] = torch.where(z_, torch.zeros_like(wt[:-1]), wt[:-1])   # A229: a rest read as rest, no label (below)
             gd_ = obs.get("@gdd:" + e.name)
             td_ = obs.get("@tch:" + e.name)                                # L1: a position the teacher corrected is its demonstration too
             if td_ is not None:
@@ -1194,7 +1236,7 @@ class TimingMixin:
             # rested tick taught its label: on the walk command (A228b's clean model reading the bare decay as rest, correctly) rest
             # taught rest at the labels' weight on every rested tick, and day 192's first command block under A228b made 9 forward acts
             # in 2,247 (13-22% on days 190-191), its own acts a zero-speed turn dither (11 and 13: 1,683 of them)
-            lab_f = lab_f & (tgt[1:] != rest)
+            lab_f = lab_f & ((tgt[1:] != rest) | drv_[1:]) if drv_ is not None else lab_f & (tgt[1:] != rest)   # (driven_felt: held still, a lesson)
             if nol_ is not None:
                 lab_f = lab_f & ~nol_[1:]                                  # (D1y: none there either)
             w_own = torch.where(lab1 & ~gr_teach[1:], torch.zeros_like(w1), w1) if gr_teach is not None else torch.where(lab1, torch.zeros_like(w1), w1)

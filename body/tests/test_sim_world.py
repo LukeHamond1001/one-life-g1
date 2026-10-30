@@ -1131,7 +1131,8 @@ def test_the_night():
     f = w.frame()
     assert set(f.obs) == {"body", "touch", "pain", "strain", "vestibular", "imu_torso", "loco_cmd", "loco_cmd_push", "leg_l_driven", "leg_r_driven",
                           "waist_driven", "loco_engaged", "leg_l_engaged", "leg_r_engaged", "waist_engaged", "loco_blocked",
-                          "arm_l_driven", "arm_r_driven", "hand_l_driven", "hand_r_driven"}, set(f.obs)   # (A231: the engaged; A232; A230b: the reflexes' drive)   # the body's own senses alone (the strain since A88; the walk command's own drive since A224, the cord's push on it since A228b; whether the gait drove the legs and the waist since A230)
+                          "arm_l_driven", "arm_r_driven", "hand_l_driven", "hand_r_driven", "voice_mute",
+                          "arm_l_engaged", "arm_r_engaged", "hand_l_engaged", "hand_r_engaged", "gaze_driven", "voice_engaged", "voice_driven"}, set(f.obs)   # (A231: the engaged; A232; A230b: the reflexes' drive; NB2 19:4x: the voice's mute; 10-28: the arm layer's engaged)   # the body's own senses alone (the strain since A88; the walk command's own drive since A224, the cord's push on it since A228b; whether the gait drove the legs and the waist since A230)
     blob = w.save_state()
     w.apply({})
     night_acts = [b1.acts() for _ in range(4)]
@@ -3138,6 +3139,12 @@ def test_the_command_walks_record():
     fe = w.frame()                                                          # A231: in the command walk the walk command is engaged, the legs and
     assert float(fe.obs["loco_engaged"][0]) == 1.0 and all(float(fe.obs[n_ + "_engaged"][0]) == 0.0 for n_ in W.GAIT_DRIVEN), fe.obs   # the waist not
     assert float(f0.obs["loco_engaged"][0]) == 0.0 and all(float(f0.obs[n_ + "_engaged"][0]) == 1.0 for n_ in W.GAIT_DRIVEN), f0.obs   # before it: the reverse
+    from body.sim import arms as _ARMS                                      # THE ARM LAYER (10-28): in the walk it carries the arms and the hands
+    assert w.arms_own() and all(float(fe.obs[n_ + "_engaged"][0]) == 0.0 for n_ in _ARMS.LIMBS), fe.obs   # (out of the brain's hands), before
+    assert all(float(f0.obs[n_ + "_engaged"][0]) == 1.0 for n_ in _ARMS.LIMBS), f0.obs                # it the brain's
+    ph_ = w._arms_phase; sl_ = w.eff_slices["arm_l"]
+    assert ph_ is not None and np.allclose(w.d.ctrl[w.aid[sl_]], np.clip(w.arms.target("arm_l", ph_), w.lo[sl_], w.hi[sl_]), atol=1e-9), (
+        w.d.ctrl[w.aid[sl_]], w.arms.target("arm_l", ph_))                 # (its target the layer's: no reflex fires on an arm here)
     g.cmd_v, g.cmd_w = 0.0, 0.1                                             # A232: at the speed's floor its steps back are blocked, nothing else
     assert list(w._loco_blocked()) == [1.0, 1.0, 0.0, 0.0, 0.0] + [0.0] * 5 and list(w.frame().obs["loco_blocked"]) == [1.0, 1.0, 0.0, 0.0, 0.0] + [0.0] * 5
     g.cmd_v, g.cmd_w = GH.COMMAND_V_MAX, -GH.COMMAND_W_MAX                 # at the speed's ceiling its steps forward, at the turn's its turns past it
