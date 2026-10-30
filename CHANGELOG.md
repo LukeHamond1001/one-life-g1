@@ -3,6 +3,13 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.211.1 (2026-10-29): the front page
+
+`README.md` brought up to date: it leads with the workshops' test (a picture of one pass, `assets/workshop13_cup.jpg`: "go pick up
+the cup", found by its name, walked to, picked up and held up before its eyes), the results of 2026-10-29, how it learns now (the
+layers below the brain, from her hands), what is not yet its own (its seeing, in the workshops), the open items and the roadmap. No
+code changed.
+
 ## 0.211.0 (2026-10-29): from a walk to "go pick up the <thing>": the levels, the workshops and the layers below the brain
 
 Not a dawn of the life: the code as it stands on the night of 2026-10-29, the brain raised by the owner's workshops from a copy of
