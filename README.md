@@ -22,7 +22,7 @@ Small learned layers below the brain take each movement over by repetition, and 
 - **Workshops 1 and 2:** walked into a red circle, then a longer way. **Workshops 3 to 10:** eight toys named to it, flashcard
   fashion, until it says each name back.
 - **Workshops 11 to 13:** picked up off the floor, the block and then the cup; then the test: every toy it knows on the floor,
-  "go pick up the <toy>", no hands.
+  `go pick up the <toy>`, no hands.
 - **Workshops 14 to 16:** a thing it has never picked up. She describes each toy while it looks at it ("the cup is round and
   small"). Asked for a toy it has never held, it recalls where to stop, which side to come up on and how to grip from the toy it is
   most like. A new toy, the can: its name taught alone first, then described, then asked for.

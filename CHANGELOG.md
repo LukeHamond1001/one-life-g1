@@ -3,6 +3,11 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.211.2 (2026-10-29): the test's line shown whole
+
+The front page and this page showed the test's line as "go pick up the" with nothing after it: GitHub had read `<toy>` and `<thing>`
+as tags. They are in code spans now. No code changed.
+
 ## 0.211.1 (2026-10-29): the front page
 
 `README.md` brought up to date: it leads with the workshops' test (a picture of one pass, `assets/workshop13_cup.jpg`: "go pick up
@@ -10,7 +15,7 @@ the cup", found by its name, walked to, picked up and held up before its eyes), 
 layers below the brain, from her hands), what is not yet its own (its seeing, in the workshops), the open items and the roadmap. No
 code changed.
 
-## 0.211.0 (2026-10-29): from a walk to "go pick up the <thing>": the levels, the workshops and the layers below the brain
+## 0.211.0 (2026-10-29): from a walk to `go pick up the <thing>`: the levels, the workshops and the layers below the brain
 
 Not a dawn of the life: the code as it stands on the night of 2026-10-29, the brain raised by the owner's workshops from a copy of
 NB2's newest save. In groups, with their records (`docs/LEVELS.md`; `docs/SIM_DESIGN.md`, the entries to A263):
@@ -25,7 +30,7 @@ NB2's newest save. In groups, with their records (`docs/LEVELS.md`; `docs/SIM_DE
   voice: `body/sim/arms.py`, `gaze_layer.py`, `pace_layer.py`, `goal_layer.py`, `voice_layer.py`).
 - **Workshops 11 to 13 (2026-10-28 and 29): picked up off the floor.** The pick-up taught by her hands and run off by a movement layer
   below the brain (`body/sim/moves.py`, `pickup.py`), its starts learned (`start_layer.py`), a heard name turning its eyes (A241), the
-  reach homing on the forward model's hand (A253). The test, "go pick up the <thing>", every toy it knows on the floor: the block and the
+  reach homing on the forward model's hand (A253). The test, `go pick up the <thing>`, every toy it knows on the floor: the block and the
   cup.
 - **Workshops 14 to 16 (2026-10-29): a thing it has never picked up.** Words learned from her speech (A254, `word_forms.py`), what is
   said of each thing and the things' likeness (A255, `concepts.py`), a new thing's body memories recalled from the thing it is like
