@@ -354,6 +354,8 @@ DESCRIBE_TEXT = "the {} is {}"   # WORKSHOP 14'S LINE once its eyes are on the t
 FIND_SLOTS = ((-30.0, 1.05), (-20.0, 1.35), (-10.0, 1.0), (0.0, 1.3), (10.0, 1.0), (20.0, 1.35), (30.0, 1.05))   # deg, m: the toys'
                                 # places on the floor from its start, an arc in its eyes' view (its field 88 deg across: A42), neighbours
                                 # 0.36 m apart; each pass the toys shuffled over them
+PLACE_ANGLE, PLACE_RANGE, PLACE_CLEAR = 35.0, (0.9, 1.7), 0.3   # --pick-place random: deg either side of its way ahead (its eyes' image
+                                                               # reaches 44), m away, m from each of the other toys' places (ours)
 W13_OTHERS = ((-40.0, 1.0), (-28.0, 1.5), (-18.0, 1.85), (18.0, 1.85), (28.0, 1.5), (40.0, 1.0))   # deg, m: WORKSHOP 13's other toys
                                 # from its start, the thing she names straight ahead at the pick task's distance: 0.7 m and more from it
                                 # and 0.6 m off its way there, all in its eyes' view as it stands
@@ -484,6 +486,9 @@ def main(argv=None):
                     "this far from the block")
     ap.add_argument("--rescore", action="store_true", help="the name task: its best try at the word heard afresh first (her reaction "
                     "changed since it was scored)")
+    ap.add_argument("--pick-place", choices=("ahead", "random"), default="ahead", help="the pick task: the thing asked for straight ahead "
+                    "at --pick-d (ahead), or each pass at a place and a turn of its own (random: PLACE_RANGE m away within PLACE_ANGLE deg "
+                    "of its way ahead, PLACE_CLEAR from the other toys' places, turned any way; the test of finding it anywhere)")
     ap.add_argument("--rise-hers", action="store_true", help="the pick task, its own movement followed: from its lift's top on, her hands "
                     "bring its reaching arm up along her plan's way up to her carry point (pickup.up_path from its own pose there), and the "
                     "arm learns that way up; the rest, its grip and its lift too, followed as ever (Workshop 17)")
@@ -1142,6 +1147,23 @@ def main(argv=None):
         if args.task == "pick":                                       # THE PICK TASK: the block on the floor before it, the circle out of the
             blk_ = np.array([START[0] + float(args.pick_d), START[1] - PICK_DY, floor_top + rest_up_])   # room, its eyes and her hand on
                                                                        # the block
+            V["place"] = None
+            if args.pick_place == "random":                            # (--pick-place random, 10-30: a place and a turn of its own each pass,
+                rngp_ = np.random.default_rng([args.seed, 1717, p_])   # clear of the other toys' places: until then the thing asked for lay
+                for _ in range(500):                                   # 1.2 m straight ahead in every pass, as it lies, and finding it by its
+                    a7_ = math.radians(float(rngp_.uniform(-PLACE_ANGLE, PLACE_ANGLE)))   # name was never tried anywhere else)
+                    r7_ = float(rngp_.uniform(*PLACE_RANGE))
+                    xy7_ = (START[0] + r7_ * math.cos(a7_), START[1] + r7_ * math.sin(a7_))
+                    if all(math.hypot(xy7_[0] - (START[0] + r8_ * math.cos(math.radians(a8_))),
+                                      xy7_[1] - (START[1] + r8_ * math.sin(math.radians(a8_)))) >= PLACE_CLEAR for a8_, r8_ in W13_OTHERS):
+                        break
+                yaw7_ = float(rngp_.uniform(-math.pi, math.pi))
+                jt7_ = int(m.body_jntadr[m.body("toy_" + args.pick_toy).id])
+                q07_ = np.asarray(m.qpos0[int(m.jnt_qposadr[jt7_]) + 3:int(m.jnt_qposadr[jt7_]) + 7], float)
+                pick_quat_ = np.zeros(4)
+                mujoco.mju_mulQuat(pick_quat_, np.array([math.cos(yaw7_ / 2.0), 0.0, 0.0, math.sin(yaw7_ / 2.0)]), q07_)
+                blk_ = np.array([xy7_[0], xy7_[1], floor_top + rest_up_])
+                V["place"] = [rnd(math.degrees(a7_), 1), rnd(r7_, 3), rnd(math.degrees(yaw7_), 1)]   # (deg left, m, its turn deg)
             d.mocap_pos[circle_mid] = [cx_, cy_, -1.0]
             cx_, cy_ = float(blk_[0]), float(blk_[1])                  # (her steering, its held goal and its frames: the block)
             world.pin_toy(args.pick_toy, blk_, quat=pick_quat_, ticks=2)
@@ -1848,7 +1870,7 @@ def main(argv=None):
             picked_ = bool(pick_ is not None and bz_ > 0.15 and hd_ < 0.10)
             if args.no_hands or V.get("others"):                       # (the test's reading: every toy off the floor at the end, the goals
                 lifted_ = [n_ for n_ in [args.pick_toy] + list(V.get("others") or {}) if float(d.xpos[m.body("toy_" + n_).id][2]) - floor_top > 0.15]
-                line_["test"] = dict(asked=args.pick_toy, lifted=lifted_, goals=V.get("goals"), own_start=dict(V["own_start"]),   # its eyes set,
+                line_["test"] = dict(asked=args.pick_toy, place=V.get("place"), lifted=lifted_, goals=V.get("goals"), own_start=dict(V["own_start"]),   # its eyes set,
                                      walked=k_walk0_ if ph_ != "stand" else None, stop_d=V.get("stop_d_pelvis"),   # its starts;
                                      move=(V.get("side") or {}).get("move"), recalled=dict(world.recalled),   # A256: the movement it ran
                                      like={n_: rnd(world.concepts.likeness(args.pick_toy, n_), 3) for n_ in world.concepts.count if n_ != args.pick_toy},   # and

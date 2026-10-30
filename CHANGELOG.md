@@ -3,6 +3,13 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.211.3 (2026-10-30): the test with the toy anywhere
+
+The test's thing asked for now lies at a place and a turn of its own each pass (`--pick-place random` in `tools/levels/workshop1.py`);
+until now it lay 1.2 m straight ahead in every pass. Ten places a toy, 0.9 to 1.6 m away and up to 18 degrees to either side, five toys:
+its eyes ended on the toy asked for 50 of 50 times and it lifted it 45 of 50, with no fall; the misses were its reach. `docs/LEVELS.md`
+has the table and the README's limits say it. Its seeing is still the room's (the toys' places and shapes given).
+
 ## 0.211.2 (2026-10-29): the test's line shown whole
 
 The front page and this page showed the test's line as "go pick up the" with nothing after it: GitHub had read `<toy>` and `<thing>`

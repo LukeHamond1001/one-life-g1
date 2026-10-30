@@ -946,6 +946,33 @@ Its words after (docs/SIM_DESIGN.md A263, "not yet right"): the names it was ask
 can over its six passes (its eyes reaching the can before its name was said), "go" 0.28 toward it. The brain as Workshop 16 left it is
 kept in brain_after_w16.
 
+## The test with the toy anywhere (10-30)
+
+The owner: "we arnt cheating right is model actually generalizing picking up objects of the name it knows?" Until then the thing asked
+for lay 1.2 m straight ahead, as it lies, in every pass of every test (the others moved among six places). `--pick-place random`
+(tools/levels/workshop1.py): each pass the thing asked for lies at a place and a turn of its own, 0.9-1.7 m away within 35 degrees of
+its way ahead and 0.3 m clear of the other toys' places (so in practice up to 18 degrees either side), turned any way. Dry Workshop 13
+on the brain Workshop 17 left (data/workshops/workshop13/test_20261030_0010*, 0018*, 0026*), ten passes a toy, the same ten places for
+each:
+
+| asked | its eyes ended on it | lifted |
+|---|---|---|
+| the cup | 10 of 10 | 9 of 10 |
+| the car | 10 of 10 | 10 of 10 |
+| the block | 10 of 10 | 8 of 10 |
+| the duck | 10 of 10 | 9 of 10 |
+| the can | 10 of 10 | 9 of 10 |
+
+50 of 50 to the thing named, 45 of 50 lifted, no fall. It turned onto each place as it walked and stopped at its learned distance
+(0.24-0.28 m). The misses are its reach: at the nearest place (0.96 m, 16 degrees right) the cup and the block, its left arm on its knee
+for about 21 ticks and its hand closing 5-6 cm past the toy; the block at 18 degrees left, its hand 7 cm off; the duck turned sideways,
+its hand 8 cm to its side; the can once. The frames (the cup 18 degrees left): its eyes on the cup on its name, turning onto it as it
+walked, its eyes off it (34 degrees) as it stood still before the pick-up began (the anchor holds only while a movement runs), back on
+it from the lift.
+
+What this does not show: its seeing is still the room's (the toys' places and shapes given, A257's and the eye layer's stand-in), ten
+places only, one seed, the layers learning on within a run. The finding by name and the pick-up are not tied to one place.
+
 ## Level 1: walk forward, eyes ahead
 
 `tools/levels/level1_walk.py`, started by `tools/levels/start_level1.sh [rounds]` (its folder `data/levels/l1`, its log

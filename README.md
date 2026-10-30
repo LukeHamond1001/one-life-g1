@@ -89,7 +89,9 @@ night      P(replay an episode) ∝ mean(s · (1 + |δ|)) / its running mean
   middle from the simulator, a stand-in for seeing it; the brain's eyes see the rendered camera images. A real robot needs these
   from its camera, and that is the first item on the roadmap.
 - Her words reach it as sound and as a token channel; on a real robot a speech recognizer would give the same tokens.
-- The tests are dry runs of 5 or 10 passes; the layers below the brain keep learning from pass to pass within a run.
+- The tests are dry runs of 5 or 10 passes; the layers below the brain keep learning from pass to pass within a run. In the results
+  above the toy asked for lay 1.2 m straight ahead every time; with it at a new place and turn each pass (ten places, 0.9 to 1.6 m
+  away, up to 18° to either side), its eyes ended on the toy asked for 50 of 50 times and it lifted it 45 of 50 (`docs/LEVELS.md`).
 - Open at this writing: a name whose toy its eyes reach before it is said loses its pull ("can", 1.0 to 0.55: `docs/SIM_DESIGN.md`,
   A263); on its own its loaded elbow sags, holding the toy about 10 cm below where her hands held it; in the squat the toy lies to the
   left of where its eyes can turn.
