@@ -243,7 +243,7 @@ def add_gso(seed, n, folder=GSO_DIR, manifest=None):
 
 
 # ================================================================== THE SCREEN (the owner's end target, 2026-10-21 16:20: 'an iPad of it
-# doing something from a new angle, then it does it'; docs/PREREGISTRATION_LIVE.md 4d)
+# doing something from a new angle, then it does it'; docs/archive/PREREGISTRATION_LIVE.md 4d)
 MAT_XY, MAT_HALF = (0.0, -0.6), (1.40, 1.00)   # the mat's centre and half-size (make_g1room.MAT_CENTER, MAT_HX, MAT_HY): where a world has
                                                  # no mat (the bare world, add_bare) the floor there stands for it
 

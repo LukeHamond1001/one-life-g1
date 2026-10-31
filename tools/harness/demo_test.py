@@ -359,16 +359,16 @@ def main():
     ap.add_argument("--film", default=None, help="P3 'take them out and observe': the room's camera filmed through the test to DIR/film.mp4 "
                                                   "(tools/harness/demo_film.py, every --film-every ticks; a fault in it stops the film, never the test)")
     ap.add_argument("--demo", action="store_true", help="THE SHOWN TASKS (tools/harness/demo_shown.py): she does the thing before its eyes (or not: the coin), "
-                    "then asks it to do the same; the lever at met (--lever); docs/PREREGISTRATION_LIVE.md 3 and 4c")
+                    "then asks it to do the same; the lever at met (--lever); docs/archive/PREREGISTRATION_LIVE.md 3 and 4c")
     ap.add_argument("--lever", action="store_true", help="THE LEVER: a press (+1) at every task met, the body feeling it where its switch lever=1 "
-                    "(a living test's teacher; docs/PREREGISTRATION_LIVE.md); off: as before")
+                    "(a living test's teacher; docs/archive/PREREGISTRATION_LIVE.md); off: as before")
     ap.add_argument("--film-every", type=int, default=1, help="a frame every this many ticks (the sim's tick is a sixth of a second: 6 frames a second)")
     ap.add_argument("--film-cam", default="room", help="the film's camera: room (the room's fixed camera) or front (a free camera before the child, tracking its pelvis: its hands and the object large; the clips' camera)")
     ap.add_argument("--film-size", default=None, help="the film's frame HxW (default the film's 360x640): a replay's demo film at 720x1280")
     ap.add_argument("--rest-unlabelled", action="store_true", help="L1 (P3): a baseline's effectors the teacher never labels (all but the "
                     "walk and the gaze) held at rest: it has no born motor organs, and untaught they flail (an untrained policy's arms "
                     "faulted the physics, 2026-10-21 07:02)")
-    ap.add_argument("--screen", nargs="+", default=None, help="THE SCREEN (docs/PREREGISTRATION_LIVE.md 4d): the tablet in the room, held before "
+    ap.add_argument("--screen", nargs="+", default=None, help="THE SCREEN (docs/archive/PREREGISTRATION_LIVE.md 4d): the tablet in the room, held before "
                     "its eyes by her before a task of --screen-fams, playing a clip of its own body doing that task from the room camera, cut from "
                     "these recordings' films (globs; tools/harness/demo_clips.py); the rung (--screen-rung) says what follows the clip")
     ap.add_argument("--screen-rung", type=int, default=1, help="1: a clip and a dark panel in turn, then her ask (read: its gaze on the panel); "

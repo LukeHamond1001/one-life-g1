@@ -2,7 +2,7 @@
 
 The owner's word (17:58-18:05): no more pretraining; every recording and every other model deleted; the one model kept. The plan: show
 it a third-person clip of its own body doing the task, push it in the right direction while giving reward, and see if it catches on.
-This is docs/PREREGISTRATION_LIVE.md 4d, rung 2, with rung 3 probed daily.
+This is docs/archive/PREREGISTRATION_LIVE.md 4d, rung 2, with rung 3 probed daily.
 
 ## 1. What runs
 

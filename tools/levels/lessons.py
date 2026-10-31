@@ -5,10 +5,10 @@ turning its eyes to one thing in it, her line; its what pathway (body/sim/what.p
 each night replays the day. The pictures: real photos (COCO, tools/levels/photos_fetch.py) and the sim's (the scanned objects and the
 room's toys on the rooms' floors, tools/levels/sim_pictures.py), mixed; the tests only pictures never shown.
 
-  L1 LOOK WHERE I POINT   her lines name nothing ("look!", "see this?"): what it learns is the things themselves, the same thing seen
+  L1 LOOK WHERE I POINT   (Workshop 29) her lines name nothing ("look!", "see this?"): what it learns is the things themselves, the same thing seen
                           again in another picture (a sim object across pictures) the same to its eyes. Test: re-finding a thing shown
                           among four in pictures never shown (TEST_N trials).
-  L2 WHAT IS IT           her lines name the thing in many ways ("look, a cup!", "that's a cup", "see the cup?"): which word is the
+  L2 WHAT IS IT           (Workshop 30) her lines name the thing in many ways ("look, a cup!", "that's a cup", "see the cup?"): which word is the
                           thing's it finds across hearings. Tests: "look at the X" among four, and naming, each on real photos and on
                           sim pictures apart, and crossed: CROSS_SIM words taught from sim pictures only and tested on real photos,
                           CROSS_REAL words taught from real photos only and tested on sim pictures.
@@ -36,6 +36,7 @@ CROSS_SIM = ("bottle", "bowl", "cup", "ball", "car")      # taught from sim pict
 CROSS_REAL = ("bear", "boat", "book", "spoon", "truck")    # taught from real photos only, tested on sim pictures
 MIN_TRAIN = 15                                             # a word with fewer lesson pictures than this is not taught (ours)
 TEST_N = 400                                               # trials a test
+BARS = {1: dict(refind=0.9), 2: dict(pick=0.8, name=0.7)}  # each workshop's bar (docs/LEVELS.md): L1 re-finding, L2 on real and sim
 LINES_L1 = ("look!", "look at this", "see?", "see this?", "look here", "what's this?", "look at that")
 LINES_L2 = ("look, a {w}!", "that's a {w}", "a {w}", "see the {w}?", "this is a {w}", "{w}!", "it's a {w}", "look at the {w}",
             "here's a {w}", "the {w}")
@@ -92,24 +93,34 @@ def _codes(w, its, cache):
 
 
 def test_refind(w, items, rng, n=TEST_N):
-    """L1: a thing shown (a sim object's test picture), four candidates (another test picture of the same object, three of others):
-    its eyes go to the most like -> the share right"""
+    """L1 (Workshop 29): a thing shown (a sim object's test picture), four candidates: another test picture of the same object and three of
+    other things -> {"kinds": the share right when the three are other kinds of thing (the bar), "twins": the share right when one of them
+    is another thing of the same kind (a second bottle, shoe or bowl almost alike at the fovea's 64 px: finer, reported)}. 10-30 night:
+    one test mixing the two plateaued at 0.865; among other kinds it was 0.956, with a twin 0.74, and 41 of its 63 misses the twin"""
     cache = {}
     sim = [it for it in items if it["domain"] == "sim" and it["split"] == "test"]
     by = {}
     for it in sim:
         by.setdefault(it["thing"], []).append(it)
     things = [t for t, v in by.items() if len(v) >= 2]
-    right = 0
-    for _ in range(n):
-        t = things[int(rng.integers(len(things)))]
-        a, b = rng.choice(len(by[t]), 2, replace=False)
-        others = [x for x in things if x != t]
-        cand = [by[t][b]] + [by[o][int(rng.integers(len(by[o])))] for o in rng.choice(others, 3, replace=False)]
-        cs = _codes(w, [by[t][a]] + cand, cache)
-        sims = (cs[1:] @ cs[0]).numpy()
-        right += int(np.argmax(sims) == 0)
-    return round(right / n, 3)
+    kind = {t: by[t][0]["word"] for t in things}
+    out = {}
+    for mode in ("kinds", "twins"):
+        right = 0; done = 0
+        for _ in range(n):
+            t = things[int(rng.integers(len(things)))]
+            same = [x for x in things if x != t and kind[x] == kind[t]]
+            other = [x for x in things if kind[x] != kind[t]]
+            if mode == "twins" and not same:
+                continue
+            ds = list(rng.choice(other, 3, replace=False)) if mode == "kinds" else \
+                [same[int(rng.integers(len(same)))]] + list(rng.choice(other, 2, replace=False))
+            a, b = rng.choice(len(by[t]), 2, replace=False)
+            cand = [by[t][b]] + [by[o][int(rng.integers(len(by[o])))] for o in ds]
+            cs = _codes(w, [by[t][a]] + cand, cache)
+            right += int(np.argmax((cs[1:] @ cs[0]).numpy()) == 0); done += 1
+        out[mode] = round(right / max(1, done), 3)
+    return out
 
 
 def test_words(w, items, rng, n=TEST_N):
@@ -179,6 +190,7 @@ def main(argv=None):
     ap.add_argument("--again", action="store_true", help="a later run of the same lesson (the previous save not taken again)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--log", default=None)
+    ap.add_argument("--to-bar", action="store_true", help="stop at the workshop's bar (BARS), tested every --test-every days, at most --days")
     a = ap.parse_args(argv)
     logf = open(a.log, "a") if a.log else None
 
@@ -205,13 +217,21 @@ def main(argv=None):
         day(w, lit, a.per_day, a.lesson, rng)
         st = w.night(passes=a.passes)
         msg = f"day {w.nights}: {a.per_day} glances, night {st} ({time.time() - t0:.0f} s)"
+        at_bar = False
         if (dd + 1) % a.test_every == 0 or dd == a.days - 1:
-            msg += f"; refind {test_refind(w, items, np.random.default_rng(trng.integers(1 << 30)))}"
+            rf = test_refind(w, items, np.random.default_rng(trng.integers(1 << 30)))
+            msg += f"; refind {rf}"
+            at_bar = rf["kinds"] >= BARS[1]["refind"] if a.lesson == 1 else False
             if a.lesson == 2:
-                msg += f"; words {test_words(w, items, np.random.default_rng(trng.integers(1 << 30)))}; concepts {len(w.concepts())}"
+                tw = test_words(w, items, np.random.default_rng(trng.integers(1 << 30)))
+                msg += f"; words {tw}; concepts {len(w.concepts())}"
+                at_bar = all(tw.get(k) is not None and tw[k][0] >= BARS[2]["pick"] and tw[k][1] >= BARS[2]["name"] for k in ("real", "sim"))
         log(msg)
         if not a.no_save:
             torch.save(w.state(), path + ".tmp"); os.replace(path + ".tmp", path)
+        if a.to_bar and at_bar:
+            log(f"L{a.lesson} AT ITS BAR ({BARS[a.lesson]}) after day {w.nights}")
+            break
     log(f"L{a.lesson} OVER")
 
 

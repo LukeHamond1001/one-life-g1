@@ -4,6 +4,46 @@ This is the brain that lives in the simulated Unitree G1. It is described here w
 design ledger use; the table at the end maps the names. Everything below runs every tick, online, on one CPU, and nothing in it is
 ever reset.
 
+## The whole child now (NB2, 2026-10-30)
+
+NB2 is the brain below plus a set of small learned layers under it, in one simulated G1. The skills it has (walking to a named toy,
+picking it up, carrying it, putting it in the bucket) are learned by the layers, from the parent's hands and voice; the brain acts
+every tick beside them, and its own reward learning has not yet taken a skill over. The parent never writes into either: her hands move
+its body by the gap between what it does and what she would do (her share falls as it takes over), and she talks to it.
+
+```
+ her voice ─────► words ───────┐                         ┌──── her hands on its body, by the gap
+ its cameras ───► eyes ────────┤                         │
+ touch, joints, balance ───────┤                         ▼
+                               ▼            THE LAYERS BELOW THE BRAIN (body/sim/): the skills
+                 THE BRAIN (body/core/)      seeing    seen.py  the things from its colour camera
+                 a predictive model,                   what.py  the new eyes: codes learned from pictures, words found for them
+                 a memory, critics,          looking   gaze_layer.py  where to look; which word names which thing
+                 a policy, the night         words     word_forms.py, concepts.py (what is said of things), voice_layer.py
+                 (below: "One tick")         going     goal_layer.py (the held goal, steering), pace_layer.py (walk, stop)
+                               │             moving    legs.py (the gait), arms.py (the arms, the stance), moves.py (the
+                               │                       pick-up and the put-down), start_layer.py (when each starts),
+                               │                       the cerebellum (corrections, body/core/cerebellum.py), reflexes.py
+                               ▼                         │
+                        the G1's motors ◄────────────────┘
+```
+
+| layer | what it does | learns from |
+|---|---|---|
+| `legs.py` | the legs' stepping, the walk | the gait it practises with (Unitree's policy, `ghost.py`), her hands |
+| `arms.py` | the arms' and hands' carriage, the standing pose | her hands |
+| `moves.py`, `pickup.py` | movements run off once started: the pick-up, the put-down | her hands through her plan, then its own runs |
+| `start_layer.py` | when the walk, a pick-up, a put-down starts | the words and the moment a hand started it |
+| `goal_layer.py`, `pace_layer.py` | where it is going, its pace and its stop | her hand on its walk command |
+| `gaze_layer.py` | where its eyes go; which word names which thing | her hand turning its head, her words |
+| `word_forms.py`, `concepts.py`, `voice_layer.py` | the words it learns, what is said of each thing, its own voice | her speech, her reaction to its tries |
+| `seen.py` | the things before it, from its own colour camera (by a colour standing out of the floor) | her naming (their looks) |
+| `what.py` | the new eyes: codes for what it looks at and the words for them | pictures, real and the sim's, and her lines (the language workshops) |
+| `body/core/cerebellum.py` | fast corrections of every limb, a module for a thing held | its own errors |
+
+The workshops that taught them, in order, are `docs/CURRICULUM.md`; every change to any of them, with its reason and measurement, is
+in `docs/SIM_DESIGN.md` (the A entries). The rest of this page is the brain.
+
 ## One tick
 
 A tick is about 150 ms of the body's time. In a tick:
@@ -85,7 +125,7 @@ that name how a life is run now:
 |---|---|---|
 | `efference_stream` | 0: the copy of the act taken is not fed back on the stream (the copy road closed); 1: the life's original | R1, 2026-10-21 (docs/archive/PREREGISTRATION_P3.md) |
 | `face_form` | how the value organ reads her face: `foresee` forecasts the felt reward | P3 |
-| `lever` | 1: the teacher's lever is a reward source the body feels (`body/sim/anatomy.py` LeverReward) | the living program (docs/PREREGISTRATION_LIVE.md) |
+| `lever` | 1: the teacher's lever is a reward source the body feels (`body/sim/anatomy.py` LeverReward) | the living program (docs/archive/PREREGISTRATION_LIVE.md) |
 | `guided_credit` | 0: a guided act earns the striatum's actor no credit (D1b: the relive, no reward there, the rule drifted); 1: under a real reward (the lever) a guided act earns the actor's credit as an own act does (dopamine gates the corticostriatal synapses of the movement just made, whoever moved it: Reynolds and Wickens 2002), so the push teaches the selector, not only the gate and the habit | P8, 2026-10-22 11:45 (runs 1) |
 | `imagine_emulator` | 0: the stream run free in imagination (the deliberation, the waking imagination, REM) fills every sensed channel from the cortex's own forecast, which under efference_stream 0 reads no act, so an imagined act changes nothing; 1: THE EMULATOR, each motor effector's slice of its sensed channel is its forward half's forecast from the stream and the acts imagined there (the corollary discharge's road since R1), so the imagined body moves with the imagined act (Grush 2004; Wolpert, Ghahramani and Jordan 1995) | P8, 2026-10-22 17:20 (A239: 0 leans in 50,426 deliberations before; 76 in a 1,500-tick copy after) |
 | `teach_own` | the teacher's correction read on its own acts every tick (the living test's `--teach`) | L1, 2026-10-21 |

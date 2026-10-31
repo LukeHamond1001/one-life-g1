@@ -174,7 +174,7 @@ FRAMES = {
     "redirect": [F("look! the {o}.", "{o}"), F("look at the {o}!", "{o}"), F("see? the {o}.", "{o}")],
     "ask_where": [F("where is the {o}?", "{o}"), F("the {o}? where is the {o}?", "{o}"), F("look at the {o}.", "{o}")],
     "ask_what": [F("what is this?"), F("what is it?")],
-    # THE SHOWN TASKS (docs/PREREGISTRATION_LIVE.md 3, 2026-10-21): she does the thing before its eyes, then asks it to do the same
+    # THE SHOWN TASKS (docs/archive/PREREGISTRATION_LIVE.md 3, 2026-10-21): she does the thing before its eyes, then asks it to do the same
     # (her birth words only, the focus last: 'put', 'watch', 'like', 'shake' and 'bucket' are not hers at stage 2 and her check refuses
     # a word she has not got, 17:15; the meaning is in what she just did before its eyes, the words are the cue)
     "watch_me": [F("look. look at mama.", "mama"), F("{n}. look at mama.", "mama"), F("look. mama.", "mama")],   # (the focus a content word)

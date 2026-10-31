@@ -1,4 +1,4 @@
-"""THE SHOWN TASKS (docs/PREREGISTRATION_LIVE.md 3 and 4c, 2026-10-21; the owner: 'show it doing the task, then reward it and push it
+"""THE SHOWN TASKS (docs/archive/PREREGISTRATION_LIVE.md 3 and 4c, 2026-10-21; the owner: 'show it doing the task, then reward it and push it
 to do the same'): she does the thing before the child's eyes, then the child is asked to do the same, with the lever at success. Three
 acts from what the room can already show (the hide's own machinery, tools/demo_tasks.HideLater: the toy held before its eyes, then
 moved by the world as an environment's act, disclosed): IN (the toy carried in an arc into the bucket), SHAKE (the toy shaken up and down before its

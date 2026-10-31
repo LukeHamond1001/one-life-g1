@@ -1,4 +1,4 @@
-"""THE SCREEN'S CLIPS (docs/PREREGISTRATION_LIVE.md 4d, 2026-10-21): the clean recordings' films (tools/demo_tasks --film: film.mp4 at
+"""THE SCREEN'S CLIPS (docs/archive/PREREGISTRATION_LIVE.md 4d, 2026-10-21): the clean recordings' films (tools/demo_tasks --film: film.mp4 at
 three frames a second from the room camera, film_captions.jsonl with the task at each change) cut at their met tasks (tasks.jsonl:
 fam, toy, t0, t, ok) into clips of its own body doing the task, seen from where it is not; resized to the panel
 (body/sim/extras.clip_frames) at one frame a tick (six a second: each filmed frame twice). A Library draws a clip of a family, never

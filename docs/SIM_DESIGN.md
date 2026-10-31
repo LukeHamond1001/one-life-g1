@@ -7423,3 +7423,18 @@ draw things into kinds (Waxman and Markow 1995; Lupyan 2007); which word goes wi
 Its state is its own file beside the brain (what.pt). Test: body/tests/test_what.py (red disks and blue squares, "look, a ball!" and
 "that's a block" in turns: words made at their third hearing, after five nights 9 in 10 named right, "look" and "a" naming neither). Not
 yet read by the eye layer or the starts: the language workshops teach it first (docs/LEVELS.md).
+
+### A290. Its new eyes name what its seeing finds (2026-10-30 night, Workshop 31)
+
+The what pathway (A289) learned names from pictures in Workshops 29 and 30 (on sim pictures never shown: "look at the X" among four
+0.96, named 0.90). Its seeing in the room (A265) knows a thing by one colour patch. Where things are and what they are run apart in the
+primate brain: the dorsal stream's places, the ventral stream's object codes (Ungerleider and Mishkin 1982; Goodale and Milner 1992), and
+identity is read at the fovea's acuity. Now, with the pathway attached (`world.what`, loaded by the workshop runner under env WHAT_EYES=1
+from the brain's what.pt, read and never written below the brain), each tick its seeing finds the things by their colour as before, and
+`_what_names` renders its colour camera WHAT_X (2) times finer, cuts each thing found out square with a margin and lets the pathway name
+it among the things its seeing knows that the pathway has words for; `seen.recognize` takes that name at WHAT_LIFT (12) or more, else its
+look's own recognition. Measured before (no brain, the bare world, eight toys in a row before it, four rows a distance, the pathway after
+night 64): named right from its own camera 75-86% at its own size, 82-94% at x2, 83-100% at x4 (0.55-1.2 m); at x2, 59 of 63 found named
+right, the right names' lifts median 118 (four under 12) and the wrong 1.6-10.3. Things packed 16 cm apart were found as blobs only 55-70%
+(blobs merged): the colour seeing's limit, not the pathway's. Test: test_seen.py `test_the_what_pathways_name_wins_when_sure_and_known`.
+Without WHAT_EYES nothing changes.

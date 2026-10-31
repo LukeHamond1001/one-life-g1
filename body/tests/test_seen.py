@@ -110,3 +110,15 @@ def test_a_thing_cut_by_its_own_hand_in_front_keeps_its_place():
     behind = SN.own_depth(img.shape, p, R, fy, [((1.12, 0.0, 0.03), 0.042)])   # (its own part beyond the car, farther from its eyes)
     red4 = min(SN.blobs(img, p, R, fy, 0.0, own=behind), key=lambda b: float(np.hypot(b["centre"][0] - 1.0, b["centre"][1])))
     assert not red4["occluded"]
+
+
+def test_the_what_pathways_name_wins_when_sure_and_known():
+    """A290: a blob the what pathway named a known thing at WHAT_LIFT or more is that thing whatever its colour says; under it, or a name
+    its seeing does not know, the look's own recognition stands"""
+    s = SN.Seen()
+    s.proto = {"cup": dict(hue=130.0, sat=0.8, val=0.6, width=0.07, n=5), "car": dict(hue=20.0, sat=0.9, val=0.7, width=0.12, n=5)}
+    green = dict(hue=131.0, sat=0.8, val=0.6, width=0.07)               # (looks like the cup)
+    assert s.recognize(dict(green))[0] == "cup"
+    assert s.recognize(dict(green, what=("car", SN.WHAT_LIFT + 1.0)))[0] == "car"   # (sure, and a thing it knows)
+    assert s.recognize(dict(green, what=("car", SN.WHAT_LIFT - 1.0)))[0] == "cup"   # (not sure enough: its look)
+    assert s.recognize(dict(green, what=("bottle", 99.0)))[0] == "cup"              # (a word its seeing has no thing for)

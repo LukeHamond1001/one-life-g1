@@ -2,11 +2,11 @@
 
 The owner's word (2026-10-25 17:2x): "take this 24 hour run stop it and make changes to sleep to make better. and look through complete
 architecture see if we need any more changes or upgrades." NB1 was stopped at 17:29 (15.5 hours after its birth; its readings in
-docs/PREREGISTRATION_NB.md and section 4 here).
+docs/archive/PREREGISTRATION_NB.md and section 4 here).
 
 ## 1. What runs
 
-NB1 as born (docs/PREREGISTRATION_NB.md section 1: `Life.birth` d 512, 6 layers, 8 heads, window 64, birth seed 1; its own born eye, no
+NB1 as born (docs/archive/PREREGISTRATION_NB.md section 1: `Life.birth` d 512, 6 layers, 8 heads, window 64, birth seed 1; its own born eye, no
 DINO; no walking policy, the harness holding its legs and waist; the box task taught by the teacher alone, every fifth task a test with no
 push and no lever), with two changes to the night and the teacher as NB1's ended, from the birth:
 

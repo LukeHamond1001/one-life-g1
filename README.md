@@ -1,9 +1,8 @@
 # one-life-g1
 
-**A robot brain raised from nothing in one continuous life.** A simulated Unitree G1 humanoid lives in one room with one teacher.
-It learns every tick and sleeps every night. Its first life ran 206 days, learning from her face alone. The brain in the room now is
-a newborn's (NB2, born 2026-10-25), raised since 2026-10-27 by a parent's hands: she moves its body through a skill until it does the
-skill alone.
+**A robot brain raised from birth by a parent's hands, in one continuous life.** NB2, a simulated Unitree G1 humanoid born
+2026-10-25, lives in one room with one teacher; it learns every tick and sleeps every night. Since 2026-10-27 she raises it through
+numbered workshops: she moves its body through a skill until it does the skill alone, and she talks to it.
 
 <p align="center"><img src="assets/workshop13_cup.jpg" width="900" alt="four moments of one test pass, each the side view and the robot's own view: told 'go pick up the cup', its eyes find the cup among the toys; it walks to it; it squats and picks it up; it stands holding the cup up, its gaze on it"></p>
 
@@ -58,16 +57,9 @@ The last three rows were measured before Workshop 17 had it practise those toys.
 | the same, seeds 5-7 | 12 of 15 (the car 0 of 3) |
 | with A288 (its own hand over a thing hides it), seeds 2-4 | 13 of 15; the car on seeds 5-7, 3 of 3 |
 
-**The chapters before.** The first life (`docs/archive/`, the releases up to `dawn-206`): 206 days learning from her face alone. It
-learned to name the toy in front of it, 70 to 90 times a day by day 148, and to come when called (a born reflex steering the gait).
-Then pretraining the same architecture from recordings (2026-10-19 to 21): it learned to see, hear and forecast from them, but not to
-choose. Then the living program (2026-10-22 to 26): imitation from a tablet showing its own body (not shown, by its pre-registered
-tests), and two newborns on a box task, NB1 and NB2 (NB2 put the object in on its own in about half the tests where the box lay
-under its hand). `CHANGELOG.md` has each chapter's groups.
-
-<p align="center"><img src="assets/studio_day147.jpg" width="640" alt="day 147 of the first life in the studio view: the robot among its toys; her call drawn where her voice comes from; its own word in blue; its reward, mood and stress above it"></p>
-
 ## How it learns now
+
+`docs/ARCHITECTURE.md` opens with the whole child on one page: the brain and the layers below it, what each does and learns from.
 
 - **Below the brain, from her hands.** The legs' and the arms' layers (the walk's gait and the arms' carriage), the stance, the eye
   layer (which things to look at, and which word goes with which thing: `body/sim/gaze_layer.py`), the pace and steering toward a
@@ -119,29 +111,10 @@ night      P(replay an episode) ∝ mean(s · (1 + |δ|)) / its running mean
 - Every constant in the body is sourced in `docs/SIM_DESIGN.md` or marked there as ours, and the ledger records every change to the
   body or the teacher with the day it landed and the measurement that justified it.
 
-## Replay the first life
+## The workshops, in order
 
-One command downloads a saved checkpoint of the first life (about 1 GB), replays 1,500 ticks of it and prints the rulers. Five to
-ten minutes on a laptop CPU; no GPU, no speech engine (her voice comes from the checkpoint's own cache).
-
-```bash
-git clone https://github.com/LukeHamond1001/one-life-g1.git && cd one-life-g1
-pip install -r requirements.txt
-sh tools/life/replay.sh
-```
-
-The default checkpoint is a moment on day 147, saved mid-day. In the 1,500 ticks that followed it in the life, it named five toys
-right, and she called it from behind three times and it walked to her each time. A mid-day checkpoint replays as a **sibling** of
-the life, not a copy: a little of her state is not in the save, so the day diverges after a few ticks.
-`TAG=dawn-148 sh tools/life/replay.sh` replays the dawn of day 148 instead, and that replay is **exact**: with the life's own thread
-count (4), ticks 7,104,001 to 7,105,500 reproduce the life's record tick for tick. `tools/measure/determinism_check.py --profile sim` prints a digest two machines
-can compare.
-
-<p align="center"><img src="assets/growth_curve.png" width="640" alt="right names a day, days 1 to 148 of the first life"></p>
-
-## The workshops' code
-
-`tools/levels/workshop1.py` is the shared workshop (the walk, the name, the find, the pick and the put tasks, the chain, her hands,
+`docs/CURRICULUM.md` is the route: the workshops 1 to 50 in order, each one's command, its bar, what NB2 needed to reach it, and the
+rules every workshop keeps; a new or bigger model can be taken through the same ones. `tools/levels/workshop1.py` is the shared workshop (the walk, the name, the find, the pick and the put tasks, the chain, her hands,
 the pushes, the frames and the record); `workshop2.py` to `workshop28.py` are the workshops, and `workshop13.py` is the test. They start
 from NB2's brain (about 1 GB), which is not published. The language workshops' picture lessons are `tools/levels/lessons.py`; their
 pictures are fetched and rendered by `photos_fetch.py` (COCO), `sim_pictures.py` (the scanned objects) and `rooms_fetch.py` (the rooms'
@@ -150,27 +123,32 @@ floors, CC0 from Poly Haven), none of them published. `docs/LEVELS.md` records e
 ## The record and the design
 
 - `docs/LEVELS.md` is the workshops' record. `docs/SIM_DESIGN.md` is the ledger: the design, the decision log, and every dated change
-  since birth (1.3 MB; read it raw). `docs/RIG_SPEC.md` is the plan for the same life on a real G1. `docs/README.md` indexes the rest.
+  (1.9 MB; read it raw). `docs/RIG_SPEC.md` is the plan for the same life on a real G1. `docs/README.md` indexes the rest.
 - A life writes `ticks.jsonl` (one row a tick) and `nights.jsonl` (one row a night); `tools/measure/sim_rulers.py` reads them. A
   workshop writes `passes.jsonl` and each pass's `ticks.jsonl` and frames.
 
-## Run a new life
+## Run the workshops
+
+From the repository root, after `. tools/live/nb2_config.sh` (NB2's switches, `$CFG`), with a brain in `data/workshops/brain` (NB2's is
+not published; a newborn's first days: `tools/live/start_nb2.sh`):
 
 ```bash
-python3 tools/life/sim_life.py --out data/newborn --days 1 --d 512 --seed 1 --voice fake --threads 4 --room door --extra book_box_bucket --page
+python3 tools/levels/workshop26.py --out data/workshops/workshop26/run1 --ask cup --passes 2 --cfg $CFG   # a workshop's run (it saves)
+tools/levels/test_chain.sh mytest                    # the chain test: every toy, three seeds, one pass each, her hands off
+tools/levels/rounds.sh 26 1 again 2                  # practice rounds of the whole chain, every toy in turn
+python3 tools/levels/lessons.py --lesson 2 --days 40 --to-bar   # the picture lessons (Workshop 30), to their bar
+python3 tools/levels/workshop_view.py                # the live view: http://127.0.0.1:8046/
 ```
 
-`--page` serves a live view at `http://127.0.0.1:8030/`. `--voice real` uses the macOS speech engine; `--voice fake` is tones. A day
-is 24,000 ticks, about 2.5 hours on an M-series Mac at this size, and the night that follows it about 40 minutes. Resume with
-`--resume`.
+Each pass writes its record (`ticks.jsonl` a row a tick, frames two a tick) and `tools/levels/pass_digest.py` reads it whole: its
+outcome and why in a line, and its moments on one sheet (`digest.json`, `moments.jpg`).
 
 ## Tests and pins
 
-Tests are plain functions under `body/tests/` (`tools/README.md` shows how to run one). Behaviour is guarded by pinned digests:
-`tools/measure/determinism_check.py` lives a tiny body on a fixed script and hashes every weight, memory and feeling, and
-`tools/measure/pins/digests.txt` keeps every pin ever taken and why it moved. At the last full count (2026-10-21), 19 of 551 tests
-were red; `docs/README.md` lists them by group with their reasons. The tests of the workshops' layers pass (2026-10-29). The
-project's rule is targeted tests and the pins as the gate, not suite gates.
+Tests are plain functions under `body/tests/` (`tools/README.md` shows how to run one). Behaviour is guarded by a pinned digest:
+`tools/measure/determinism_check.py --profile sim` lives a tiny G1 body on a fixed script and hashes every weight, memory and feeling,
+and `tools/measure/pins/digests.txt` keeps every pin taken and why it moved (re-taken 2026-10-30 over the workshops' body). The tests of
+the workshops' layers and of the what pathway pass (2026-10-30). The project's rule is targeted tests and the pin as the gate.
 
 ## Map
 
@@ -178,26 +156,25 @@ project's rule is targeted tests and the pins as the gate, not suite gates.
   brain (`moves.py`, `pickup.py`, `gaze_layer.py`, `goal_layer.py`, `pace_layer.py`, `start_layer.py`, `word_forms.py`,
   `concepts.py`, `arms.py`, `legs.py`, `seen.py`, `what.py`; the rooms' looks `looks.py`) · `body/tests/` the suites
 - `tools/levels/` the levels and the workshops (`docs/LEVELS.md`) · `tools/harness/` the box task and its expert · `tools/live/` the
-  newborns' start scripts and the live page · `tools/compare/` the baselines (behavior cloning, Dreamer) · `tools/measure/` the
-  guard and its pins, the rulers, the sim's instruments · `tools/life/` the first life's runner and replay (`tools/README.md` is the
-  index)
-- `docs/` the architecture, the ledger, the workshops, the pre-registrations; `docs/archive/` the finished ones · `assets/` the
-  tokenizer and the images
-- The earlier lives' code, the pretraining runs' scripts and the old probes left the tree on 2026-10-27; they stay in the public
-  releases up to 0.210.0
+  newborns' start scripts and the live page · `tools/measure/` the guard and its pin, the sim's instruments (`tools/README.md` is the index)
+- `docs/` the architecture, the curriculum, the workshops' record, the ledger, NB2's pre-registration and its first day ·
+  `assets/` the tokenizer and the images
 
 ## Roadmap
 
-1. **Language of things** (the language workshops L1-L10): names, what things are like, kinds, where things are (in, on, under,
-   next to), what happens (from videos), who did what to what, and saying what it sees, from real photos and videos and the sim's.
-2. **Tasks told and shown once**: the same concepts carrying a task in words, or a task shown once, with no workshop scripted for it.
-3. **Speech that carries across tasks**: words learned once, in the second after each is heard (the fix for the eroding names);
-   then verbs mapped to movements ("put it down", "give it to me", "put it in the box"), descriptions that choose a thing ("the small
-   round one") and places, each learned on its own and tested on combinations never taught together.
-4. **Robust skills**: the toys' sizes, weights and friction and the room varied while it is taught, and every skill tested again
-   after every saving run, since teaching one skill has broken another.
-5. **A real G1** (`docs/RIG_SPEC.md`), in stages: its senses first (it looks at the toy you name), then walking on the robot's own
-   gait, then picking up, on a tether.
+The curriculum's next blocks (`docs/CURRICULUM.md`), each workshop run to its bar on things never shown:
+
+1. **Language of things** (Workshops 29 to 39): names, the same kind in different looks, what things are like, one and two, where
+   things are (in, on, under, next to), kinds of kinds, what happens (from videos), who did what to what, saying what it sees; from real
+   photos and videos and the sim's, its body held still.
+2. **Tasks told and shown once** (Workshops 40 to 44): known tasks in new words, new combinations of thing, action and place, a task
+   watched once and done, a new action learned by watching and her hands.
+3. **Robust in real-looking homes** (Workshops 45 to 50): pushes, floors and weights varied; rooms photographed from real homes and
+   scanned real toys; stop, no and wait; looking around for a thing and around what is in the way; getting up; tidying up.
+4. **A real G1** (`docs/RIG_SPEC.md`), in stages: its senses first, then walking on the robot's own gait, then picking up, on a tether.
+
+Earlier chapters of the same architecture (a first life, pretraining runs, a first newborn) are history, not this life: their records
+are in `docs/archive/` and the releases up to 0.210.0.
 
 ## License
 

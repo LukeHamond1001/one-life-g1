@@ -50,6 +50,12 @@ RECOG_D = 1.0                                 # a blob is a known thing whose ap
 PROTO_RATE = 0.3                              # an appearance's step toward the thing seen at each lesson
 PROTO_MIN = 0.5                               # (taught only when the words heard name the thing this strongly, A264's prediction)
 OCC_PAD = 2                                   # px: A288: its own arm or hand nearer than a thing within this of the blob's outline cuts it
+WHAT_LIFT = 12.0                              # A290: the what pathway's name for a blob taken at this lift or more (10-30 night, the room's
+                                              # toys from its own camera at 0.55-1.2 m: right names lifted 2.8 to ~120, median 118, the
+                                              # wrong 1.6 to 10.3; under it the look's own recognition, as before)
+WHAT_X = 2                                    # A290: the sharp view the what pathway reads, its colour camera rendered this many times
+                                              # finer where its seeing found a thing (the fovea's acuity; the D435's colour imager is ~8x
+                                              # the sim's 238 x 134). Its own size named 75-86% of the toys right, x2 82-94%, x4 83-100%
 
 
 def hsv(img):
@@ -193,7 +199,11 @@ class Seen:
         self.place = {}; self.seen_tick = {}; self.now = []; self.hold = None; self.shape = {}
 
     def recognize(self, b):
-        """the known thing a blob looks like (None: none within RECOG_D) -> (name, its gap)"""
+        """the known thing a blob looks like (None: none within RECOG_D) -> (name, its gap). A290: where the what pathway named the blob
+        (`b["what"]`: its name and lift, body/sim/what.py) a known thing at WHAT_LIFT or more, that name (its gap 0: before any look's)"""
+        wh_ = b.get("what")
+        if wh_ is not None and wh_[0] in self.proto and float(wh_[1]) >= WHAT_LIFT:
+            return wh_[0], 0.0
         best = (None, float("inf"))
         for n_, pr in self.proto.items():
             g_ = _appearance_gap(b, pr)

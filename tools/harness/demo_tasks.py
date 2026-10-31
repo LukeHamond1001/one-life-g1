@@ -1260,7 +1260,7 @@ class Generator:
         self.n_tasks += 1
 
     def _start_shown(self, t):
-        """THE SHOWN TASKS (tools/harness/demo_shown.py; docs/PREREGISTRATION_LIVE.md 3): a toy its hand can close on drawn, the act drawn in
+        """THE SHOWN TASKS (tools/harness/demo_shown.py; docs/archive/PREREGISTRATION_LIVE.md 3): a toy its hand can close on drawn, the act drawn in
         balanced blocks (in, shake, put), shown or not by the coin; the show runs in `act` (the world's act, disclosed, the expert's eyes
         on the toy), the toy comes back within its reach, then her ask ('do_<act>'), and the judge reads the world (the lever at met)"""
         toys_ = [k for k in self.take_toys() if k not in HIDE_PLACES]
@@ -2130,10 +2130,10 @@ def main():
     ap.add_argument("--families", default=None, help="the families this recording draws from, comma-separated (default: all); the rest are "
                     "never asked (2026-10-21: the clean set first, no fiddly failures to review)")
     ap.add_argument("--lever", action="store_true", help="THE LEVER: the judge presses it (+1) at every task met, recorded with the frames (the body's "
-                    "switch lever=1 feels it; docs/PREREGISTRATION_LIVE.md); off: the recordings as before")
+                    "switch lever=1 feels it; docs/archive/PREREGISTRATION_LIVE.md); off: the recordings as before")
     ap.add_argument("--objects", type=int, default=0, help="the scanned objects placed in the room for this seed (body/sim/extras.add_gso, "
                     "docs/archive/DATA_PIPELINE.md 3): the graspable join the reach list by their words, a birth word's the name tasks; 0: the room as it was")
-    ap.add_argument("--film", action="store_true", help="THE SCREEN's clip library (docs/PREREGISTRATION_LIVE.md 4d): the room's camera filmed "
+    ap.add_argument("--film", action="store_true", help="THE SCREEN's clip library (docs/archive/PREREGISTRATION_LIVE.md 4d): the room's camera filmed "
                     "through the recording to OUT/film.mp4 with its captions (tools/harness/demo_film.py: the task and her word at each change), every "
                     "--film-every ticks; a fault in it stops the film, never the recording")
     ap.add_argument("--film-every", type=int, default=2, help="a frame every this many ticks (2: three frames a second of the sim's six)")

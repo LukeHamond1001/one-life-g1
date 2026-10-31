@@ -1,5 +1,5 @@
 #!/bin/bash
-# NB1: THE NEWBORN (docs/PREREGISTRATION_NB.md; the owner's word 2026-10-25 00:5x-01:3x: "a 24 hour run with you training it, trying to get it
+# NB1: THE NEWBORN (docs/archive/PREREGISTRATION_NB.md; the owner's word 2026-10-25 00:5x-01:3x: "a 24 hour run with you training it, trying to get it
 # to learn the most it can", "no ipad", "get rid of the legs and eye cheats"). A brain born now (nothing pretrained: its own born eye, no
 # DINO; no walking policy: the harness holds its legs and waist in the standing pose and bears its whole weight), in the bare world, taught the box task by the
 # teacher alone: the object handed into its hand, the box set by that hand, a wait, then the guide's push and the lever at met, the push

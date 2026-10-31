@@ -15,7 +15,7 @@ rewritten without the owner's word.
 | tasks9 | 10-21 | 24 / 64k | tasks8's families with wanders (R2, 0.0025: 5 to 6 a recording per effector, 8 to 22 ticks, labelled with the intended act) | P3's and P4's diet |
 | heldout9 | 10-21 | 2 / 5.5k | the held-out ruler's recordings, never lived | measurement only |
 | **tasks10 (the clean set)** | from 10-21 15:57 | growing (tools/pretrain/gen_clean.sh) | every family but `where` (success 0.53 to 0.71; the rest 0.72 to 1.00), 12 scanned objects a recording (data/objects/gso, 142 fetched), the judge's lever at every task met, wanders 0.0025, the pretrained eye | the next pretraining round, continued from P4's student7; the live-teaching objects (20 held out of it later) |
-| | | | from 16:52 each recording is also filmed from the room camera (film.mp4 at 3 fps with film_captions.jsonl: the task and phase at each change; `demo_tasks --film`): THE SCREEN's clip library of its own body doing the tasks (docs/PREREGISTRATION_LIVE.md 4d) | |
+| | | | from 16:52 each recording is also filmed from the room camera (film.mp4 at 3 fps with film_captions.jsonl: the task and phase at each change; `demo_tasks --film`): THE SCREEN's clip library of its own body doing the tasks (docs/archive/PREREGISTRATION_LIVE.md 4d) | |
 | | | | 17:30: the take asks of scanned objects had all been refused (0 of 4: her percept named one `cup_7`, which her line check's form refuses, and the reach list had taken every scanned word, shoes and bowls she has no word for). Fixed: the percept names a scanned object by its stem (`cup`), and only scanned objects with a birth word (cup: 22 of 142, car: 2) join the reach and naming lists; the rest stay the room's clutter. From the recordings after s10109. | |
 
 Success rates by family (tasks8 from s8140 and tasks9): what 1.00, greet 1.00, call 1.00, name-held 0.99, peekaboo 1.00, bye 1.00, echo
@@ -34,4 +34,4 @@ Google Scanned Objects, 10-21 15:12), placed per seed by body/sim/extras.add_gso
 Not from scratch: P4's student7 (seed 7; its night snapshots in /private/tmp/claude-501/p4_snaps, its live save data/demo/student7) —
 the brain whose gaze was on the expert's side (0.57 and 0.63) after one night. When the clean set is large enough (about 200k ticks),
 P4 stops and the student continues (`demo_train.py --resume` with the clean set added to its globs) as the next pre-registered run;
-the living phase (docs/PREREGISTRATION_LIVE.md) wakes the same brain from its latest tested snapshot.
+the living phase (docs/archive/PREREGISTRATION_LIVE.md) wakes the same brain from its latest tested snapshot.

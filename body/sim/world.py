@@ -1796,8 +1796,42 @@ class G1World(SimWorld):
             self._own_parts = [g_ for g_ in range(self.m.ngeom)         # parts' bounding spheres (the drawn ones)
                                if int(self.m.geom_group[g_]) == OWN_GROUP and self.m.body(int(self.m.geom_bodyid[g_])).name.startswith(OWN_PARTS)]
         own_ = SN.own_depth(img_.shape, cp_, cm_, fy_, [(self.d.geom_xpos[g_], float(self.m.geom_rbound[g_])) for g_ in self._own_parts])
-        self.seen.update(SN.blobs(img_, cp_, cm_, fy_, self.floor_z, own=own_), int(self.tick))
+        bl_ = SN.blobs(img_, cp_, cm_, fy_, self.floor_z, own=own_)
+        if getattr(self, "what", None) is not None and bl_:
+            self._what_names(bl_, cp_, cm_, fy_)
+        self.seen.update(bl_, int(self.tick))
         self.eye_layer.targets = self.seen.targets()
+
+    def _what_names(self, bl, cp, cm, fy):
+        """A290: WHAT EACH THING ITS SEEING FOUND IS, BY THE WHAT PATHWAY (body/sim/what.py, the language workshops' new eyes). Its seeing
+        finds where things are by a colour standing out of the floor (the dorsal stream's places); what each is, the ventral stream's
+        object codes say (Ungerleider and Mishkin 1982; Goodale and Milner 1992), from a sharper view where it looks (the fovea's acuity,
+        seen.WHAT_X): its colour camera rendered finer, each blob cut out square with a margin and named among the things its seeing knows
+        that the pathway has words for -> b["what"] = (name, lift) on each blob (seen.recognize takes it at WHAT_LIFT or more)"""
+        known_ = [n_ for n_ in self.seen.proto if n_ in set(self.what.concepts())]
+        if not known_:
+            return
+        c_ = self.m.camera("eye_C").id
+        H_, W_ = int(G.COL_H) * SN.WHAT_X, int(G.COL_W) * SN.WHAT_X
+        if getattr(self, "_what_rnd", None) is None:
+            self._what_rnd = mujoco.Renderer(self.m, H_, W_)
+        self._what_rnd.update_scene(self.d, camera=c_)
+        img2_ = self._what_rnd.render()
+        R_ = np.asarray(cm, float).reshape(3, 3); p_ = np.asarray(cp, float)
+        f_ = (H_ / 2.0) / math.tan(math.radians(float(fy)) / 2.0)
+        crops_, idx_ = [], []
+        for i_, b_ in enumerate(bl):
+            q_ = R_.T @ (np.asarray(b_["centre"], float) - p_); z_ = -float(q_[2])
+            if z_ <= 1e-3:
+                continue
+            u_ = W_ / 2.0 + f_ * float(q_[0]) / z_; v_ = H_ / 2.0 - f_ * float(q_[1]) / z_
+            h_ = max(6.0, 1.25 * 0.5 * float(b_["width"]) * f_ / z_ + 2.0)
+            cr_ = img2_[max(0, int(v_ - h_)):int(v_ + h_), max(0, int(u_ - h_)):int(u_ + h_)]
+            if cr_.shape[0] >= 4 and cr_.shape[1] >= 4:
+                crops_.append(cr_); idx_.append(i_)
+        if crops_:
+            for i_, (n_, l_) in zip(idx_, self.what.name(crops_, among=known_)):
+                bl[i_]["what"] = (n_, float(l_))
 
     def _named_pull(self):
         """A266 (10-30): A THING THE WORDS HELD NAME HOLDS THE SEARCH: the most the words held predict any thing the eye layer knows

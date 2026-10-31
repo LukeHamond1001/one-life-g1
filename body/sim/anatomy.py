@@ -256,7 +256,7 @@ class JointPain(RewardSource):
 
 
 class LeverReward(RewardSource):
-    """THE LEVER (the owner's word 2026-10-21 13:3x: 'a lever in the pocket to control giving dopamine'; docs/PREREGISTRATION_LIVE.md):
+    """THE LEVER (the owner's word 2026-10-21 13:3x: 'a lever in the pocket to control giving dopamine'; docs/archive/PREREGISTRATION_LIVE.md):
     a press by whoever teaches, felt the tick it is given: the frame's truth 'lever' (the world's `press_lever`: the generator's judge at
     a task met, a living test's at its tasks, a person's button on the robot), its sign the press's (+ or -), clipped like a press;
     silent at 0. It never enters the senses (a reward is not a sight; the opponent's eye sees no lever): the road is dopamine's, the

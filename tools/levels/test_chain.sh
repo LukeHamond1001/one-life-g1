@@ -7,7 +7,8 @@
 #   tools/levels/test_chain.sh TAG [BRAIN] ["SEEDS"] ["TOYS"]      every toy x every seed (defaults: the brain, "2 3 4", the five toys)
 #   PASSES="cup:4 car:5" tools/levels/test_chain.sh TAG [BRAIN]     chosen passes only
 #   EXTRA="--bumps 20,40" tools/levels/test_chain.sh TAG             more options to every pass (workshop13.py / workshop1.py)
-# Prints "<toy> s<seed> <IN|dropped|not-in|not-picked|other> fell<n> errors<n>" a pass, then "IN: n of N".
+# Prints "<toy> s<seed> <IN|dropped|not-in|not-picked|other> fell<n> errors<n> | why" a pass (tools/levels/pass_digest.py: each pass's
+# digest.json and moments.jpg beside it), then "IN: n of N".
 cd "$(dirname "$0")/../.."
 . tools/live/nb2_config.sh >/dev/null 2>&1
 TAG=$1; BRAIN=${2:-data/workshops/brain}; SEEDS=(${=3:-2 3 4}); TOYS=(${=4:-cup block duck car can})
@@ -21,7 +22,8 @@ one() {
     ${=EXTRA} --cfg $CFG > $R/run.log 2>&1
   L=$(grep '^PASS' $R/run.log | head -1)
   case "$L" in *"PUT IN THE"*) O=IN;; *DROPPED*) O=dropped;; *"NOT in"*) O=not-in;; *"not picked"*) O=not-picked;; *) O=other;; esac
-  echo "$T s$SD $O fell$(grep -c 'FELL at' $R/run.log) errors$(grep -c Traceback $R/run.log)"
+  W=$(python3 tools/levels/pass_digest.py $R/workshop13/pass_000 2>/dev/null | head -1 | sed 's/^[^:]*: //')
+  echo "$T s$SD $O fell$(grep -c 'FELL at' $R/run.log) errors$(grep -c Traceback $R/run.log) | $W"
 }
 if [[ -n $PASSES ]]; then JOBS=(${=PASSES}); else JOBS=(); for T in $TOYS; do for SD in $SEEDS; do JOBS+=("$T:$SD"); done; done; fi
 OUT=()

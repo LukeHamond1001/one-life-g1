@@ -79,6 +79,7 @@ class What:
         self.replay = []                                              # earlier days' glances
         self.nights = 0
         self.lessons = 0
+        self.n_glances = 0                                            # every glance ever (a word's base rate: with_n over this)
         self._opt = None
 
     # ---------------- words ----------------
@@ -107,6 +108,7 @@ class What:
         """its eyes on a thing: `patch` (H x W x 3 uint8, resized to FOVEA_PX), the words heard with it, `pair` (an id shared by glances of
         the same thing a moment apart; None: this glance alone, its pair made by its own small eye movements and the light)"""
         p_ = _resize(patch)
+        self.n_glances += 1
         ws_ = [w_ for w_ in heard if w_ in self.words]
         for w_ in set(ws_):
             self.with_n[w_] = self.with_n.get(w_, 0) + 1
@@ -184,7 +186,8 @@ class What:
         if not self.words:
             return torch.zeros(len(codes), 0)
         p_ = torch.sigmoid(self.head(codes.to(self.dev))).cpu()
-        base_ =torch.tensor([max(1, self.with_n.get(w_, 0)) / max(1, len(self.replay) + len(self.day)) for w_ in self._order()])
+        base_ = torch.tensor([max(1, self.with_n.get(w_, 0)) / max(1, self.n_glances) for w_ in self._order()])   # (10-30 night: over the
+                                                                       # replay's 6,000 alone, the base grew past 1 as the days went)
         return p_ / base_.clamp(min=1e-3)
 
     def _order(self):
@@ -193,7 +196,7 @@ class What:
     def concepts(self):
         """the words that may name things now: heard with CONCEPT_MIN glances or more and not with nearly every glance (EVERY_SHARE: "a"
         and "look" are said of everything; among the rest the lift decides)"""
-        n_ = max(1, len(self.replay) + len(self.day))
+        n_ = max(1, self.n_glances)
         return [w_ for w_ in self._order() if self.with_n.get(w_, 0) >= CONCEPT_MIN and self.with_n.get(w_, 0) < EVERY_SHARE * n_]
 
     @torch.no_grad()
@@ -213,11 +216,14 @@ class What:
     def state(self):
         return dict(net={k_: v_.cpu() for k_, v_ in self.net.state_dict().items()}, head={k_: v_.cpu() for k_, v_ in self.head.state_dict().items()},
                     words=dict(self.words), counts=dict(self.counts), with_n=dict(self.with_n), nights=self.nights, lessons=self.lessons,
+                    n_glances=self.n_glances,
                     replay=[(p_, ws_, pr_) for p_, ws_, pr_ in self.replay[-REPLAY:]])
 
     def load_state(self, st):
         self.net.load_state_dict(st["net"]); self.words = dict(st["words"]); self.counts = dict(st["counts"])
         self.with_n = dict(st["with_n"]); self.nights = int(st["nights"]); self.lessons = int(st["lessons"])
+        self.n_glances = int(st.get("n_glances") or max([int(st["nights"]) * 1500] + [int(v_) for v_ in self.with_n.values()]))   # (a save
+                                                                       # before the count: its nights' 1,500 glances each)
         self.head = nn.Linear(CODE_D, len(self.words)).to(self.dev)
         if len(self.words):
             self.head.load_state_dict(st["head"])

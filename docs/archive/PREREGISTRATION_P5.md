@@ -3,7 +3,7 @@
 # P5: the clean continuation (pre-registered 2026-10-21 16:50)
 
 The owner's word (16:34): pretraining on the easy data is the line — language, naming, moving, grabbing — before the living program
-(docs/PREREGISTRATION_LIVE.md). P4 (docs/archive/PREREGISTRATION_P4.md) showed the pretraining method learns from recordings (night 1: the
+(docs/archive/PREREGISTRATION_LIVE.md). P4 (docs/archive/PREREGISTRATION_P4.md) showed the pretraining method learns from recordings (night 1: the
 home test 7/19 against the newborn's 7/33, own-state yaw 0.57 and pitch 0.63 against 0.08 and 0.48); its diet was the old sets
 (tasks8, tasks9: every family, the fiddly ones with their failures). P5 changes the diet only.
 

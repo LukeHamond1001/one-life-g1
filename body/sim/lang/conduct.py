@@ -524,7 +524,7 @@ INTENTS = {
     "redirect": Intent("plain", False, None, (Act("point", "{o}"), LOOK_O)),
     "ask_where": Intent("plain", True, "gaze", (EYES,)),                 # never a point or a look to it: the ask tests the word
     "ask_what": Intent("plain", True, "name", (EYES,)),     # of what the child attends: no show while an ask is pending (A51)
-    # THE SHOWN TASKS (tools/harness/demo_shown.py, docs/PREREGISTRATION_LIVE.md 3): her word before she shows, and her asks to do the same; expectant,
+    # THE SHOWN TASKS (tools/harness/demo_shown.py, docs/archive/PREREGISTRATION_LIVE.md 3): her word before she shows, and her asks to do the same; expectant,
     # judged by the generator on the world (the toy in the bucket, shaken, set at the spot), her smile owed through its met_ask (D2ag)
     "watch_me": Intent("plain", False, None, (EYES,)),
     "do_in": Intent("plain", True, None, (EYES,)),

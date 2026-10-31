@@ -49,7 +49,7 @@ family at 0.8 of the expert's rate (P3 section 4).
 - 2026-10-21 15:46: THE COMPARISON WITHDRAWN at the owner's word ('1v1s pointless and won't impress anyone, so we should stop'):
   the two diffusion-policy runs (frontier7, frontier8) stopped after their night-2 bursts; no opponent test will be run. The students
   train on with their curves (the home test, the held-out and own-state rulers, the films) as the gauge of when a brain is ready to
-  wake into the living phase (docs/PREREGISTRATION_LIVE.md), and their night snapshots are the brains it starts from. Section 1's
+  wake into the living phase (docs/archive/PREREGISTRATION_LIVE.md), and their night snapshots are the brains it starts from. Section 1's
   claim one and the kill rule stand for the students; the comparison of P3 section 4 is withdrawn.
 
 ## 5. Readings (appended, dated)

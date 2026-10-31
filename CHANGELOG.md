@@ -3,6 +3,26 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.213.0 (2026-10-30): the curriculum, the picture lessons' first results, its new eyes in the room, NB2 on the front page
+
+- **The front page and the docs are about NB2's life only.** The earlier chapters (the first life, the pretraining line, the first
+  newborn) are history: one line on the front page points to `docs/archive/`, where their pre-registrations now are.
+- **The whole child on one page**: `docs/ARCHITECTURE.md` opens with the brain and the learned layers below it, what each does and
+  what it learns from.
+- **The curriculum** (`docs/CURRICULUM.md`): Workshops 1 to 50 in order, each one's command, its bar, what NB2 needed to reach it and
+  the rules every workshop keeps, to take a new or bigger model through the same route.
+- **Each pass read whole** (`tools/levels/pass_digest.py`: the outcome and why in a line, the moments on one sheet) and **the live view
+  over every run** (`tools/levels/workshop_view.py`: the passes under way side by side, the finished ones with their why, the picture
+  lessons' page, JSON).
+- **Workshop 29, look where I point: at its bar** (re-finding a thing among four other kinds 0.93; with a same-kind twin 0.85).
+  **Workshop 30, what is it**, 40 lesson days on 150 photos a word: on sim pictures never shown 0.96 picked among four and 0.90 named (its
+  bar met), on real photos 0.76 and 0.34 (not met), crossed between sim and real at chance; going on with about 600 real photos a word.
+  A word's base rate is now over every glance (`what.py`).
+- **Its new eyes in the room (A290, Workshop 31)**: its seeing finds where things are by their colour; the what pathway says what each
+  is from a sharper view (`WHAT_EYES=1`). From its own camera, before any chain test: 82-94% named right at twice the colour camera's
+  size.
+- The full test suite's count is being taken again (`docs/README.md`).
+
 ## 0.212.1 (2026-10-30): the workshops' procedures in the tree, the indexes, the sim pin
 
 - **The procedures the results rest on**, until now outside the tree: `tools/levels/test_chain.sh`, the chain test as independent single

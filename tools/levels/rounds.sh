@@ -20,6 +20,7 @@ for RND in $(seq 1 $ROUNDS); do
     if [[ $FIRST == keep ]]; then AG=""; FIRST=again; else AG="--again"; fi
     python3 tools/levels/workshop$N.py --out $R --passes $PASSES --ask $T $AG --no-audio --dump-grip --seed $SEED ${=EXTRA} --cfg $CFG > $R/run.log 2>&1
     grep '^PASS' $R/run.log | cut -c1-300 | sed "s/^/== r$RND $T (seed $SEED): /"
+    python3 tools/levels/pass_digest.py $R/workshop$N/pass_* 2>/dev/null | sed 's/^/   why: /'   # (each pass's digest.json, moments.jpg)
     echo "   $(grep -c Traceback $R/run.log) errors; nights $(grep -c 'ITS NIGHT' $R/run.log)"
     python3 tools/levels/lines_check.py data/workshops/brain/legs_state.pt | grep -c WRONG | sed 's/^/   wrong lines: /'
   done

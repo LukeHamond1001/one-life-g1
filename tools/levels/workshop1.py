@@ -623,6 +623,14 @@ def main(argv=None):
     import demo_box as DB
 
     world, eyes, lane, anat = DT.build(args.out, args.seed, bare=True, more=add_circle)
+    if os.environ.get("WHAT_EYES", "0") == "1":                        # A290 (Workshop 31): ITS NEW EYES NAME WHAT ITS SEEING FINDS: the
+        wp_ = os.path.join(args.brain, "what.pt")                       # what pathway the picture lessons taught (Workshops 29, 30), read
+        if os.path.exists(wp_):                                         # (never written) below the brain
+            import torch as T_
+            from body.sim import what as WH_
+            world.what = WH_.What(device=T_.device("cpu")); world.what.load_state(T_.load(wp_, map_location="cpu", weights_only=False))
+            print(f"ITS NEW EYES (A290): the what pathway {wp_} ({world.what.nights} nights, {len(world.what.concepts())} words) names "
+                  f"what its seeing finds", flush=True)
     if os.environ.get("PROBE"):                                        # (an instrument: a joint's torque's parts each physics step)
         world.probe = W.JOINTS.index(os.environ["PROBE"])
     from body.sim import demo as DM

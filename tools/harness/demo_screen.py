@@ -1,4 +1,4 @@
-"""THE SCREEN'S SHOW (docs/PREREGISTRATION_LIVE.md 4d, 2026-10-21): she holds the tablet (body/sim/extras.add_screen) before the
+"""THE SCREEN'S SHOW (docs/archive/PREREGISTRATION_LIVE.md 4d, 2026-10-21): she holds the tablet (body/sim/extras.add_screen) before the
 child's eyes, its face to them, while the ScreenPlayer plays a clip of its own body doing a task from the room camera
 (tools/harness/demo_clips.py), or a dark panel for the same ticks (rung 1's control); then the tablet goes back to its spot on the mat.
 Each tick of the show its gaze is read (rung 1: its eyes' forward within LOOK_DEG of the panel's centre), the fraction kept on `last`.

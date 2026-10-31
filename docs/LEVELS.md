@@ -1483,10 +1483,56 @@ being generalized and absorbed. we can just freeze itss ody for ultimate speed l
 generalized (Workshops 14 and 16: the duck 5 of 5, a new toy, the can, 5 of 5 from its name and "round and small" alone), but its
 language was 11 learned words and 9 things known by one colour patch each, its eyes an 8 x 8 retina.
 
-The plan (each tested only on pictures never shown, real and sim apart and crossed): L1 look where I point, L2 what is it (30-70 common
-things), L3 same kind different looks, L4 what it's like (colours, sizes, shapes), L5 one, two, the other, L6 where it is (in, on, under,
-next to, behind), L7 kinds of kinds, L8 what happens (videos: put in, take out, push, roll, fall, give), L9 who did what to what, L10 say
-what you see. Then tasks told in words and shown once, with these concepts.
+**The plan, numbered on from Workshop 28** (the owner, 10-30 night: "i just want to stay organized with workshops"; run in order, a
+new or bigger model can be taken through the same ones). Each workshop's bar is on pictures or passes never shown; the language ones
+real and sim apart and crossed.
+
+| # | workshop | bar |
+|---|---|---|
+| 29 | look where I point (the picture lessons' L1) | re-finding a thing shown among four, 9 of 10 |
+| 30 | what is it: about 70 words (L2) | "look at the X" among four 8 of 10, naming 7 of 10, crossed sim and real |
+| 31 | its new eyes in the room: the eye layer finds things with the what pathway | the chain test 12 of 15 or more (30 passes) |
+| 32 | same kind, different looks | a never-seen cup, dog, car named, 3 of 4 |
+| 33 | what it's like: colours, sizes, shapes, soft or hard | "the red one", 8 of 10 |
+| 34 | one, two, the other | 3 of 4 |
+| 35 | where it is: in, on, under, next to, behind | 8 of 10 |
+| 36 | kinds of kinds: animal, vehicle, food, toy, container | a never-seen animal, 3 of 4 |
+| 37 | what happens (videos): put in, take out, push, roll, fall, give, open | the event named, 7 of 10 |
+| 38 | who did what to what | a sentence picks the right video of three, 3 of 4 |
+| 39 | say what you see | its own descriptions right, 7 of 10 |
+| 40 | known tasks in new words ("bring the cup to the bucket") | 8 of 10 |
+| 41 | new combinations: thing, action and place never taught together | 8 of 10 |
+| 42 | watch her do it once, then do it | 8 of 10 |
+| 43 | watch a video once, then do it | 7 of 10 |
+| 44 | a new action by watching and her hands (give, stack, push) | then used in told tasks |
+| 45 | take a bump (Workshop 28's pushes), floors and weights varied | no falls, the chain 12 of 15 or more |
+| 46 | realistic rooms and scanned toys inside the chain | 4 of 5 unseen rooms |
+| 47 | stop, no, wait | frozen within 0.5 s, 10 of 10 |
+| 48 | look around for it; around, not through | 9 of 10 |
+| 49 | get up by itself | 9 of 10 |
+| 50 | tidy up: every toy into the bucket in its own order, told once | 4 of 5 rooms |
+
+Workshops 29 and 30 run as `tools/levels/lessons.py --lesson 1` and `--lesson 2`.
+
+**Workshop 29, look where I point: at its bar** (10-30 night, 24 lesson days of 1,500 glances, data/workshops/lessons/l1.log). Her lines
+named nothing; the same scanned object seen in another picture was the same thing to it. Re-finding a thing shown among four in
+pictures never shown rose 0.60 (one small night), 0.72, 0.78, 0.81, 0.86 and stayed there from day 12 to day 22. Read apart, the test
+had been two: with three other kinds of thing as the others it re-found the thing 0.956 of the time, with a second thing of the same
+kind among them (a second supplement bottle, shoe or bowl, almost alike at the fovea's 64 px) 0.74, and 41 of its 63 misses were that
+twin. The test now reports both and the bar is on the first (`lessons.py test_refind`): **after night 24, among other kinds 0.927, with a
+same-kind twin 0.846.** Telling twins apart is finer than the workshop asked; it stays reported.
+
+**Workshop 30, what is it: its bar met on sim pictures, not on real photos** (10-30 night, 40 lesson days of 1,500 glances, nights 25 to
+64, data/workshops/lessons/l2.log). Her lines named the thing ten ways ("look, a cup!", "that's a cup", "see the cup?"); which word was
+the thing's it found across them, the words heard with everything ("a", "the", "look") lifting nothing. 86 words name something. On
+pictures never shown (`test_words`, 400 trials a set), the pathway as saved: **sim pictures: "look at the X" among four 0.96, named 0.90
+(the bar 0.8 and 0.7: met); real photos: among four 0.76, named 0.34 (not met)**, both flat from about day 48 (among four 0.66 on day 30,
+0.71, 0.75, 0.70 to 0.80 after). **Crossed: words taught from sim pictures only, among four in real photos 0.17 (chance 0.25), named
+never; from real photos only, among four in sim pictures 0.40, named never.** A small pathway born random, 150 photos a word: the sim's
+toys it tells apart, real photos only partly, and what it learned in one world does not carry to the other. Found on the way: a word's
+base rate counted its hearings over every glance but divided by the replay's 6,000 alone, so it grew past 1 as the days went
+(`what.py`: every glance counted now, `n_glances`); re-scored with it, the numbers above (real named 0.28 before the fix).
+
 
 **What was built for them.** The what pathway (A289, body/sim/what.py): a 64 px colour fovea, a code learned from scratch, its words
 found across her lines, the day's glances replayed at night. The picture lessons (tools/levels/lessons.py): its body held still, a
