@@ -9,7 +9,7 @@ dorsal striatum's stimulus-response learning: Yin and Knowlton 2006; Graybiel 20
 threshold at a rate the context sets (Carpenter and Williams 1995; Gold and Shadlen 2007). Here, for each movement a hand has started
 (`lesson`), a learned rate of its start a tick from the context the layer reads (`context`): the words held in working memory (the
 eye layer's traces, body/sim/gaze_layer.py: its born words and those it learned, body/sim/word_forms.py), whether a goal is held, the goal far or at the place it stops for it, the goal's side,
-and nothing else. While the movement could start (it is not running), each tick its signal rises by that rate and it starts when the
+whether a thing is in its hand (its fingers' touch; 10-30), and nothing else. While the movement could start (it is not running), each tick its signal rises by that rate and it starts when the
 signal reaches 1 (`step`); the signal falls back to 0 when the context gives no rate, and after a start.
 
 How it learns. Each tick the movement could start, its rate's prediction from the context steps toward 1 if a hand started it that
@@ -27,13 +27,16 @@ N_WORDS = 50                                  # the words channel's whole words 
 N_LEARNED = 50                                # A254: the words it learned from her speech, in the order learned (body/sim/word_forms.py)
 LEARNED0 = 1000                               # (word_forms.FIRST_ID)
 FEATURES = ("goal", "far", "at", "left", "right")   # a goal held; it far, at its stopping place; its side once there
-N_X = len(FEATURES) + N_WORDS + N_LEARNED
+BODY = ("holding",)                           # 10-30 (Workshop 19): a thing held in its hand, by its fingers' touch (after the words: a
+                                              # save before it reads its weight none)
+N_X = len(FEATURES) + N_WORDS + N_LEARNED + len(BODY)
 
 
-def context(words=None, goal=False, far=False, at=False, side=0.0, word0=29):
+def context(words=None, goal=False, far=False, at=False, side=0.0, word0=29, holding=False):
     """the layer's reading this tick: `words` {word symbol: trace} (the eye layer's), a goal held `goal`, it `far` or `at` its stopping
-    place, its `side` (m, left positive) -> the feature vector"""
+    place, its `side` (m, left positive), a thing in its hand `holding` -> the feature vector"""
     x_ = np.zeros(N_X)
+    x_[N_X - len(BODY)] = float(bool(holding))
     x_[0] = float(bool(goal)); x_[1] = float(bool(goal and far)); x_[2] = float(bool(goal and at))
     x_[3] = float(bool(goal and at and side > 0.0)); x_[4] = float(bool(goal and at and side <= 0.0))
     for w_, h_ in (words or {}).items():

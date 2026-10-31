@@ -169,8 +169,10 @@ class PersistenceMixin:
             # nothing until it learns. Every saved entry must still be built and nothing but the readout's entries may be new: a
             # cerebellum is otherwise neither dropped nor grown at a load (A20)
             lc_extra_ = sorted(set(cb_built) - set(cb_saved)); lc_lost_ = sorted(set(cb_saved) - set(cb_built))
-            if cb_saved and not lc_lost_ and lc_extra_ and all(k_.split(".", 1)[1] in ("lc_w", "lc_top", "lc_g", "lc_n", "n_loco") for k_ in lc_extra_):
-                print("load: the cerebellum's walk turn readout born at zero beside the saved organ (A227)", flush=True)
+            new_ok_ = ("lc_w", "lc_top", "lc_g", "lc_n", "n_loco", "pc_h", "h_born")   # (A283, 10-30: the held-thing module, likewise born
+            if cb_saved and not lc_lost_ and lc_extra_ and all(k_.split(".", 1)[1] in new_ok_ for k_ in lc_extra_):   # beside a saved organ:
+                print(f"load: the cerebellum's {', '.join(k_.split('.', 1)[1] for k_ in lc_extra_)} born beside the saved organ "   # a copy of
+                      "(A227's walk turn readout at zero; A283's held-thing module, a copy of its limbs' readout at its first use)", flush=True)   # pc_w at its first use)
             else:
                 raise ValueError(f"load: the save's organs hold {len(cb_saved)} entries of a cerebellum and its constants under this load switch it "
                                  f"{'on' if cb_built else 'off'} ({len(cb_built)} entries): a body is born with its switches (SIM_DESIGN.md A20), so a "

@@ -25,6 +25,13 @@ A hand placing the limbs teaches both; a hand pushing a limb back up where it sa
 so the pose stays the one shown (10-28: one set of weights for both, the pose its own squat was held to moved as it learned to lead its
 sag: its hips 0.5 rad further in 16 passes, its weight 10 cm off its feet); the drive stays within DRIVE_MAX of the pose.
 
+ITS LAST POSE HELD (10-30, Workshop 19). A movement run off to its end leaves its arms and hands where it brought them, held there
+(`held`): the toy it picked up stays up before its eyes until another movement starts or a hand stops it; its legs and waist go back to
+its stance (tried 10-30 night and not kept: the legs held too, see SIM_DESIGN A267). The motor system holds the posture a movement ends in by integrating the
+movement's command (Albert, Ramirez, Shadmehr et al. 2020; holding still and moving, distinct circuits: Shadmehr 2017). 10-30: at a
+pick-up's end its arm was handed back to its resting tone and the brain's acts, and a toy held up would have been let down; then, its
+Workshop 22's test, from the saved ends of pick-ups.
+
 The numbers. N_B, the bumps' width and RATE are ours (a movement a whole hand repeats is learned to 1/e in about 4 passes).
 Saved with the body (beside the leg layer's state)."""
 import math
@@ -88,9 +95,16 @@ class MoveLayer:
         return None if r_ is None else min(1.0, r_["k"] / float(max(1, r_["T"])))
 
     def limbs(self):
-        """the limbs the running movement holds (none when none runs)"""
+        """the limbs the running movement holds (none when none runs; its last pose held, its arms and hands alone)"""
         r_ = self.running
-        return () if r_ is None else tuple(self.programs[r_["name"]]["w"].keys())
+        if r_ is None:
+            return ()
+        l_ = tuple(self.programs[r_["name"]]["w"].keys())
+        return tuple(x_ for x_ in l_ if x_.startswith(("arm", "hand"))) if r_.get("held") else l_
+
+    def held(self):
+        """whether a movement's last pose is held (it ran off to its end, nothing started since)"""
+        return self.running is not None and bool(self.running.get("held"))
 
     def target(self, limb, phase=None, name=None):
         """the program's target angles for a limb's joints at a phase (the running movement's, its phase now, unless given)"""
@@ -106,13 +120,13 @@ class MoveLayer:
         return self.programs[nm_]["pose"][limb] @ features(ph_)
 
     def advance(self):
-        """a tick of the running movement gone by; at its end it stops -> whether it still runs"""
+        """a tick of the running movement gone by; at its end its last pose is held (`held`) -> whether it still runs"""
         r_ = self.running
-        if r_ is None:
+        if r_ is None or r_.get("held"):
             return False
         r_["k"] += 1
         if r_["k"] > r_["T"]:
-            self.running = None
+            r_["k"] = r_["T"]; r_["held"] = True
             return False
         return True
 

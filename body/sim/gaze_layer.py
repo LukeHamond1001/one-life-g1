@@ -40,8 +40,17 @@ TRACE_MIN = 0.02                              # a trace under this is forgotten 
 GAP_TICKS = 10                                # ticks of quiet after which speech is a new utterance, the last one's words let go (ours:
                                               # the phonological store holds the latest speech, new speech displacing it; 10-28, held over
                                               # utterances, the last thing's name was still held as the next was looked at and learned with it)
-WORD_RATE = 0.05                              # the associations' step a tick its eyes rest on an object with a whole word held (ours)
+WORD_RATE = 0.05                              # the associations' step a tick its eyes rest on an object with a whole word held (ours;
+                                              # `word_lesson`, kept for its tests; the world credits each word once, A264: `credit`)
 WORD_GAIN = 1.0                               # an object's pull from the words heard: this x their prediction of it (ours)
+CREDIT_LAG = 6                                # A264: ticks (0.9 s) after a word is heard, the thing its eyes rest on is what it names: the eyes
+                                              # reach a named thing within about a second of the word (Allopenna, Magnuson and Tanenhaus 1998);
+                                              # A264 credits a line's words at once, this long after its last (ours: the number)
+NAME_KEEP = 0.5                               # (a line's last word naming another thing this strongly or more keeps it: ours, PROTO_MIN's)
+WORD_EVENT_RATE = 0.2                         # A264: a word's step at its one lesson (ours: a name heard ten times as its thing is looked at
+                                              # predicts it at ~0.9)
+FOCAL_SAL = 1.0                               # A274: the salience of a line's last word, where her focus puts the name (Fernald and Mazzie
+UNFOCAL_SAL = 0.5                             # 1991), and of its other words (ours: the article and the verbs half the stressed last word's)
 
 
 class EyeLayer:
@@ -53,6 +62,7 @@ class EyeLayer:
         self.heard = {}                                               # word -> its trace in working memory (1 as heard, fading)
         self.word_lessons = 0
         self._quiet = GAP_TICKS                                       # ticks since speech was last heard
+        self.pending = []                                             # A264: [word, ticks since heard] not yet credited
 
     def hear(self, word=None, speech=None):
         """a tick of the words channel: every trace fades; speech (`speech`: any symbol but rest and end, by default a word) after
@@ -66,8 +76,76 @@ class EyeLayer:
             self._quiet = 0
         else:
             self._quiet += 1
+        for p_ in self.pending:
+            p_[1] += 1
+        if self.pending and min(a_ for _, a_ in self.pending) > 2 * CREDIT_LAG and self._quiet > CREDIT_LAG:
+            self.pending = []                                         # (a line never credited, no named thing about: let go)
         if word is not None:
             self.heard[int(word)] = 1.0
+            self.pending.append([int(word), 0])
+
+    def _due(self):
+        """A264: a line's credit falls due once its last word is CREDIT_LAG old. A276 (10-30 night): and the line is over, no word
+        heard now: a learned word comes letter by letter (body/sim/word_forms.py) and is whole only at its end; at the end of "put it
+        in the bucket" the six letters of "bucket" took longer than CREDIT_LAG, the line was credited as "put it in the" with "the" its
+        last word, and "bucket" alone after it. A listener takes in an utterance to its end (the eyes reach the named thing within a
+        second of the name's onset, the name heard whole: Allopenna, Magnuson and Tanenhaus 1998)"""
+        return bool(self.pending) and min(a_ for _, a_ in self.pending) >= CREDIT_LAG and self._quiet >= 1
+
+    def due_line(self):
+        """A264: the line's words if their credit falls due this tick (`_due`), else [] (nothing consumed)"""
+        if not self._due():
+            return []
+        return list(dict.fromkeys(w_ for w_, _ in self.pending))
+
+    def credit(self, on, seen, shown=False):
+        """A264 (10-30): A LINE'S WORDS CREDITED ONCE, TOGETHER, TO THE THING ITS EYES REST ON CREDIT_LAG TICKS AFTER ITS LAST WORD: once
+        the last word heard is that old, every word of the line steps its associations toward that thing (`on`; None: nothing learned)
+        and away from the other things in its view (`seen`), each word on its own, at WORD_EVENT_RATE: how often what its eyes settled on
+        after the word was each thing (cross-situational counting, Smith and Yu 2008; the referent attended as the words are heard,
+        Baldwin 1993; the eyes reach a named thing within about a second, Allopenna, Magnuson and Tanenhaus 1998). 10-30, against the
+        rules before: the lesson every tick its eyes rested on a thing with words held drove the request's words onto it through a
+        hundred-tick fixation (before A263), and under one prediction error shared by the words held, its eyes reaching a thing before
+        its name was said wore the name down (the can's, 1.0 -> 0.55 in six saved requests: overexpectation, A263); each word at its own
+        second instead, its eyes still on a passing glance, locked the request's words onto the glanced-at drum. On the eye layer alone
+        (the scenes of 10-30's notes): ten requests for the can, its eyes on it from the first word, the can's name 1.00 (0.32 before);
+        thirty requests over five toys, every name 1.00, "go" off the drum it glanced at (0.87 before), "up" and "the" at 0.30 or less
+        toward any toy; a new name 0.8 after eight hearings -> the words credited"""
+        if not self._due():
+            return []
+        due_ = list(dict.fromkeys(w_ for w_, _ in self.pending))
+        last_ = self.pending[-1][0] if self.pending else None
+        self.pending = []
+        if on is None:
+            return []
+        a_last_ = self.assoc.get(last_) or {}
+        if not shown and a_last_ and max(a_last_.values()) >= NAME_KEEP and max(a_last_, key=a_last_.get) != on:
+            return []                                                 # (10-30 night: HER LINE'S LAST WORD, where her focus puts the name
+                                                                      # (Fernald and Mazzie 1991), NAMING ANOTHER THING IT KNOWS: the line
+                                                                      # is about that thing, not this one, and teaches nothing here (mutual
+                                                                      # exclusivity: Markman and Wachtel 1988): "put it in the bucket", its
+                                                                      # eyes on the cup in its hand; Workshop 22 had taken "bucket" to 0.84
+                                                                      # toward what it held. Under her hand (`shown`: joint attention) her
+                                                                      # naming corrects it. A274: the whole line, not its last word alone:
+                                                                      # under one error its other words took the name's miss as their own)
+        names_ = list(dict.fromkeys([on] + [n_ for n_ in seen if n_ is not None]))
+        v_ = {n_: float(sum(float(self.assoc.get(w_, {}).get(n_, 0.0)) for w_ in due_)) for n_ in names_}
+        for w_ in due_:                                               # A274: THE LINE'S PREDICTION CORRECTED WHOLE (Rescorla and Wagner
+            a_ = self.assoc.setdefault(w_, {})                        # 1972): each thing's error is what the line's words together
+            s_ = FOCAL_SAL if w_ == last_ else UNFOCAL_SAL            # predicted of it, so a name already predicting its thing leaves
+            for n_ in names_:                                         # nothing for the article and the verbs to learn (blocking: Kamin
+                a_[n_] = float(np.clip(a_.get(n_, 0.0) + WORD_EVENT_RATE * s_ * ((1.0 if n_ == on else 0.0) - v_[n_]), 0.0, 1.0))
+            self.word_lessons += 1                                    # 1969; children's word learning so: Ramscar, Dye and Klein 2013),
+        return due_                                                   # and words predicting a thing in view that is not the one looked at
+                                                                      # lose it together. Each word at its own error (A264) let "go",
+                                                                      # "pick", "up" and "the" each keep the last toy asked for: 10-30,
+                                                                      # after Workshop 23's rotation each ~0.6 toward the can, "go pick up
+                                                                      # the cup" summed 2.18 for the can, 1.48 for the cup; "put", "it" and
+                                                                      # "in" 0.85 toward the ball. Once a line, after its last word (A264):
+                                                                      # A263's lesson every tick wore the name down. A word's tie to a
+                                                                      # thing is held at 0 or more (a name a word does not predict, not
+                                                                      # its absence: with ties below 0 each name came to cancel "go"'s
+                                                                      # for the drum it had glanced at, "go" itself left at 0.56)
 
     def predicted(self, name):
         """the words held's prediction of the object `name`: their associations with it weighted by their traces"""
@@ -135,4 +213,4 @@ class EyeLayer:
         self.lessons = int(st.get("lessons", 0))
         self.assoc = {int(w_): {n_: float(v_) for n_, v_ in a_.items()} for w_, a_ in (st.get("assoc") or {}).items()}
         self.word_lessons = int(st.get("word_lessons", 0))
-        self.heard = {}; self._quiet = GAP_TICKS
+        self.heard = {}; self._quiet = GAP_TICKS; self.pending = []

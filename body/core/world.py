@@ -78,6 +78,10 @@ class SubFrame:
     limit: object = None
     loco_err: object = None             # A227: at sub-step 0, the last tick's turn achieved minus the turn commanded (rad/s, per locomotor
     loco_cmd: object = None             # axis) and the turn commanded (rad/s): the walk readout's teacher; None on a tick it teaches nothing
+    held: object = None                 # A283: the holding responsibility (0 to 1): how surely a thing is held in a hand now, the context
+                                        # that selects the cerebellum's held-thing module; None (or 0): none held
+    down: object = None                 # A284: the body down (its trunk tilted past the world's DOWN_UP: lying, falling, lifted from the
+                                        # floor): the limbs' readout takes no lesson; None (or False): upright
 
 
 @dataclass(eq=False)

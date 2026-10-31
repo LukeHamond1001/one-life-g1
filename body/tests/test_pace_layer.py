@@ -60,3 +60,4 @@ def test_it_learns_where_a_hand_stops_it_for_each_goal_slows_and_stops_there_its
     assert pl.v_star == 0.3
     q = PL.PaceLayer(); q.load_state(pl.state())
     assert q.stops == pl.stops
+

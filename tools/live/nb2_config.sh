@@ -4,7 +4,7 @@
 CFG="own_words=0 own_words_split=0 gate_listen=1 approach=0 eye_dino=0 orient_earned=1 place_channels=0 efference_stream=0 face_form=foresee lever=1 imagine_emulator=1 \
 sight_line=1 sight_tau=64 sight_actor=1 sight_mix=1 guided_credit=0 cue_adapt=1 cue_adapt_tau=6000 sight_demo=1 sight_demo_fx=arm_l,arm_r sight_demo_mix=0 \
 sight_demo_gain=0.25 prep_ahead=8 shape_own_h=1 sight_ladder=1 sight_ladder_u0=3 act_nlms=1 sight_ladder_lr=0.003 inv_rest_pairs=1 sight_suggest=1 sight_prep=1 \
-sight_hold=0 dopamine_sat=3 sight_src=fovea follow_slow_lr=0.001 follow_reach=256 cortex_recency=1 night_self_imitate=1 night_draw_tire=1 night_held_out=32${NB_CFG_EXTRA:+ $NB_CFG_EXTRA}"
+sight_hold=0 dopamine_sat=3 sight_src=fovea follow_slow_lr=0.001 follow_reach=256 cortex_recency=1 night_self_imitate=1 night_draw_tire=1 night_held_out=32 cereb_err_rel=0.5${NB_CFG_EXTRA:+ $NB_CFG_EXTRA}"
 export NB_PAIN_LOG=1 NB_NARRATE=1 GHOST_EXPERT=0 GHOST_POSE_HOLD=1 GHOST_CARRY_SHARE=1.0 NB_TOY=${NB_TOY:-cup,duck,block} NB_GEN_TOY=${NB_GEN_TOY:-bear} NB_GEN_DIR=${NB_GEN_DIR:-45} NB_TOY2=${NB_TOY2:-duck,block} NB_INSTR_EVERY=${NB_INSTR_EVERY:-80} NB_INSTR_EVERY_LESSON=${NB_INSTR_EVERY_LESSON:-100000} NB_HER_FRONT=${NB_HER_FRONT:-0.9} NB_CORRECT=${NB_CORRECT:-1} NB_TOY2_SIDES=${NB_TOY2_SIDES:-fixed} NB_PAY_PUSHED2=${NB_PAY_PUSHED2:-0} \
   NB_TWO_QUIET=${NB_TWO_QUIET:-1} NB_FOLLOW2=${NB_FOLLOW2:-0} NB_PUSH_SAYS=${NB_PUSH_SAYS:-1} NB_INSTR_HANDED=${NB_INSTR_HANDED:-1} \
   NB_FOVEA_SAYS=${NB_FOVEA_SAYS:-0} NB_FOVEA_WAIT=${NB_FOVEA_WAIT:-40} NB_NAME_FIRST=${NB_NAME_FIRST:-1} NB_ONE_QUIET=${NB_ONE_QUIET:-1} NB_TIDY=${NB_TIDY:-1} NB_QUIET_GAPS=${NB_QUIET_GAPS:-1} NB_LESSON_PUSH_ONLY=${NB_LESSON_PUSH_ONLY:-1} NB_IN2_HAND_M=${NB_IN2_HAND_M:-0.24} \

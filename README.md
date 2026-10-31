@@ -7,13 +7,14 @@ skill alone.
 
 <p align="center"><img src="assets/workshop13_cup.jpg" width="900" alt="four moments of one test pass, each the side view and the robot's own view: told 'go pick up the cup', its eyes find the cup among the toys; it walks to it; it squats and picks it up; it stands holding the cup up, its gaze on it"></p>
 
-**Asked "go pick up the cup" with the seven toys it knows on the floor, it finds the cup by its name, walks to it, picks it up and
-stands holding it up, its eyes on it, with no help.** In its tests on 2026-10-29 it lifted the cup 10 of 10 times, the car 10 of 10,
-and the block, the duck and the can 5 of 5 each. It picked up the duck and the car before it had ever held either, from what it had
-been told they are like ("round and small", "square and small"), and a new toy, the can, after hearing its name and a description.
-Everything here is simulation: one brain, one seed, one room.
+**Told "go pick up the cup" and then "put it in the bucket", with the toys it knows on the floor, it finds the cup with its own eyes,
+walks to it, picks it up, carries it to the bucket 1 to 2 m on and puts it in, with no help.** In two tests of 15 independent passes
+on 2026-10-30 (the cup, the block, the duck, the car and the can, three seeds each) it put the toy in the bucket 14 of 15 and 12 of 15
+times. It picked up the duck and the car before it had ever held either, from what it had been told they are like ("round and small",
+"square and small"), and a new toy, the can, after hearing its name and a description. Everything here is simulation: one brain, one
+seed, one room.
 
-## Where it stands now (2026-10-29)
+## Where it stands now (2026-10-30)
 
 **The workshops** (`docs/LEVELS.md`, `tools/levels/`). Since 2026-10-27 the rule is the owner's: the parent only moves its body (her
 hands walk it, squat it, close its hand) and never writes into its brain, with no labels, no forced acts and no part switched off.
@@ -28,6 +29,17 @@ Small learned layers below the brain take each movement over by repetition, and 
   most like. A new toy, the can: its name taught alone first, then described, then asked for.
 - **Its eyes on the thing, and Workshop 17:** its eyes are held on the toy through the reach, the grasp and the lift, and the
   pick-up now ends with the toy held up before its eyes.
+- **Its own seeing, and Workshops 18 to 25:** the toys' places, shapes and looks from its own colour camera, no longer the
+  simulator's record (`body/sim/seen.py`); put down (19), the bucket (22), and the chain, `go pick up the <toy>` then `put it in the
+  bucket` (24, 25).
+- **Workshop 26 and the first stage, reliable alone:** the carry made longer and turned, every toy practised in turn inside the whole
+  chain (practising one part or one toy alone broke the others, three times). The chain by itself, 15 independent single passes:
+  14 of 15, then 12 of 15 on three new seeds. Its own hand over the car hid the car from its eyes and its reach homed short; a thing
+  its own arm cuts in front is no longer a whole sighting (A288), and the car went 0 of 3 to 3 of 3.
+- **The language workshops (from 2026-10-30 night):** its body held still, pictures before its eyes, her talk. A new seeing pathway
+  learned from scratch (`body/sim/what.py`, A289), taught from real photos (COCO) and sim pictures of scanned real objects on
+  photographed floors (`tools/levels/lessons.py`), each word's meaning found across her lines; tested only on pictures never shown,
+  real and sim apart and crossed. L1 and L2 are under way (`docs/LEVELS.md`).
 
 | asked, with every toy it knows on the floor | lifted (dry tests, 2026-10-29) |
 |---|---|
@@ -39,6 +51,12 @@ Small learned layers below the brain take each movement over by repetition, and 
 | the can, a new toy, after its name and a description | 5 of 5 |
 
 The last three rows were measured before Workshop 17 had it practise those toys.
+
+| `go pick up the <toy>`, then `put it in the bucket`, by itself | in the bucket (15 independent passes, 2026-10-30) |
+|---|---|
+| the cup, the block, the duck, the car, the can; seeds 2-4 | 14 of 15 |
+| the same, seeds 5-7 | 12 of 15 (the car 0 of 3) |
+| with A288 (its own hand over a thing hides it), seeds 2-4 | 13 of 15; the car on seeds 5-7, 3 of 3 |
 
 **The chapters before.** The first life (`docs/archive/`, the releases up to `dawn-206`): 206 days learning from her face alone. It
 learned to name the toy in front of it, 70 to 90 times a day by day 148, and to come when called (a born reflex steering the gait).
@@ -55,8 +73,10 @@ under its hand). `CHANGELOG.md` has each chapter's groups.
   layer (which things to look at, and which word goes with which thing: `body/sim/gaze_layer.py`), the pace and steering toward a
   held goal (`pace_layer.py`, `goal_layer.py`), learned movements run off once started (`moves.py`; the pick-up, `pickup.py`) and
   their starts (`start_layer.py`), the words it learns from her speech and what is said of each thing (`word_forms.py`,
-  `concepts.py`). Each learns from her hands at the share she pushes with. `docs/SIM_DESIGN.md`, entries A230 to A263, has each one,
-  with its sources and the measurements that justified it.
+  `concepts.py`), its seeing (`seen.py`). Each learns from her hands at the share she pushes with. `docs/SIM_DESIGN.md`, entries
+  A230 to A288, has each one, with its sources and the measurements that justified it.
+- **Its what pathway** (`what.py`, A289): codes for what its eyes rest on, learned from scratch, and the words that go with them,
+  found across her lines; taught in picture lessons, not yet read by the layers that act.
 - **The brain** is unchanged (next section). Its own reward learning has not yet taken any of these skills over: so far they are
   the layers' imitation of her hands.
 
@@ -85,16 +105,17 @@ night      P(replay an episode) ∝ mean(s · (1 + |δ|)) / its running mean
 
 - One seed. One room. One teacher program. Simulation only. No comparison runs.
 - The workshops' skills come from the layers below the brain copying her hands, not from the brain's reward loop.
-- **Its seeing is not yet its own in the workshops.** The layers that choose a toy and aim the reach read the toy's place, shape and
-  middle from the simulator, a stand-in for seeing it; the brain's eyes see the rendered camera images. A real robot needs these
-  from its camera, and that is the first item on the roadmap.
+- **Its seeing is its own but simple.** The layers that choose a toy and aim the reach read its place, shape and look from its own
+  colour camera, by a thing's colour standing out from the floor: enough for bright toys on a plain floor, not for a cluttered room.
+  The what pathway learned from real photos is meant to replace it.
 - Her words reach it as sound and as a token channel; on a real robot a speech recognizer would give the same tokens.
-- The tests are dry runs of 5 or 10 passes; the layers below the brain keep learning from pass to pass within a run. In the results
-  above the toy asked for lay 1.2 m straight ahead every time; with it at a new place and turn each pass (ten places, 0.9 to 1.6 m
-  away, up to 18° to either side), its eyes ended on the toy asked for 50 of 50 times and it lifted it 45 of 50 (`docs/LEVELS.md`).
-- Open at this writing: a name whose toy its eyes reach before it is said loses its pull ("can", 1.0 to 0.55: `docs/SIM_DESIGN.md`,
-  A263); on its own its loaded elbow sags, holding the toy about 10 cm below where her hands held it; in the squat the toy lies to the
-  left of where its eyes can turn.
+- The chain's tests are 15 independent single passes, each from the brain as saved (a run of several passes learns between them, and
+  a fall in one pass wrote the next one's balance). The pick-up's earlier tests were runs of 5 or 10 passes; with the toy at a new place
+  and turn each pass (ten places, 0.9 to 1.6 m away, up to 18° to either side) its eyes ended on the toy asked for 50 of 50 times and
+  it lifted it 45 of 50 (`docs/LEVELS.md`).
+- Open at this writing: a toy squeezed out between thumb and finger at the top of the lift (the duck, once in 15); a cup it stopped
+  too far from to reach; the picture lessons' crossed test (a word taught from sim pictures only, named in real photos) is the hard
+  one.
 - Every constant in the body is sourced in `docs/SIM_DESIGN.md` or marked there as ours, and the ledger records every change to the
   body or the teacher with the day it landed and the measurement that justified it.
 
@@ -120,9 +141,11 @@ can compare.
 
 ## The workshops' code
 
-`tools/levels/workshop1.py` is the shared workshop (the walk, the name, the find and the pick tasks, her hands, the frames and the
-record); `workshop2.py` to `workshop17.py` are the workshops, and `workshop13.py` is the test. They start from NB2's brain (about
-1 GB), which is not published. `docs/LEVELS.md` records every run, what each one taught and every brain sent back.
+`tools/levels/workshop1.py` is the shared workshop (the walk, the name, the find, the pick and the put tasks, the chain, her hands,
+the pushes, the frames and the record); `workshop2.py` to `workshop28.py` are the workshops, and `workshop13.py` is the test. They start
+from NB2's brain (about 1 GB), which is not published. The language workshops' picture lessons are `tools/levels/lessons.py`; their
+pictures are fetched and rendered by `photos_fetch.py` (COCO), `sim_pictures.py` (the scanned objects) and `rooms_fetch.py` (the rooms'
+floors, CC0 from Poly Haven), none of them published. `docs/LEVELS.md` records every run, what each one taught and every brain sent back.
 
 ## The record and the design
 
@@ -153,7 +176,7 @@ project's rule is targeted tests and the pins as the gate, not suite gates.
 
 - `body/core/` the brain · `body/sim/` the world, the G1, her body and her teaching (`body/sim/lang/`), and the layers below the
   brain (`moves.py`, `pickup.py`, `gaze_layer.py`, `goal_layer.py`, `pace_layer.py`, `start_layer.py`, `word_forms.py`,
-  `concepts.py`, `arms.py`, `legs.py`) · `body/tests/` the suites
+  `concepts.py`, `arms.py`, `legs.py`, `seen.py`, `what.py`; the rooms' looks `looks.py`) · `body/tests/` the suites
 - `tools/levels/` the levels and the workshops (`docs/LEVELS.md`) · `tools/harness/` the box task and its expert · `tools/live/` the
   newborns' start scripts and the live page · `tools/compare/` the baselines (behavior cloning, Dreamer) · `tools/measure/` the
   guard and its pins, the rulers, the sim's instruments · `tools/life/` the first life's runner and replay (`tools/README.md` is the
@@ -165,14 +188,15 @@ project's rule is targeted tests and the pins as the gate, not suite gates.
 
 ## Roadmap
 
-1. **Its seeing from its own eyes**: the toy's place and shape from its camera images, not from the simulator, and the tests run
-   again on that.
-2. **Speech that carries across tasks**: words learned once, in the second after each is heard (the fix for the eroding names);
+1. **Language of things** (the language workshops L1-L10): names, what things are like, kinds, where things are (in, on, under,
+   next to), what happens (from videos), who did what to what, and saying what it sees, from real photos and videos and the sim's.
+2. **Tasks told and shown once**: the same concepts carrying a task in words, or a task shown once, with no workshop scripted for it.
+3. **Speech that carries across tasks**: words learned once, in the second after each is heard (the fix for the eroding names);
    then verbs mapped to movements ("put it down", "give it to me", "put it in the box"), descriptions that choose a thing ("the small
    round one") and places, each learned on its own and tested on combinations never taught together.
-3. **Robust skills**: the toys' sizes, weights and friction and the room varied while it is taught, and every skill tested again
+4. **Robust skills**: the toys' sizes, weights and friction and the room varied while it is taught, and every skill tested again
    after every saving run, since teaching one skill has broken another.
-4. **A real G1** (`docs/RIG_SPEC.md`), in stages: its senses first (it looks at the toy you name), then walking on the robot's own
+5. **A real G1** (`docs/RIG_SPEC.md`), in stages: its senses first (it looks at the toy you name), then walking on the robot's own
    gait, then picking up, on a tether.
 
 ## License

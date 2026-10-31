@@ -414,6 +414,15 @@ CEREB = dict(
     cereb_loco_gain_max=2.0,          # the gain correction's bound, above (the legs given at most 3 x the command) and -1/2 below (never
                                       # less than half of it, never reversed); ours
     cereb_loco_off_max=0.15,          # rad/s: the offset's bound (a quarter of the command's range; ours)
+    # A284 (2026-10-30): A FALL TEACHES THE LIMBS' READOUT NOTHING. (1) An error's relevance falls with its size: each joint's
+    # climbing-fibre lesson is its corrective torque e scaled by 1 / (1 + (|e| / (cereb_err_rel x the joint's limit))^2), so the
+    # errors of ordinary standing, walking and reaching (at most about half the limit, the 99th percentile measured 10-30) teach nearly
+    # whole and a fall's (at the limit) a fifth: motor adaptation discounts large errors as likely another cause's than the body's own
+    # model's (Wei and Kording 2009; Marko, Haith, Harran and Shadmehr 2012). 0: off (every body born before it). (2) The body down (the
+    # world's SubFrame.down: its trunk tilted past the vertical by more than about 66 degrees, lying or falling or lifted from the
+    # floor) teaches the limbs' readout nothing: the readout is the upright body's model; on the floor the righting responses rule. 10-30:
+    # a pass that fell wrote the readout, and the next pass in the same run tipped forward standing before its walk began
+    cereb_err_rel=0.0,
 )
 
 # THE BORN PATTERNS SUMMED AT THE CORD, AND THE BORN BIASES (the core refactor's step R6h, docs/SIM_DESIGN.md 3.5-3.7, 10, A43, A47, A48,

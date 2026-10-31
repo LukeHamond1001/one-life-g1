@@ -865,6 +865,17 @@ class Eyes:
         self.timing["renders"] += 1; self.timing["render_s"] += time.perf_counter() - t0
         return {"L": img[:, :self.w].copy(), "R": img[:, self.w:2 * self.w].copy(), "C": img[self.h - self.ch:, 2 * self.w:].copy()}
 
+    def colour(self):
+        """A265: the colour camera's last image (row 0 at the top) and the camera's pose as it was taken -> (image, position,
+        rotation 3 x 3, vertical field in degrees); (None, None, None, None) before the first render. Read by the things it sees
+        (body/sim/seen.py), below the brain; the brain's own eyes are `see`'s codes"""
+        if not self.timing["renders"]:
+            return None, None, None, None
+        img = np.flipud(self.buf)
+        c = self.m.camera("eye_C").id
+        return (img[self.h - self.ch:, 2 * self.w:2 * self.w + self.cw].copy(), self.world.d.cam_xpos[c].copy(),
+                self.world.d.cam_xmat[c].reshape(3, 3).copy(), float(self.m.cam_fovy[c]))
+
     def see(self):
         """this tick's eyes: {"eye_p": 172, "eye_f": 1,536, "face_fovea": [0], "face_periph": the born face cue's stand-in (A157, `face_cue`), "onset_periph": [0, 0, 0],
         "truth": the images, the grey foveae, the colour window and A1's face test}. eye_p: per grey eye its periphery's 7 x 4 cells

@@ -973,6 +973,535 @@ it from the lift.
 What this does not show: its seeing is still the room's (the toys' places and shapes given, A257's and the eye layer's stand-in), ten
 places only, one seed, the layers learning on within a run. The finding by name and the pick-up are not tied to one place.
 
+## Workshop 18: its own eyes (10-30)
+
+The owner: "do word fix then continue on. dont stop, and just keep teaching it as much as you can." The word fix is A264 (a line's
+words credited once, docs/SIM_DESIGN.md); the seeing is A265: from here on (`SEE_THINGS=1`) the things its layers choose among, walk
+to, reach for and grip are what its own colour camera shows it, each toy known by a look it learned, and the room's record of where
+each toy lies is a reading only. It knew which word goes with which toy; it had never had to know what a toy looks like.
+
+`tools/levels/workshop18.py`: Workshop 12b's room with all eight toys on the floor in an arc (eight places from 10-30: FIND_SLOTS_8),
+laid out afresh each pass; her hand on its head turns its eyes to the toy she names as she begins (every toy shown first); as her
+words are credited (0.9 s after her line) the thing its gaze rests on is what the toy her words name looks like.
+
+- **The names alone first** (data/workshops/workshop18/run_20261030_011912_names, 16 passes, saved): she says only "ball", "block" and
+  so on, as Workshop 16 taught the can's name. In "look at the drum" its "look", 0.88 toward the can since A263, outweighed the drum's
+  name and the drum's look was learned as the can's (a dry run); said alone, every name chose its own toy. By its second round it named
+  63 of 64 toys in view right, none wrong; the one miss a duck not recognised.
+- **Then her line** (run_20261030_012114_lines, 16 passes, saved): "look at the <toy>", each shown first. With all eight looks known
+  the line's credit steps each word away from the toys in view it was not about: the names' lean away from the can went from -0.8 to
+  -0.3, and "look" from the can to the toys named last.
+
+**The find test with its own seeing** (dry, no hand first, "look at the <toy>", every toy twice): its eyes went to the toy named 11 of
+16 times by themselves; in the 5 misses its born salience saccade threw them the other way on most ticks after her line. With A266 (a
+thing the words held name holds the search: docs/SIM_DESIGN.md) **16 of 16, 0-3 ticks after her line**
+(dry_20261030_012630_findtest_a266).
+
+**Workshop 13's test with its own seeing** ("go pick up the cup", the cup straight ahead, the other toys about it):
+**5 of 5 lifted**, no help (data/workshops/workshop13/dry_20261030_012302_seen_cup). The brain as Workshop 17 left it is kept in
+brain_after_w17.
+
+## Its own seeing, at random places (10-30)
+
+The test with the toy anywhere again, now with its own seeing (dry Workshop 13, `--pick-place random`, the same ten places,
+data/workshops/workshop13/dry_20261030_012843_seen_rand_*): its eyes ended on the toy asked for 20 of 20 times; the block 8 of 10
+lifted (8 with the room's record), the car 6 of 10 (10). Its misses: the place 18 degrees to its left both times (its left arm came
+down on its own left knee and hip, the hand 3.5-4 cm past the toy: the reach's weak side), the car turned across its way (-78
+degrees), and the car slipping from its fingertip grip at 0.42 m. Against the room's record it stopped 4-6 cm nearer the car
+(0.19-0.23 m against 0.24-0.27): the toy, sliding off the bottom of its view as it walked up, read farther than it lay (A269). With
+A269, a duck run stopped 0.27 m from the duck, its learned distance, and lifted it 4 of 4, and the car test again (the same ten
+places) lifted the car **9 of 10**, stopping 0.24-0.28 m from it.
+
+## Workshop 19: put it down (10-30)
+
+The first verb after "pick up". `tools/levels/workshop19.py`, the put task in `tools/levels/workshop1.py`: each pass begins at the
+end of a pick-up of its own (Workshop 13's test run with `--save-end`: the whole world kept at the moment it stood holding the thing
+up, data/workshops/workshop19/starts; 3 blocks and 4 cups, all its left hand's), its pick-up's last pose held (A267); she says "put it
+down"; 3 ticks after her line her hands take it down with the thing to the floor 0.27 m before its feet, open its hand there, lift
+its empty hand clear and stand it up (her plan: pickup.squat_path holding it, pickup.up_path from the bottom with its hand open). Its
+movement layer learns the put-down as a program of its own (`put_l`), as it learned the pick-up; its starts learn that her line, a
+thing in its hand (A268), starts it. From the 21st showing her hands follow its own put-down and push only where its legs sag.
+
+**The saving run** (data/workshops/workshop19/run_20261030_014330, 28 passes): every thing ended on the floor out of its hand, no fall;
+the cups upright 15 of 16. Her share in the put-down (its left arm, its left hand, its stance), by round: 0.74, 0.80, 0.79 (passes
+0-6); 0.67, 0.59, 0.70 (7-13); 0.82, 0.57, 0.70 (14-19, each start holding the thing a little differently, her plan's way differing
+pass to pass); **its own movement followed, passes 20-27: 0.00, 0.00, 0.07**. Its own start fired 1-2 ticks after her line on 8 of
+the last 16 passes, before her hands. Two passes read as put down were not: in pass 15 the block slipped from a two-fingertip pinch
+while it stood holding it, before the put-down began, and in pass 22 it slipped on the way down and tumbled 0.75 m; the put task now
+ends a pass whose thing drops before the put-down, and counts a put-down only if the thing left its hand within 5 cm of where it
+rests (PUT_LET_GO). The brain as Workshop 18 left it is kept in brain_after_w18.
+
+**The test** (`--no-hands`, data/workshops/workshop19/test_20261030_015759, each of eleven starts once: 3 blocks, 4 cups and 4 ducks):
+"put it down", and nothing of hers but her catch of a fall. **11 of 11 put down**: its own start 2-3 ticks after her line every time,
+its own put-down, the thing let go 0-9 mm over where it rests, no fall. The four ducks are a toy it was never shown putting down (their
+starts were made after the saving run). Three of the four cups stood upright; the ducks lay tilted (a duck's round body rolls).
+
+## Workshop 20: a new thing's name, seen (10-30)
+
+`tools/levels/workshop20.py`: the bucket (the room's olive bucket, 18 cm square inside, 8 cm deep: what it will put things in) on the
+floor among four toys it knows, laid out afresh each pass; her hand on its head turns its eyes to the bucket and she says its name
+alone, "bucket". Under its own seeing a thing it has never seen had no identity for her words to go to; A270 (a new word heard as its
+eyes rest on a thing it does not know, turned there by her hand, names that thing: fast mapping under joint attention) gives it one.
+"bucket" became a word at its third hearing and named the bucket at that pass's credit; its pull toward the bucket rose 0.20, 0.36,
+0.49, 0.59, 0.67, 0.74, 0.79, 0.83, 0.87, 0.89 (data/workshops/workshop20/run_20261030_015759_names, 12 passes, saved); the bucket
+recognised by its own look within 1 cm of its middle from then on, no toy mistaken for it. The brain as Workshop 19 left it is kept in
+brain_after_w19.
+
+## Workshop 21: put it in the bucket (10-30)
+
+`tools/levels/workshop21.py` (the put task, `--into bucket`): each pass begins at the end of a pick-up of its own (Workshop 19's
+starts), the bucket set on the floor where it puts things down; she says "put it in the bucket". Its put-down for the bucket is a
+program of its own, born from its put-down (A249's movement for the thing, here the thing it puts things in: the goal its eyes set on
+her word), so from the first pass its own movement ran, her hands only on its sagging legs: the thing went into the bucket because the
+bucket lay where it puts things. Dry (data/workshops/workshop21/dry_20261030_015937): 5 of 6 in. Saved
+(run_20261030_020227, 12 passes): **10 of 12 in the bucket** (blocks, cups, ducks, the cups upright), no fall; both misses the one
+block start whose block rested in its fingers without a grip (set aside for later runs, with the other slipping one). Its own start
+on "put it in the bucket" grew slowly (its rate at her start 0.02 -> 0.16; it fired before her hands in 3 of the 12): the line's words
+are not "put it down"'s. The brain as Workshop 20 left it is kept in brain_after_w20.
+
+## Its looks drifted, and were taught again (10-30 night)
+
+A test of its seeing in other lights (`--vary-room`: the room's lights scaled 0.45-1.6, the floor tinted grey, blue or dark) turned up
+a fault in A265: at each credit the named toy's look was learned from whatever thing its eyes rested on, recognised or not. In a new
+light nothing was recognised and the looks ran off within three passes. The saved brain had the same: in Workshops 19-21, in the room's
+own light, the toy in its hand near its eyes or the bucket unrecognised at a credit, the ball's learned hue had moved 2 -> 76 deg, the
+car's 26 -> 108, the bear's 26 -> 83, the bucket's 74 -> 113, and the words with them ("bucket" 0.89 -> 0.46 toward the bucket, 0.42
+toward the bear, which it now took the bucket for). Workshop 22's saving run was stopped before it saved. A271 (docs/SIM_DESIGN.md)
+lets a look be learned only from the thing her hand turned its eyes to, or a whole sighting of the thing it already recognises, and her
+naming corrects a thing it took for another. The looks were taught again as at first, her hand turning its eyes to each toy as she
+named it: Workshop 18 again (data/workshops/workshop18/run_20261030_021550_reteach2, 48 passes, saved): every toy's hue back within 2-9
+deg of Workshop 18's, its last round naming 62 of 64 toys in view right; then the bucket (Workshop 20 again, with the bear, drum, cup and
+can about it: "bucket" 0.57 -> 0.93 toward the bucket, its pull toward the bear 0.34 -> 0.09, its look within 4 deg of its first).
+
+**The find test after** (dry, eight toys, "look at the <toy>", no hand first): in the room's own light **16 of 16** found by its own eyes,
+0-4 ticks after her line, 128 sightings named right and none wrong (data/workshops/workshop18/dry_20261030_022135_findtest_after); in
+**other lights and floors** (`--vary-room`: lights x0.47-1.54, floors wood, grey, dark, blue; with A272, brightness weighed less) **16 of
+16**, 115 named right, 1 wrong, 14 not recognised, its learned looks unmoved (dry_20261030_022135_findtest_varyroom2).
+
+## Workshop 22: carried to the bucket (10-30 night)
+
+`tools/levels/workshop22.py` (the put task, `--into bucket --into-far 1.0 --into-angle 15`): each pass begins at the end of a pick-up of
+its own, the bucket a metre before it within 15 degrees of its way; she says "put it in the bucket"; her hand on its walk walks it there
+holding the thing (its pick-up's last pose held, A267), steering it onto the bucket all the way in and stopping it with its pelvis 0.38 m
+from the bucket's middle (its stopping stride carries it ~0.09 m on); there its own put-down for the bucket puts the thing in. Its eyes,
+its goal (the bucket, by her word) and its steering are its own throughout; its pace layer learns where to stop for the bucket, its
+starts that her line, a thing in its hand and the bucket far start its walk.
+
+Found on the way (dry runs): let go at the slow last steps its own steering held the bucket 0.3 rad to one side to the stop and the thing,
+set down where it always sets things, missed the bucket (now her hand steers to the stop); stopped only once its pace fell under the
+walk's threshold, it stepped on to 0.20 m and the thing went beyond the bucket's far wall (now her hand stops it at her place); a pass
+whose thing fell from its hand on the walk is now ended as dropped. The first saving run was stopped unsaved when its learned looks
+were found drifted (above); the run on the repaired brain (data/workshops/workshop22/run_20261030_022401, 20 passes) carried the thing
+into the bucket every pass it held it.
+
+**What it broke.** Workshop 13's test after it: on "go pick up the cup" its own start of the pick-up no longer came (0 of 5). In every
+tick it stood holding a thing while she spoke of putting it down, its starts learned that no pick-up began there; the weights the two
+contexts share (a goal held, "the") went down, and nothing held them up. Workshop 23 practises the pick-up again with her hands
+beginning it, interleaving the two.
+
+## Workshop 23: the pick-up practised again, sent back (10-30 night)
+
+`tools/levels/workshop23.py`: Workshop 13's room with her hands as in Workshops 11 and 12 (her hand starts its walk and eases it to a
+stop, her hands begin the pick-up, its own movement followed), meant to give its starts back the pick-up's start. Its first run (the
+cup, 4 passes, data/workshops/workshop23/run_20261030_023918_cup) lifted none: its hand went 10-12 cm past the cup as its left arm came
+down on its left knee, though its seeing put the cup within 1.5-1.7 cm of its middle at the pick-up's start. It repeated what Workshop
+17's notes had found (her hands' walk leaves the toy too close and their plan re-teaches the reach; Workshop 17 used the test's own
+walk and stop for that reason), and the run had saved. The brain was sent back to the brain as Workshop 22 left it (brain_after_w22);
+the rest of the run was stopped unsaved.
+
+Its second form: Workshop 17's settings (Workshop 13's test: its own walk, stop, pick-up and grip; her hands on its reaching arm's way up
+alone) with her prompt (`--prompt-start 8`: its own start of the pick-up not come 8 ticks after it stood still at the thing, her hand
+starts it, with a hand it has a pick-up of; its starts learn from every tick it could begin). Run three passes a toy, it went wrong
+again: after the cup's run the request's own words leaned to the cup ("up" 0.66, "the" 0.65, "go" 0.60, "pick" 0.54), "go pick up the
+block" predicted the cup 2.6 to the block's 0.8, and it picked up the cup. Workshop 17 had rotated the toy every pass for this reason
+(A264 credits a line's words to the thing its eyes rest on). Sent back to brain_after_w22 again, and run as Workshop 17 was: one pass a
+run, the toy asked for rotating every pass (cup, block, duck, car, can), three rounds (data/workshops/workshop23/run_*_rot*). From the
+third pass on its own start came by itself (ticks 69-77 of the pass) with no prompt.
+
+Its rotation's passes (one a run, three rounds): 14 of 15 lifted the toy asked for, its own start of the pick-up back from the third
+pass on.
+
+## The bucket's name taught again; its words corrected (10-30 night)
+
+After Workshop 23 "bucket" predicted the ball at 0.84 (Workshop 22's drift). Workshop 20 run again (saving, ten passes) made it worse
+and broke a look: under her hand on the bucket, the line naming the ball (through "bucket"'s drift), A271's correction took the bucket,
+recognised as the bucket, for the ball, and taught its look as the ball's ten times (the ball's hue 10 -> 72 deg, width 0.15 -> 0.34
+m); its eyes on that "ball", "bucket" went to 0.98 toward it. Fixed in its seeing (A273: a known thing's look learns only from a
+sighting that could be it), the layers below sent back to their save at the end of Workshop 23 (the bad state kept in
+legs_backups), and Workshop 20 run again (data/workshops/workshop20/run_20261030_031845_reteach3_a273, ten passes): "bucket" -> the
+bucket 0.01 -> 0.83, -> the ball 0.84 -> 0.14, every look within 9 deg of Workshop 18's.
+
+Then the request words themselves: each word credited on its own (A264) had left "go", "pick", "up" and "the" ~0.6 toward the can, the
+last toy asked for, and "put", "it" and "in" 0.85 toward the ball; summed as its eyes sum them, seven of eight pick-up requests and "put
+it in the bucket" named the wrong thing. Workshop 23's passes went right because the can was mostly out of view. A274 corrects a line's
+words together (Rescorla and Wagner's cue competition): a name already predicting its thing leaves the other words nothing, and words
+predicting a thing in view that is not the one looked at lose it. On the saved ties offline, one round of five requests and five "put it
+in the bucket" puts every request back on its own thing. In the runs that follow the words are corrected as it hears them.
+
+## Workshop 24: pick it up, then put it in the bucket (10-30 night)
+
+`tools/levels/workshop24.py` (workshop1's pick task with `--then-into bucket --then-hands`): Workshop 13's room with the bucket a metre
+beyond the toy asked for. "go pick up the <toy>" as Workshop 23 taught it (its own walk, stop, pick-up and grip; her hands on its
+reaching arm's way up; her prompt if its start does not come); then, as it stands holding the toy up, "put it in the bucket", her hand
+on its head turning its eyes to the bucket as she says it; her start of its walk if its own does not come, her hands on its legs and on
+its walk command for the carry (steering it to the bucket, stopping it 0.38 m off), her start of its put-down if its own does not
+come, its own put-down movement. One toy a run, rotating.
+
+Found in its dry runs: with all her hands put back on as the chain began (the put task's teaching whole), its stance under her hold,
+swaying after the lift, went over (fell at tick 183); with its body its own in the carry, its gait walked it into the bucket's near wall
+and over (its own carrying walks fell or dropped the thing in every Workshop 22 test). Kept: her hands on its legs in the carry walk
+alone. Third dry run: the cup picked up, carried, stopped 0.372 m off, put in.
+
+Its saving rounds (one pass a run): round 1 cup in, block beside the bucket (its eyes, drawn by "put it in" to the ball, chose the
+ball's put-down: her start now uses the bucket's), duck and car not lifted (a grip missed, the car tipped), can in; round 2 cup in,
+block in, duck slipped from its fingertips as it stood, car stalled at her crawl 1 cm outside her stop (she now stops it there), can
+not lifted. In 10 passes 7 lifted, 4 in the bucket, no falls; its own walk to the bucket began by itself in 5 of the 6 that came to it (all but the first).
+
+**Sent back, and begun again.** Round 3 (with every toy in the room, the can too: A276's note) lifted 1 toy of 4; it walked past a car
+0.3 m to one side and stalled short of the others. The cause was in the carry: its eyes, drawn to the ball by "put it in", held the
+ball as its goal while her hand steered it to the bucket, and her steering taught its steering layer against the ball's bearing; its
+turn per radian of its goal's bearing fell 0.36 -> 0.02 in the first round (A277). The brain was sent back to brain_after_w23 (the
+Workshop 24 brain moved to the Trash). Now her hand on its head keeps its eyes on the bucket through the carry, and her hand on its walk
+teaches only while its goal is the thing she takes it to. A first pass from the sent-back brain went to the can (the request's words,
+~0.6 toward the can, summed 2.3 against the cup's 1.0, the can now in the room) and saved; sent back again.
+
+## Workshop 24a: the requests shown (10-30 night)
+
+`tools/levels/workshop24a.py` (the find task, every toy in view): her hand on its head turns its eyes to a toy and holds them as she
+says "go pick up the <toy>", the eight toys in turn, twice (16 passes, data/workshops/workshop24a/run_*). With its eyes on the toy she
+names and every toy in view, A274 corrects each line whole. After it every request names its own toy ("go", "pick", "up", "the" 0.04
+or less toward any toy; the names 0.92-1.0, the can's 0.91). "put", "it" and "in" still 0.85 toward the ball: Workshop 24's put lines
+are credited whole now (A276) with its eyes held on the bucket. Then Workshop 24 again, three rounds.
+
+**Workshop 24 again (data/workshops/workshop24/run_20261030_04*).** From the repaired brain, its eyes held on the bucket through the
+carry: its steering's gain rose 0.36 -> 0.56 over ten passes (her steering now teaching toward its own goal), its cruise speed held at
+0.27-0.30, every request line named its own thing after the first round ("put it in the bucket" too: credited whole, A276). Two rounds:
+8 of 10 lifted, 5 of 10 in the bucket, no falls; its own walk to the bucket began by itself in 8 of the 9 after the first (3-10 ticks
+after her line). What failed: the block and the car slipped from its fingertips in the carry's first steps (from round 2 on her hand
+holds its fingers closed round the thing as it carries it, squeezing past where they hold it at most GRIP_LOAD of each pain line, off
+as its put-down begins; the duck, which had slipped every time, went in); two pick-ups missed (the block's: its grasp point came down
+5 cm short of the block's middle, on its near edge, and its closing fingers pushed the block aside); one carry stalled at her crawl
+0.58 m off (its right foot stood 40 ticks), and from round 3 her hand nudges it on at her walking pace when it comes no nearer.
+Its own start of the put-down never came: her hand began each one.
+Round 3 (her grip in the carry, her nudge on a stall): cup, car (its first) and can in; the block's pick-up missed; the duck slipped
+from her grip too on the walk. Over the three rounds 8 of 15 in the bucket, 12 of 15 lifted, no falls. After it "bucket" -> the bucket
+0.90 (-> the ball 0.00), "put", "it", "in", "go", "the" 0.03 or less toward any thing; every look within 4 deg of Workshop 18's; its
+steering's gain 0.56, its cruise speed 0.30.
+
+**The test after it (no hands: workshop13.py --then-into bucket, one pass a toy, data/workshops/workshop13/chain_after_w24_*).**
+"go pick up the <toy>": its eyes to the toy on the name, its own walk, stop and pick-up: the cup, the duck and the car lifted; the
+block's reach came down short and pushed it aside; at the can its own start of the pick-up never came. Then "put it in the bucket": its
+own walk to the bucket began by itself all three times (5-8 ticks after her line). Its own walk holding the thing did not: each lunged
+forward on long catching steps (the cup's pelvis 0.72 m in 9 ticks under a command of 0.05-0.18) and went down, the cup's over the
+bucket's wall at its own stop 0.326 m off (its stop taught at 0.38 by her hands, crisp; its own stopping stride carries it ~5 cm on).
+Walking while carrying is not yet its own: in Workshop 24 her hands carried its legs every tick of every carry (her share at the legs
+1.0 throughout), so its leg layer never took the carry over. And it carries the thing as it holds it to look at it, 0.28 m out before
+its eyes at 0.90 m (Workshop 17's pose), its weight drawn forward.
+
+**Why its own carry fell, found (dry runs, data/workshops/workshop13/dry_*_carryin_cup, _settle_cup, _settleonly_*).** Her hand bringing
+its holding arm in close made no difference. Holding its walk's start back 25 ticks after it stood up did: the cup was carried to the
+bucket on its own legs, it stopped there by itself, its own start of the put-down came (for the first time in a chain) and the cup went
+in; held back so without her hand on its arm, the cup again went in, and the car was carried to the bucket without a fall (stalling at
+its crawl short of it). Its centre of mass says why: after a pick-up it sways 0.06-0.41 m/s, and every walk that fell began as the
+sway carried it forward at 0.26-0.33 m/s; every walk that held began moving back or slowly forward. A278: a step begins only from a
+steady stance (its centre of mass not going forward faster than 0.15 m/s on two ticks running), its own start and hers alike.
+
+**The test with A278 (data/workshops/workshop13/chain_a278_*).** The cup and the car were carried on its own legs without a fall, each
+stalling at its crawl 0.5-0.6 m short of the bucket until its walk ran out (the cup's first steps went 0.3 m backward, its start let
+through as the sway carried it back); the duck's walk veered and fell (1 of 3, against 3 of 3 before). The block's reach and the can's
+pick-up start failed as before: in the same brain the test is the same every time (the sim is deterministic), so these are its standing
+faults, not chance.
+
+## Workshop 25: carry it to the bucket (10-30 night)
+
+`tools/levels/workshop25.py` (the put task from Workshop 19's starts, the bucket a metre before it within 15 degrees, `--no-hands
+--then-hands`: Workshop 24's carry teaching alone, many times): "put it in the bucket", her hand on its head keeping its eyes on the
+bucket until its put-down begins; its own start of the walk from a steady stance or hers once it is steady; her hands on its legs by
+the gap and on its walk command (steering it to the bucket, nudging it on at a stall, stopping it 0.38 m off); her hand round its
+fingers; its own put-down start or hers, its own put-down movement. Dry run: 2 of 2 in, its own walk start both times.
+Its first saving run was stopped unsaved after 8 passes (7 in the bucket): its own start of the walk came in the first three and
+then not at all, her lessons teaching "not here" at each tick the steady-stance gate held its start back (now no lesson there: A278).
+Run again from the same brain (data/workshops/workshop25/run_*_b, 24 passes).
+Its second run: 23 of 24 carried into the bucket (the last duck let go beside it), its own start of the walk in 23 of 24 (12-16 ticks
+after the pass began, from a steady stance), no falls; her hand began every put-down (3 ticks after it stood at the bucket). Its
+night 25 came after the 9th pass (29 min asleep, the brain saved itself), the run going on after it.
+
+**A fault in the test itself, found at the can.** Its own start of the can's pick-up was recorded (tick 74) but the pick-up never
+began. In the stop, a second block meant for her hands' teaching read its start layer every tick too: its start signal rose twice a
+tick, its firing could fall in that block (recorded, not acted on), and the block taught its starts "no pick-up here" in a test.
+That block now runs only under her hands; in the test and her prompt's teaching its own starts are read and taught once a tick. The
+tests before this under-read its own pick-up starts.
+
+**The test after Workshop 25 (no hands: data/workshops/workshop13/chain_after_w25_*; the test's double read fixed).** For the first time
+the whole of it with no hands at all: "go pick up the duck", and it looked to the duck, walked to it, stopped, picked it up by itself;
+"put it in the bucket", and it walked to the bucket holding the duck on its own legs, stopped there by itself, began its own put-down
+and the duck went in. The same for the can. All five toys lifted (5 of 5: the block and the can too), its own walk to the bucket 5 of
+5, in the bucket 2 of 5. The rest went wrong at its stop by the bucket: the block's walk stalled at its crawl and it stopped 0.46 m off,
+its own put-down falling short of the rim; the cup's and the car's stopped 0.32-0.33 m off, turned off the bucket and fell. Workshop
+19's put-down test after it: 9 of 9, each begun by itself.
+
+**Workshop 25 a third time (24 passes, 23 in, its own walk start in all 24), and the test after it (chain_after_w25c_*).** In the bucket
+0 of 5 (2 of 5 the time before), all five lifted, its own walk to the bucket 4 of 5, Workshop 19's put-down 9 of 9. What did not carry
+over from her teaching: its grip (the car slipped from its fingers as it stood after the pick-up, the duck on the walk: in the
+workshop her hand holds its fingers closed through the carry, and its own pinch in the test is as weak as before) and its stop by the
+bucket (the cup 0.22 m off and fell, the can 0.45 m off and its put-down fell short of the rim, the block's walk never stopped). One pass
+a toy is a small test; the grip and the stop are its next lessons.
+
+**Her grip teaching its held grip (A279), Workshop 25 a fourth time (22 of 24 in) and the test after it (chain_after_w25d_*).** Its held
+grips firmed for the toys Workshop 25 carries (the cup's closing fingers 1.05 -> 1.65 rad at the held pose, the block's and the duck's
+less), not for the car and the can, which Workshop 19's starts do not hold. The test: the car went the whole way by itself (picked up,
+its own walk, its own stop 0.31 m off, its own put-down: in); the cup and the can slipped on the walk, the duck stopped 0.14 m off and
+fell, the block stopped 0.47 m off and its put-down fell short. Put-down test 9 of 9. Across the four tests since A278 it has done the
+whole chain by itself 0-2 times in 5; its pick-ups 5 of 5 and its own walk to the bucket 4-5 of 5 each time. Next: Workshop 24 again
+(the whole chain, all five toys, her grip teaching the car's and the can's held grip too).
+
+**Workshop 24 again, with all of the above (two rounds, data/workshops/workshop24/run_*_r[12]_* of 06:5x).** 7 of 10 in the bucket, no
+falls; its own start of the walk to the bucket and, for the first time in Workshop 24, its own start of the put-down came in every pass
+that reached them (her hand began none). The duck slipped from its fingers as it stood after the pick-up in one pass and was let go
+beside the bucket in the other; the car slipped once as it stood. The test after it (chain_after_w24e_*): the cup the whole way by
+itself (its own stop 0.40 m off, its own put-down, in); the car slipped 5 ticks after it stood up, the duck stopped 0.09 m off and fell,
+the can slipped on the walk, the block's walk stalled short. Put-down 9 of 9. Its grip on the car, the duck and the can is still the
+fingertip pinch the sway after a pick-up shakes loose: her grip teaches each toy's held grip only through that toy's carries (A279), one
+or two so far. Four more rounds of Workshop 24 (run_w24.sh 4).
+
+**Four more rounds of Workshop 24 (data/workshops/workshop24/run_*_r[1-4]_* of 07:xx): 16 of 20 in the bucket, no falls, no thing slipping
+in a carry; every miss a pick-up (the block's three, the duck's one). And the test after them (chain_after_w24f_*), no hands: the cup,
+the duck and the car each the whole way by itself: "go pick up the <toy>", its eyes to it, its walk, its stop, its pick-up; "put it in the
+bucket", its walk holding it, its stop by the bucket (0.37-0.40 m off), its own put-down, in. 3 of 5, no falls, nothing dropped. The
+can was carried without a slip but its walk stalled short of the bucket at its crawl and never stopped; the block's reach came down
+short again (its pelvis 0.265 m off, its grasp point ~5 cm short of the block's middle). Workshop 19's put-down test 8 of 9 (one cup let
+go 8 cm above the floor tipped over; until now its let-go was 0.2-0.5 cm: watch A279's firmer held grip in the put-down's release).
+
+**Four rounds more (13 of 20 in, no falls; pick-ups missed: the block 3, the car 2) and the test after them (chain_after_w24g_*): 1 of 5**
+(the cup the whole way by itself; the block lifted and slipped on the walk, the duck's reach short, the car's walk stalled at its crawl
+short of the bucket, the can slipped on the walk and it fell). Across the five tests since A278 the whole chain by itself: 0, 2, 0, 1, 3,
+1 of 5 (one pass a toy). More of the same teaching no longer moves it; what is left is specific:
+- its grip for walking: the car, the can, the duck and the block still slip on a walk or as it stands after the pick-up (her grip in the
+  carry firms each toy's held grip, A279, slowly);
+- its stop by the bucket: at its crawl its legs stall short (it never stops) or it overshoots and pitches;
+- its reach for the block (and at times the duck): its learned stop for the block leaves the block ~5 cm beyond its reach's homing;
+  nothing teaches the stop from its own reach's miss;
+- its stance sways 0.2 m after a pick-up or a stop (standing at the start it does not).
+Workshop 19's put-down test after this last batch: 9 of 9, each begun by itself, let go 0.0-0.8 cm over where the thing rests (the cup
+let go 8 cm up the time before did not recur); it slept its night 26 in the test's middle (a dry run: nothing saved).
+
+## Workshop 26: hold it while you walk (10-30 morning)
+
+The owner, after the last test, asked what more can be taught in sim and what the next ten should be; the plan (W26 hold it while you
+walk, W27 stop where your hand reaches, W28 stand steady and take a bump, W29 other rooms and other light, W30 stop / no / wait, W31
+look around for it, W32 around not through, W33 where it goes: the basket and her hand, W34 get up by itself, W35 tidy up) and their
+answer: "Yes, start W26".
+
+**What the drops were.** Before building it, the drops since Workshop 24 counted again (chain tests, no hands): of 15 things let go of,
+10 left its hand 2 ticks after the walk fell (the fall let them go: the list above called them slips), 5 were slips (the car twice
+as it stood after the pick-up, the block, the duck and the cup on the walk). The falls: the can's walks begun from the sway after the
+pick-up (backward, turning toward the bucket), and the stops by the bucket (forward: as its walk slowed its steps did not come out
+ahead of its weight). An instrument (`--dump-grip`) showed the can's grip at 43-50 N, unmoved in its palm, until the fall.
+
+**A280 (the stance taken up slowly after a movement).** The sway's start: at a pick-up's end its legs and waist went from the
+movement's command to the stance in one tick (the waist's turn 0.37 rad, the knees 0.2). Now taken up at 0.33 rad/s. The five-toy test
+with it: the cup the whole way by itself; the can carried to the bucket (it overshot and fell at the stop, where it used to fall at the
+walk's start); the car carried, crawling short; the block lifted and spun out of a thumb-and-index pinch as its walk began; the duck's
+reach short. A281 (its balance reflexes under the stance layer) tried two ways and not kept: both moved the stance its pick-ups were
+learned on, and they missed (SIM_DESIGN).
+
+**The workshop.** `tools/levels/workshop26.py`: Workshop 24's chain with the carry made longer and turned: the bucket each pass 1.0-2.0
+m beyond the thing within 35 degrees of its way (`--then-far 1.0,2.0 --then-angle 35`, clear of the other toys and of its way there),
+her hands on its legs by the gap as it carries the thing, her steering, her stop 0.38 m off, her hand round its fingers by the gap
+(A279), its own put-down start or hers. One toy a run, rotating; two passes a run. Dry run (the car, 1.26 m at -8 degrees): picked up,
+its own start of the walk, carried, in the bucket (her hand began the put-down).
+
+**A fault in the workshops since 24, found in the carry's numbers.** "Her hands on its legs by the gap" in the carry was not so: the
+gap between its leg layer's targets and the gait's is measured in a block the no-hands passes skip, so at each carry's start her share
+was set whole and never moved. In every carry of Workshops 24, 25 and 26's first run the gait walked it (her share 1.00, the dry car's
+whole carry), its own legs never carried a thing, and its leg layer learned only on the states the gait kept it in; alone in the tests,
+its carrying walk leaned 10-15 cm forward, ran from 0.3 to 1 m/s and fell (the can at the bucket). Now measured there too: in a dry
+pass her share at its legs in the carry fell to 0.19 on the mean (0.05 at the least), the car carried to her stop with its own legs.
+The rotation's runs from the block on have it.
+
+**Its first rotation (2 rounds, 5 toys, 2 passes a run; the cup's run before the carry fix, the rest with it).** 12 of 20 in the bucket,
+no fall on any carry; her share at its legs in the carries 0.18-0.36 in the first round, 0.15-0.20 in the second; 3 slips (the car and
+the can on the walk, the cup as it stood), 4 pick-ups missed. (The bucket's place was the same two in every run: each run's passes drew
+it from the same seed; now each run has its own.) **The test after it: none of five.** The block, the duck and the can not picked up,
+the cup fallen at the bucket, the car on the walk. At every stop before a pick-up its weight stood 8-12 cm back of its feet, her catch
+holding its trunk as the squat began. Found by swapping parts of the brain in dry tests: not the layers below (with its leg layer as
+Workshop 25 left it, the stops still leaned back) but its cerebellum, whose limb readout the carries had moved by 95% (with Workshop 25's
+cerebellum and everything else as Workshop 26 left it: both pick-ups tried lifted, the duck the whole way in by itself). The torques of
+carrying a toy held up, learned in the one readout it has, it went on giving empty-handed. A283 (SIM_DESIGN): a second readout for a
+thing held, born a copy of the first, the two blended and taught by how surely a thing is in its hand (MOSAIC's modules). The brain sent
+back to Workshop 25's save (the Workshop 26 brain in the Trash) and Workshop 26 begun again, each run its own seed.
+
+**Workshop 26 again, with A283 (from Workshop 25's brain; 2 rounds, 5 toys, 2 passes, each run its own seed).** 9 of 20 in the
+bucket; 7 pick-ups missed (most in the first round after its night, three of its own walks to the toy falling), 3 slips (the block
+twice, the car); the second round 6 of 10 (the cup and the can 2 of 2). Its cerebellum's empty-handed readout moved 46% (95% the first
+time), the held-thing module 108% from its birth: the carrying went mostly where it belongs. **The test after it (no hands):** all five
+picked up (5 of 5, from 2 of 5 the first time and 4 of 5 before Workshop 26); four of five carried to the bucket with nothing dropped
+and no fall; the cup and the duck the whole way in by themselves (its own walk start, its own stop 0.34-0.36 m off, its own put-down
+start, in). What failed is all at the bucket: the block's walk crawled short and never stopped, the can overshot to 0.22 m and fell,
+the car stopped 0.32 m off and its own put-down missed: Workshop 27's. (The bucket's place: every pass's angle came out between -5 and
+-9 degrees: the other toys on the floor leave no other way clear. Carries that turn need a room of their own: later.)
+
+## Workshop 27: stop where your hand reaches (10-30 afternoon)
+
+`tools/levels/workshop27.py`: the chain with its own walks and its own stops, no hands on its legs or its walk command: the toy at a
+place and a turn of its own each pass among the others (`--pick-place random`), the bucket 0.8-1.6 m beyond it; her hands on its
+reaching arm's way up alone and her prompt if a start does not come; her catch. A282 (SIM_DESIGN): as each of its own reaches ends (the
+pick-up's fingers closing, the put-down's hand at its lowest), its hand's miss of the thing (or the bucket's middle) along its heading
+moves where it stops for that thing, half the miss a reach, at most 4 cm. Dry (the block, seed 31): the block's reach -0.002 m (its
+stop 0.288 m), the bucket's put-down 0.163 m short of its middle (its stop for the bucket 0.378 -> 0.338 m); picked up, carried, its own
+stop 0.375 m off, its own put-down: in. Saving rotation started 12:5x (2 rounds, 5 toys, 2 passes a run, the first run keeping the
+brain as Workshop 26 left it).
+
+**Its first form, with A282 (2 rounds, 5 toys, 2 passes a run): 3 of 20 in the bucket, and not kept.** Nine pick-ups missed at the
+random places, the cup's all four: its reach came down 7 cm past the cup turned anyhow, A282 moved its stop for the cup out (0.29 ->
+0.40 m) and the reach then fell 36 cm short; every put-down read short of the bucket's middle, in or not, and its stop for the bucket ran
+down to 0.15 m in seven reaches. A282 taken out (SIM_DESIGN), the brain sent back to the save as Workshop 26 left it (the Workshop 27
+brain in the Trash).
+
+**Workshop 27 as it is now: Workshop 25's short carry, with her hands at last by the gap.** The test after Workshop 26 failed at the
+bucket two ways: the block's walk crawled to a stand 0.52-0.57 m off (its command at the crawl's 0.18 m/s, its feet stepping in place
+until its time ran out) and the can's carrying walk ran forward 10-14 cm ahead of its feet into the bucket and fell. Its own legs had
+walked slowly and stopped holding a thing only at a carry's end, once a pass. `tools/levels/workshop27.py`: each pass from the end of a
+pick-up of its own (Workshop 19's starts), the bucket a metre before it within 20 degrees, her hands on its legs by the gap through the
+walk, the crawl and the stop (her share 0.20-0.22 in a dry run), her stop 0.38 m off, its own put-down or hers. Dry: the block in, the
+cup twice let go by her put-down onto the rim and tipped outside. Saving run of 24 passes from 13:2x.
+
+**Its saving run (24 passes): 20 in the bucket, her share at its legs falling 0.20 -> 0.13-0.15, every put-down begun by her (3 ticks
+after its stop, before its own start could come).** The test after it (one pass a toy): 1 of 5 (the duck by itself); the block and the
+car not picked up, the cup and the can overshot the bucket (0.26 and 0.16 m off) and fell. The block's reach now came down 1-2 cm past
+its middle where after Workshop 26 it came down 3-4 cm short (and the fingers wrapped forward onto it): a few centimetres of drift in
+its reach, with no pick-up among the 24 passes, turned grasps into misses. **One pass a toy is too few to steer by; three passes a toy
+(chain3_*):** the brain after this Workshop 27: 1 of 15 in, 7 of 15 picked up, 9 falls; the save as Workshop 26 left it: 4 of 15 in (the
+duck 3 of 3, the cup 1), 12 of 15 picked up, 4 falls. Drilling one part of the chain moved the parts it did not practise. The brain
+sent back to Workshop 26's save (this one in the Trash), and Workshop 26's whole chain taken up again, three more rounds: each pass the
+whole of it, so that every part keeps its practice in its place (practice interleaved holds what blocked practice loses: Shea and Morgan
+1979). On the save, the car's three: picked up every time, its put-down knocking the bucket aside twice (stopped 0.32-0.33 m off, 5 cm
+inside its stop, the 14 cm car lowered onto the rim), its walk stalled once; the can's: runaway walks into the bucket.
+
+**Workshop 26's whole chain, three more rounds from its save (30 passes, each run its own seed): 19 in the bucket (4, 8, 7 of 10 by
+round), no fall in any of the 30, one thing let go; 4 pick-ups missed (the block's second pass in each round, the can once); its own
+put-down start in 7.** The block's pick-up is the marginal one: from the same stop its hand comes down sometimes 3-4 cm short of the
+block's middle (its fingers wrapping forward onto it: lifted) and sometimes on or past it (its thumb alone on it: pushed away).
+
+**The test after them, and a fault in the test.** Three passes a toy in one run (chain3_w26c_*): 1 of 15, 16 falls; the cup's
+second pass tipped forward standing before its walk began. A dry run still learns, and a pass that falls writes its cerebellum (the
+servos' torques of a fall its climbing fibres' lesson): the next pass in the same run begins from that. Run as independent passes, one
+a run from the brain as saved (chain1s_*, seeds 2-4, `run_chain5s.sh`), the same brain: **6 of 15 in the bucket by itself** (the cup 2,
+the duck 2, the car 1, the can 1, the block 0); 5 falls, each with the thing let go; the block's pick-up missed twice; the cup's and the
+car's walk once crawled short. The three-pass runs before this (the save after Workshop 26, the brain after Workshop 27's drilling)
+carry the same fault: their order stands, their numbers are low. Independent passes are the test from here on. (A fall writing its
+cerebellum is the real robot's problem too: its next attempt would begin from the fall's torques.)
+
+## The plan's first stage: reliable alone (10-30 afternoon)
+
+The owner, after the plan (four stages: reliable alone; Workshops 28-35; the bridge checks; the real G1): "keep building workshops and
+getting it as good as we can in sim before we bring model into actual G1. be watching frames and live viewer". The bar for the first
+stage: 12 of 15 independent passes (the chain, no hands, three seeds a toy) by itself. Where it began: 6 of 15.
+
+**A284 (SIM_DESIGN): a fall teaches the cerebellum's limbs little, lying nothing.** Its lessons discounted by their errors' size and
+none while the body is down. The cup's three passes in one run with it: 3 of 3 in, no falls (before: 0 of 3, 9 falls).
+
+**The independent test with A284 (chain1s_a284_*): 9 of 15 in by itself (6 before), no falls (5 before).** The cup 3 of 3, the duck 2
+(one let go on the walk), the car 2, the can 2 (each one not in), the block 0: not picked up in any. The block lay where it lay after
+Workshop 26 (0.22-0.26 m ahead of its feet, 7-11 cm left: where it was lifted then), but its hand came down 3-5 cm past the block's middle
+and 3-5 cm to its right (then: 3-4 cm short and on its line), its thumb alone on the block, its fingers closing 12 ticks later beside it;
+its homing near its cap and its forward model's hand on the block: the reach itself had drifted, as after Workshop 27. Taught again from
+her plan (Workshop 11 --her-plan, 10 passes: her hands through the whole pick-up, as the block's was taught again on 10-29), then the
+whole chain.
+
+**The block taught again from her plan (Workshop 11 --her-plan, 10 passes): picked up 10 of 10, her stops 0.21-0.22 m off (its own for
+the block 0.29).** Then the whole chain, two rounds: 9 of 20 in (6 of 10, then 3); in the second round five things let go on the walk and
+none in a fall: the grip's push fading as the thing slid into the hand (A285, SIM_DESIGN); the block lifted twice, missed twice.
+
+**The tests of A285 (on and off, the same brain): 7 and 6 of 15, no falls.** The block's misses traced (A286, A287, SIM_DESIGN): its
+eyes' point for the block jumped onto its hand when its thumb alone touched the block's side (a thumb's touch taken for a hold); with a
+hold the thumb against a finger the point stays on the block, the grasp waits for the hand, and the block's reach still came down 5-6 cm
+aside: her plan in Workshop 11 had stood it 0.215 m off (her stop at 0.30 m, its walk carrying on), where its own walk stops 0.27 m off.
+**The block taught again from her plan from its own distance (--stop-at 0.355: standing 0.257-0.272 m off): 10 of 10 picked up.**
+
+**The test after the block's re-teaching, with A286 and A287 (chain1s_a287_*): 7 of 15; A286 then off (chain1s_a287b_*): 5 of 15.** The
+block lifted 3 of 3 both times (from 0 of 3: A287 and the re-teaching from its own distance); the can's pick-ups lost (0 of 3 with the
+wait off; with it on, its homing pushed the can away in 2 of 3). The can had been lifted 3 of 3 just before: 20 passes of the block's
+pick-up alone (her plan) moved what the block and the can share (the left arm's reach under the cerebellum's empty-handed readout), and
+the can's reach went with it, as Workshop 27's carry alone had moved the block's. Every lesson since: never one thing drilled alone. So
+her plan's pick-up again for every toy, in turn, two passes each inside the whole chain, from its own distance (`--her-plan --stop-at
+0.355` on Workshop 26's runs), then a round of its own, then the test.
+
+**Every toy taught again in turn, then a round of its own, then the test (chain1s_mix1_*): 14 of 15 in by itself, no falls, nothing
+let go.** Her plan's round (2 passes a toy, the whole chain): 10 of 10 picked up, 8 in; its own round: 8 of 10 in, the car's two lost (its
+two-fingertip pinch: on the lift's last ticks its own program curled the middle finger on 0.5 rad and A285's press came on in one
+window, the push 20 -> 33 N, and the car popped out between thumb and finger; then a lift lost at 7 cm). The test's one miss, the cup
+(seed 4): it stood with the cup almost straight ahead (9 deg, 0.33 m from its pelvis; the cup's lifts stood it at 35 deg, 0.29 m) and its
+left hand came down 6 cm past the cup and 4 cm to its left, no finger on it. The same stance can pass under one brain and fail under
+another (the stops of every independent test so far, against their outcomes): where it stands is not the whole story.
+
+**The same brain on three more seeds (chain1s_mix1b_*, seeds 5-7): 12 of 15, no falls; the two tests together 26 of 30, the first
+stage's bar (12 of 15) met twice.** The cup, the block, the duck and the can 3 of 3 each; the car 0 of 3, never lifted whole: its hand
+came down 6-8 cm short of the car (on seeds 2-3, 1-2 cm), its thumb alone on the car's near end, the car pinched there and lost on the
+way up. Before any finger touched it, at the reach's last ticks, its eyes' place for the car (the eye layer's point, which the reach
+homes on) slid 5-6 cm toward it as its hand came over the car (on seeds 2-3 it held to within 3 cm until its fingers closed).
+
+**Its own hand over the car (A288, SIM_DESIGN).** Its colour camera's images over the reach (seed 6 run again, `--dump-eyes`): its
+fingers came between its eyes and the car and cut the car's blob to pieces (559 -> 189 -> 34 px), and its seeing took the pieces' middle
+for the car's place. A thing its own arm or hand cuts in front is no whole sighting now, as one the image's edge cuts was not: its place
+kept from the last whole one. **The car on seeds 5-7 again: 3 of 3 in by itself** (0 of 3), its eyes' point within 5 mm of the car
+through the reach, its hand down within 1 cm of the car's middle and closed with three fingers (thumb, index and middle) where its thumb
+alone had pinched the car's end. The cup on seed 4 still missed: its place held to 5 mm, but stood with the cup almost straight ahead
+and 0.33 m off its pelvis (the cup's lifts 0.29), its reach's homing at its elbow's cap, the hand stopping 7 cm up and 7-10 cm aside:
+out of its reach from where it stood.
+
+**The whole test again with A288 (chain1s_a288f_*, seeds 2-4): 13 of 15, no falls** (14 before it). The car 3 of 3, the block 3, the can
+3, the cup 2 (seed 4's, out of reach as before), the duck 2: on seed 2 its hand came down 0.8 cm off the duck's middle (1.4 before, its
+eyes' point held to 0.9 cm), the duck closed in four fingers and lifted to 0.68 m, then squeezed out between the thumb and the index
+finger at the lift's top as its own program curled the middle finger on (the car's loss in the own round, 10-30 evening): a grip at
+the top of the lift, not its seeing. Open.
+
+
+## Workshop 28: stand steady, take a bump (10-30 evening)
+
+The second stage's first workshop (the plan's W28: pushes, Horak and Nashner 1986; its bar no falls, sway under 5 cm). Workshop 26's
+chain whole, every toy in turn (`tools/levels/workshop28.py`), and at random moments of it a push on its trunk (`--bumps min,max` N: one
+tick, 150 ms, at the torso's centre of mass, a direction at random; `--bump-phases`: standing before its walk, standing at the thing,
+standing holding it up, carrying it; `--bump-gap` ticks at least between two). Standing, it is its own (her catch of a fall alone): its
+standing reflexes, its tone's ankle and hip answers (A195, A196) and its cerebellum's lessons from the sway take the push; carrying,
+her hands are on its legs by the gap as in Workshop 26, so a push's off-course steps are where the leg layer copies the gait's push.
+Never a drill alone (the first stage's lesson): the pushes come inside the whole chain. Each push is read (the pass's record `bumps`,
+its PASS line): its phase, its force, its centre of mass's most off its place over its feet over the push's first 8 ticks in its phase
+(BUMP_SWAY: the first smoke pass read 22 cm for a push as it held the cup up, which was its own turn to the bucket on her line 5 ticks
+later; the push itself 3 cm), its feet's step, a fall within 20 ticks (BUMP_WATCH), a thing let go.
+
+**The first smoke pass (the cup, seed 2, no hands, 20-40 N):** a 30 N push walking to the cup and a 40 N push holding it up: no fall,
+the cup in the bucket.
+
+## The language workshops (L1-L10, 10-30 night)
+
+The owner (10-30 evening): "we should try and get it to point where model it understand reality. where we can talk to it where we can
+give it task. where we. can show it irl vid of soomeone doing task ... so we dont have to keep scripting", then "build from scratch using
+worshop method", "first we should just hammer laugauge understanding of what things are how there connected. so we physically constrain
+model and show it images whil talking to it", and "we should we use irl photos and vids mixed with sim stuff to make sure everything
+being generalized and absorbed. we can just freeze itss ody for ultimate speed lessions". Before them: object -> word -> action had
+generalized (Workshops 14 and 16: the duck 5 of 5, a new toy, the can, 5 of 5 from its name and "round and small" alone), but its
+language was 11 learned words and 9 things known by one colour patch each, its eyes an 8 x 8 retina.
+
+The plan (each tested only on pictures never shown, real and sim apart and crossed): L1 look where I point, L2 what is it (30-70 common
+things), L3 same kind different looks, L4 what it's like (colours, sizes, shapes), L5 one, two, the other, L6 where it is (in, on, under,
+next to, behind), L7 kinds of kinds, L8 what happens (videos: put in, take out, push, roll, fall, give), L9 who did what to what, L10 say
+what you see. Then tasks told in words and shown once, with these concepts.
+
+**What was built for them.** The what pathway (A289, body/sim/what.py): a 64 px colour fovea, a code learned from scratch, its words
+found across her lines, the day's glances replayed at night. The picture lessons (tools/levels/lessons.py): its body held still, a
+picture before its eyes, her hand turning its eyes to one thing, her line; nothing else of the brain runs (a day of 1,500 glances and its
+night in about half a minute). The pictures:
+- real: COCO 2017 (tools/levels/photos_fetch.py): 10,697 outlined objects of 57 words cut out square (8,550 for lessons from the train
+  photos, 2,147 tests from the val photos, never shown); kept in data/photos (COCO's annotations CC BY 4.0, each photo its Flickr licence).
+- sim (tools/levels/sim_pictures.py): 3,000 pictures of the scanned real objects (Google Scanned Objects) and the room's toys, 3-6 at a
+  time on the rooms' photographed floors (body/sim/looks.py, CC0 from Poly Haven, tools/levels/rooms_fetch.py: 23 floors, 4 rugs) in
+  their light, from 0.45-1.1 m; segmented, 6,608 objects cut out; five floors' pictures and one object of each word with three or more
+  held out as tests. The scans' own names were wrong for many (supplement jars "cup", peg boards "can", an Android figure "orange", a
+  screwdriver "cushion"): every scan's word was checked by eye and set as a parent would say it (NAMES), the clutter left unnamed.
+- crossed: ball, bottle, bowl, car and cup taught from sim pictures only and tested on real photos; bear, boat, book, spoon and truck from
+  real photos only and tested on sim pictures.
+
 ## Level 1: walk forward, eyes ahead
 
 `tools/levels/level1_walk.py`, started by `tools/levels/start_level1.sh [rounds]` (its folder `data/levels/l1`, its log

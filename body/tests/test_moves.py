@@ -22,7 +22,7 @@ def _her(phase):
 def _pass(mv, T, share=1.0):
     mv.start("pick", T, POSE)
     errs = []
-    while mv.running is not None:
+    while mv.running is not None and not mv.held():
         ph_ = mv.phase(); want_ = _her(ph_)
         errs += [mv.lesson(l_, want_[l_], share) for l_ in want_]
         mv.advance()
@@ -39,7 +39,24 @@ def test_a_new_movement_holds_the_pose_it_starts_from_and_runs_off_by_itself():
     n_ = 0
     while mv.advance():
         n_ += 1
-    assert n_ == 10 and mv.running is None                                                  # (its length, then it stops)
+    assert n_ == 10 and mv.held()                                                           # (its length, then its last pose held:
+    assert mv.limbs() == ("arm_r",) and mv.phase() == 1.0 and not mv.advance()              # its arm's alone, A267)
+    mv.start("wave", 5, POSE)                                                               # (another movement starts: the hold let go)
+    assert not mv.held() and set(mv.limbs()) == {"arm_r", "leg_l"}
+
+
+def test_its_last_pose_is_held_until_another_starts():
+    """A267 (10-30): a movement run off to its end holds its limbs where it brought them (the thing picked up stays up); a pass begun
+    afresh (load_state) holds nothing"""
+    mv = MV.MoveLayer(JOINTS)
+    for _ in range(6):
+        _pass(mv, 20)
+    end_ = mv.target("arm_r", 1.0, name="pick").copy()
+    for _ in range(25):
+        mv.advance()
+    assert mv.held() and np.allclose(mv.target("arm_r"), end_) and "leg_l" not in mv.limbs()
+    mv2 = MV.MoveLayer(JOINTS); mv2.load_state(mv.state())
+    assert mv2.running is None and not mv2.held() and mv2.limbs() == ()
 
 
 def test_a_hand_repeating_it_teaches_it_and_its_share_falls():
@@ -79,7 +96,7 @@ def test_a_push_against_its_sag_teaches_its_drive_and_leaves_its_pose():
     lead = np.array([0.1, -0.12])                                                            # (its joints sag: a hand pushes them back up)
     for _ in range(15):
         mv.start("pick", 60, POSE)
-        while mv.running is not None:
+        while mv.running is not None and not mv.held():
             ph_ = mv.phase()
             mv.lesson("leg_l", mv.pose("leg_l") + lead, 1.0, drive=True)
             mv.advance()
@@ -87,7 +104,7 @@ def test_a_push_against_its_sag_teaches_its_drive_and_leaves_its_pose():
     assert np.max(np.abs(mv.target("leg_l", 0.5, name="pick") - (shown + lead))) < 0.02     # (its command now leads it)
     for _ in range(15):                                                                      # (pushed on and on: its drive bounded)
         mv.start("pick", 60, POSE)
-        while mv.running is not None:
+        while mv.running is not None and not mv.held():
             mv.lesson("leg_l", mv.pose("leg_l") + 1.0, 1.0, drive=True)
             mv.advance()
     assert np.max(np.abs(mv.target("leg_l", 0.5, name="pick") - shown)) <= MV.DRIVE_MAX + 0.01
@@ -261,3 +278,33 @@ def test_its_homing_works_on_where_the_movement_will_bring_the_hand():
     for _ in range(int(round(end_ * 20)) + 1):
         w.moves.advance()
     assert w._reach_predicted(0, held) is None                          # (past its reach's end: the hand as it is)
+
+
+def test_the_stance_is_taken_up_slowly_after_a_movement_and_at_once_after_a_walk():
+    """A280: as a movement hands a limb back to the stance layer, the limb's referent starts at the movement's last command and moves
+    toward the stance no faster than STANCE_RATE a joint a tick, reaching it; taken from a walk, the stance at once"""
+    from body.sim import world as W
+    tg_ = np.array([0.0, -0.1, 0.3]); last_ = np.array([-0.37, -0.14, 0.5])
+    r_ = W.stance_take_up(None, tg_, last_, moved=True)
+    assert np.all(np.abs(r_ - last_) <= W.STANCE_RATE + 1e-12) and np.abs(r_ - last_).max() > 0.0   # (a step from its last command)
+    assert np.all(np.abs(r_ - tg_) <= np.abs(last_ - tg_))             # (toward its stance)
+    n_ = 0
+    while not np.allclose(r_, tg_) and n_ < 100:
+        r1_ = W.stance_take_up(r_, tg_, last_, moved=True)
+        assert np.all(np.abs(r1_ - r_) <= W.STANCE_RATE + 1e-12)
+        r_ = r1_; n_ += 1
+    assert np.allclose(r_, tg_) and n_ == int(np.ceil(0.37 / W.STANCE_RATE)) - 1   # (the waist's 0.37 rad in 8 ticks in all)
+    assert np.allclose(W.stance_take_up(None, tg_, last_, moved=False), tg_)        # (from a walk: the stance at once)
+
+
+def test_a_hold_is_the_thumb_against_a_finger():
+    """A287: a hand holds a thing only when its fingers are pressed past GRIP_HOLD_N and its thumb and another finger each press it
+    OPPOSE_N or more; a thumb alone on a thing's side (however hard) is a touch, not a hold"""
+    from body.sim import world as W
+    w = W.G1World(seed=1)
+    w._grip_ext = np.array([3.0, 0.0]); w._oppose = np.array([0.0, 0.0])
+    assert w._holding_hand() is None                                    # (the thumb alone: 3 N on its fingers' zones, no opposition)
+    w._oppose = np.array([W.OPPOSE_N, 0.0])
+    assert w._holding_hand() == 0                                       # (thumb and finger opposed: held, the left)
+    w._grip_ext = np.array([0.5 * W.GRIP_HOLD_N, 0.0])
+    assert w._holding_hand() is None                                    # (too light a push: none)

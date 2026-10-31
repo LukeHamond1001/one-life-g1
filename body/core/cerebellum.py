@@ -79,7 +79,7 @@ import torch
 from torch import nn
 
 from .physiology import CEREB
-from .world import SubActs
+from .world import SubActs, SubFrame
 
 
 def cerebellum_spec(anatomy, cfg):
@@ -120,6 +120,10 @@ class Cerebellum(nn.Module):
         self.register_buffer("mossy_scale", torch.tensor([float(x) for x in decl.mossy_scale], dtype=torch.float64))
         # the readouts, born at zero: the limbs' Purkinje cells [G, J], the flocculus's gain and offset per axis [G, 2A]
         self.register_buffer("pc_w", torch.zeros(G, J, dtype=torch.float64))
+        # A283: THE HELD-THING MODULE, the limbs' readouts while a thing is held [G, J], born as a copy of pc_w at its first use
+        # (h_born 1 from then): read and taught by the world's holding responsibility (SubFrame.held), pc_w by the rest
+        self.register_buffer("pc_h", torch.zeros(G, J, dtype=torch.float64))
+        self.register_buffer("h_born", torch.zeros((), dtype=torch.long))
         self.register_buffer("fl_w", torch.zeros(G, 2 * A, dtype=torch.float64))
         # the flocculus's eligibility: the active units and their activity when it last read (taught by the slip of that tick), the
         # first fl_n of each (0: none held, as at birth)
@@ -164,8 +168,59 @@ class Cerebellum(nn.Module):
         top = np.flatnonzero(z > theta)                                # the units above it, in ascending order (k of them, fewer at a tie)
         return top, z[top] - theta
 
+    @staticmethod
+    def _relevant(sf, lim, err_rel):
+        """A284: THE LESSON'S RELEVANCE: the SubFrame with its limbs' teacher scaled joint by joint by 1 / (1 + (|e| / (err_rel x the
+        joint's limit))^2), and none at all while the body is down (`sf.down`); err_rel 0: as it came: a fall's errors are another
+        cause's than the limbs' model's (Wei and Kording 2009; Marko et al. 2012)"""
+        if float(err_rel) > 0.0 and bool(getattr(sf, "down", False)) and sf.teach is not None:   # (the switch on: both rules)
+            return SubFrame(sf.tick, sf.sub, sf.mossy, None, sf.slip, sf.turn, sf.limit, sf.loco_err, sf.loco_cmd, held=getattr(sf, "held", None),
+                            down=True)
+        if float(err_rel) <= 0.0 or sf.teach is None:
+            return sf
+        e = np.asarray(sf.teach, dtype=np.float64).reshape(len(lim))
+        e = e / (1.0 + (np.abs(e) / (float(err_rel) * lim)) ** 2)
+        return SubFrame(sf.tick, sf.sub, sf.mossy, e, sf.slip, sf.turn, sf.limit, sf.loco_err, sf.loco_cmd, held=getattr(sf, "held", None),
+                        down=getattr(sf, "down", None))
+
+    def _sub_held(self, top, g, n2, sf, lim, rate, leak, h):
+        """A283: THE LIMBS' LAW WITH A THING HELD (the world's holding responsibility h in (0, 1]): the readout is the blend (1 - h) pc_w
+        + h pc_h of the two modules' rows for this code, held inside the limit (`_tau`); the leak restores each module's active synapses
+        by its share of it (1 - h, h), the climbing fibres' lesson adds to each its share of least mean squares' step, and the bound steps
+        both back along g in the same shares until the blend's output is inside the limit: learning weighted by each module's
+        responsibility (MOSAIC: Wolpert and Kawato 1998; Haruno, Wolpert and Kawato 2001), the cerebellum's internal models kept apart
+        by the context that selects them (Imamizu et al. 2003: separate modules for separate tools). At h = 1 the held module's law is
+        the single module's, exactly, and pc_w learns nothing"""
+        J = len(self.joints)
+        pw, ph = self.pc_w.numpy(), self.pc_h.numpy()
+        P, Q = pw[top], ph[top]                                        # (the active units' rows: copies)
+        a_, b_ = 1.0 - h, h
+        rP, rQ = np.einsum("i,ij->j", g, P), np.einsum("i,ij->j", g, Q)
+        self._tau = np.clip(a_ * rP + b_ * rQ, -lim, lim)
+        if n2 <= 0.0:
+            return
+        lk = float(leak)
+        e = None if sf.teach is None else np.asarray(sf.teach, dtype=np.float64).reshape(J)
+        taught = e is not None and bool(np.any(e != 0.0))
+        if lk == 0.0 and not taught:
+            return
+        if lk != 0.0:                                                  # (each module's leak by its share)
+            P *= 1.0 - a_ * lk; Q *= 1.0 - b_ * lk
+            rP = rP * (1.0 - a_ * lk); rQ = rQ * (1.0 - b_ * lk)
+        if taught:                                                     # (each module's share of the lesson)
+            s_ = (float(rate) / n2) * e
+            P += a_ * g[:, None] * s_[None, :]; Q += b_ * g[:, None] * s_[None, :]
+            rP = rP + a_ * float(rate) * e; rQ = rQ + b_ * float(rate) * e
+            self.n_limb.add_(1)
+        over = (a_ * rP + b_ * rQ) - np.clip(a_ * rP + b_ * rQ, -lim, lim)
+        if np.any(over != 0.0):                                        # (the bound, in the same shares)
+            c_ = over / (n2 * (a_ * a_ + b_ * b_))
+            P -= a_ * g[:, None] * c_[None, :]; Q -= b_ * g[:, None] * c_[None, :]
+        pw[top] = P
+        ph[top] = Q
+
     @torch.no_grad()
-    def sub_step(self, sf, rate, vor_rate, leak):
+    def sub_step(self, sf, rate, vor_rate, leak, err_rel=0.0):
         """ONE SUB-STEP OF THE LAW on the world's SubFrame `sf` at the life's rates: the limbs' torques read (each held inside its joint's
         limit this tick, `sf.limit`), then their rows of this sub-step's active units restored by the leak and taught by the servo's
         corrective torque, the readout's output for this code held inside the limit; at sub-step 0, the flocculus taught by the last
@@ -182,25 +237,33 @@ class Cerebellum(nn.Module):
             lim = np.asarray(sf.limit, dtype=np.float64).reshape(J)
             if not np.all(lim > 0.0) or not np.all(np.isfinite(lim)):
                 raise ValueError(f"Cerebellum: the joints' torque limits this tick must be finite and above zero: {lim}")
-            pc = self.pc_w.numpy()
-            P = pc[top]                                                # the active units' rows (a copy)
-            raw = np.einsum("i,ij->j", g, P)
-            tau = np.clip(raw, -lim, lim)                              # the nucleus's output, inside the joint's limit this tick
-            if n2 > 0.0:
-                lk = float(leak)
-                e = None if sf.teach is None else np.asarray(sf.teach, dtype=np.float64).reshape(J)
-                taught = e is not None and bool(np.any(e != 0.0))
-                if lk != 0.0 or taught:
-                    out = raw                                          # this code's output after the lesson, followed exactly:
-                    if lk != 0.0:                                      # the leak: the active units' synapses restored toward their birth's zero
-                        P *= 1.0 - lk; out = raw * (1.0 - lk)
-                    if taught:                                         # the climbing fibres' lesson (least mean squares): adds rate e to it
-                        P += g[:, None] * ((float(rate) / n2) * e)[None, :]; out = out + float(rate) * e
-                        self.n_limb.add_(1)
-                    over = out - np.clip(out, -lim, lim)               # the bound: no lesson carries this code's output past the limit;
-                    if np.any(over != 0.0):                            # the step back onto it is least mean squares' own (along g)
-                        P -= g[:, None] * (over / n2)[None, :]
-                    pc[top] = P
+            h = 0.0 if getattr(sf, "held", None) is None else float(min(1.0, max(0.0, float(sf.held))))
+            sf = self._relevant(sf, lim, err_rel)                      # (A284: the lesson discounted by its error's size; none while down)
+            if h > 0.0 and int(self.h_born) == 0:                      # (A283: the held-thing module born as the limbs' readout stands)
+                self.pc_h.copy_(self.pc_w); self.h_born.fill_(1)
+            if h > 0.0:
+                self._sub_held(top, g, n2, sf, lim, rate, leak, h)
+                tau = self._tau
+            else:
+                pc = self.pc_w.numpy()
+                P = pc[top]                                            # the active units' rows (a copy)
+                raw = np.einsum("i,ij->j", g, P)
+                tau = np.clip(raw, -lim, lim)                          # the nucleus's output, inside the joint's limit this tick
+                if n2 > 0.0:
+                    lk = float(leak)
+                    e = None if sf.teach is None else np.asarray(sf.teach, dtype=np.float64).reshape(J)
+                    taught = e is not None and bool(np.any(e != 0.0))
+                    if lk != 0.0 or taught:
+                        out = raw                                      # this code's output after the lesson, followed exactly:
+                        if lk != 0.0:                                  # the leak: the active units' synapses restored toward their birth's zero
+                            P *= 1.0 - lk; out = raw * (1.0 - lk)
+                        if taught:                                     # the climbing fibres' lesson (least mean squares): adds rate e to it
+                            P += g[:, None] * ((float(rate) / n2) * e)[None, :]; out = out + float(rate) * e
+                            self.n_limb.add_(1)
+                        over = out - np.clip(out, -lim, lim)           # the bound: no lesson carries this code's output past the limit;
+                        if np.any(over != 0.0):                        # the step back onto it is least mean squares' own (along g)
+                            P -= g[:, None] * (over / n2)[None, :]
+                        pc[top] = P
         gain = off = None
         if A and int(sf.sub) == 0:
             fw = self.fl_w.numpy()
@@ -314,7 +377,7 @@ class CerebellumMixin:
         """one sub-step below the tick (the world's call through Below): the organ's law at this life's rates, as SubActs"""
         org = self.m.cereb
         tau, gain, off = org.sub_step(sf, float(self._cereb_const("cereb_rate")), float(self._cereb_const("cereb_vor_rate")),
-                                      float(self._cereb_const("cereb_leak")))
+                                      float(self._cereb_const("cereb_leak")), float(self._cereb_const("cereb_err_rel")))
         lg = lo = None
         if org.loco and int(sf.sub) == 0:                              # A227: the walk's turn readout, once a tick
             lg, lo = org.loco_step(sf, float(self._cereb_const("cereb_loco_rate")), float(self._cereb_const("cereb_loco_ref")),

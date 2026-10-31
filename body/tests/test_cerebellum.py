@@ -399,8 +399,8 @@ def test_built_last_from_its_own_generator():
     s0, s1, s2, s3 = o0.state_dict(), o1.state_dict(), o2.state_dict(), o3.state_dict()
     assert torch.equal(r0, r1) and list(s1)[:len(s0)] == list(s0) and all(torch.equal(s0[k], s1[k]) for k in s0), "the other organs are born otherwise"
     new = list(s1)[len(s0):]
-    assert new == ["cereb.mossy_idx", "cereb.mossy_w", "cereb.mossy_off", "cereb.mossy_scale", "cereb.pc_w", "cereb.fl_w", "cereb.fl_top",
-                   "cereb.fl_g", "cereb.fl_n", "cereb.n_sub", "cereb.n_limb", "cereb.n_vor"], new
+    assert new == ["cereb.mossy_idx", "cereb.mossy_w", "cereb.mossy_off", "cereb.mossy_scale", "cereb.pc_w", "cereb.pc_h", "cereb.h_born",   # (A283)
+                   "cereb.fl_w", "cereb.fl_top", "cereb.fl_g", "cereb.fl_n", "cereb.n_sub", "cereb.n_limb", "cereb.n_vor"], new
     assert all(torch.equal(s1[k], s2[k]) for k in new), "the expansion is not the body's seed's alone"
     assert not torch.equal(s1["cereb.mossy_idx"], s3["cereb.mossy_idx"]) and not torch.equal(s1["cereb.mossy_w"], s3["cereb.mossy_w"])
     c = o1.cereb
@@ -813,7 +813,7 @@ def test_save_round_trip_and_replay():
         p = os.path.join(tmp, "life.pt"); p2 = os.path.join(tmp, "again.pt"); L.save(p)
         blob = torch.load(p, map_location="cpu", weights_only=False)
         keys = [k for k in blob["organs"] if k.startswith("cereb.")]
-        assert len(keys) == 12 and not any("cereb" in str(k) for k in blob["life"]) and blob["cfg"]["cereb"] == 1
+        assert len(keys) == 14 and not any("cereb" in str(k) for k in blob["life"]) and blob["cfg"]["cereb"] == 1   # (A283: pc_h, h_born)
         w2 = ArmWorld(); w2.load_state(w.save_state())
         L2 = Life.load(p, ArmAnatomy(TOK, {}), device="cpu", seed=0, world=w2)
         assert all(torch.equal(L2.m.cereb.state_dict()[k[6:]], blob["organs"][k]) for k in keys) and int(L2.m.cereb.n_sub) == 60 * 15
@@ -1185,3 +1185,54 @@ if __name__ == "__main__":
             failed += 1; print("ERROR", t.__name__, ":", type(e).__name__, str(e)[:300])
     print(f"{len(CEREB_TESTS) - failed}/{len(CEREB_TESTS)} passed in {time.time() - t0:.0f}s")
     sys.exit(1 if failed else 0)
+
+
+def test_a_thing_held_has_its_own_module():
+    """A283 (MOSAIC's responsibility-weighted modules): with nothing held (held None or 0) the law is the single module's and the
+    held-thing module is never born; at the first sub-step a thing is held it is born as a copy of the limbs' readout (no jump in
+    the torque); held whole (1), the lessons go to it alone and the limbs' readout is left as it was; half held, the torque is the
+    two modules' blend and each takes its share of the lesson, the blend's output moving by least mean squares' step times the
+    shares' squares"""
+    decl = Cerebellar([0.1 * i for i in range(12)], [0.5 + 0.1 * i for i in range(12)], joints=["a", "b", "c"], vor=["yaw", "pitch"])
+    o = organ(decl, seed=5, granule=1024)
+    rng = np.random.default_rng(4); x = np.array(decl.mossy_offset, float); big = np.full(3, 1e6)
+    for t in range(40):                                                # (empty-handed: it learns as ever, the held module unborn)
+        o.sub_step(SubFrame(t, 0, x + 0.1 * rng.standard_normal(12), rng.standard_normal(3), limit=big, held=0.0), 0.2, 0.05, 0.0)
+    assert int(o.h_born) == 0 and float(o.pc_h.abs().sum()) == 0.0 and float(o.pc_w.abs().sum()) > 0.0
+    w0 = o.pc_w.clone(); x1 = x + 0.05
+    tau0, _, _ = o.sub_step(SubFrame(41, 0, x1, None, limit=big, held=None), 0.2, 0.05, 0.0)
+    tau1, _, _ = o.sub_step(SubFrame(42, 0, x1, None, limit=big, held=1.0), 0.2, 0.05, 0.0)
+    assert int(o.h_born) == 1 and torch.equal(o.pc_h, w0) and np.allclose(tau0, tau1)   # (born a copy: the same torque)
+    for t in range(40):                                                # (held whole: its own module learns, the limbs' readout stays)
+        o.sub_step(SubFrame(50 + t, 0, x1 + 0.1 * rng.standard_normal(12), rng.standard_normal(3), limit=big, held=1.0), 0.2, 0.05, 0.0)
+    assert torch.equal(o.pc_w, w0) and not torch.equal(o.pc_h, w0)
+    e = np.array([1.0, -2.0, 0.5]); h = 0.5
+    top, g = o.granule_code(x1)
+    blend0 = (1 - h) * (g @ o.pc_w.numpy()[top]) + h * (g @ o.pc_h.numpy()[top])
+    tau2, _, _ = o.sub_step(SubFrame(99, 0, x1, e, limit=big, held=h), 0.2, 0.05, 0.0)
+    assert np.allclose(tau2, blend0)                                   # (the blend read before the lesson)
+    blend1 = (1 - h) * (g @ o.pc_w.numpy()[top]) + h * (g @ o.pc_h.numpy()[top])
+    assert np.allclose(blend1 - blend0, ((1 - h) ** 2 + h ** 2) * 0.2 * e)   # (each its share of the step)
+
+
+def test_a_fall_teaches_little_and_lying_nothing():
+    """A284: with cereb_err_rel 0 the law is as before; with it on, each joint's lesson is its error scaled by 1 / (1 + (|e| /
+    (err_rel x limit))^2) (a small error taught nearly whole, one at the limit a fifth at 0.5); with the body down no limb lesson at all"""
+    decl = Cerebellar([0.1 * i for i in range(12)], [0.5 + 0.1 * i for i in range(12)], joints=["a", "b", "c"], vor=["yaw", "pitch"])
+    lim = np.array([2.0, 2.0, 2.0]); x = np.array(decl.mossy_offset, float) + 0.1
+    def lesson(err_rel, e, down=None):
+        o = organ(decl, seed=5, granule=1024)
+        top, g = o.granule_code(x)
+        before = g @ o.pc_w.numpy()[top]
+        o.sub_step(SubFrame(0, 0, x, np.asarray(e, float), limit=lim, down=down), 0.2, 0.05, 0.0, err_rel)
+        return (g @ o.pc_w.numpy()[top]) - before, o
+    e = np.array([0.1, 1.0, 2.0])                                       # (small, half the limit, at the limit)
+    whole, _ = lesson(0.0, e)
+    assert np.allclose(whole, 0.2 * e)                                  # (off: the law as before)
+    part, _ = lesson(0.5, e)
+    w = 1.0 / (1.0 + (np.abs(e) / (0.5 * lim)) ** 2)
+    assert np.allclose(part, 0.2 * e * w) and w[0] > 0.99 and abs(w[1] - 0.5) < 1e-12 and abs(w[2] - 0.2) < 1e-12
+    none, o = lesson(0.5, e, down=True)
+    assert np.allclose(none, 0.0) and int(o.n_limb) == 0                # (down: no lesson)
+    off_down, _ = lesson(0.0, e, down=True)
+    assert np.allclose(off_down, 0.2 * e)                               # (the switch off: down changes nothing, the life on its mat as before)

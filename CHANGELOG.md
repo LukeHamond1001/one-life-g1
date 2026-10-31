@@ -3,6 +3,29 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.212.0 (2026-10-30): its own seeing, the chain to the bucket, the first stage, and the language workshops begun
+
+Not a dawn of the life: the code as it stands on the night of 2026-10-30. In groups, with their records (`docs/LEVELS.md`;
+`docs/SIM_DESIGN.md`, the entries A264 to A289):
+
+- **Its own seeing (A265 to A277).** The toys' places, shapes and looks from its own colour camera (`body/sim/seen.py`), in place of
+  the simulator's record; a thing's look learned only from a sighting that could be it, a new thing named where her hand shows it.
+- **Workshops 18 to 25: put down, the bucket, the chain.** Put down (19), the bucket (22), `go pick up the <toy>` then `put it in the
+  bucket` (24, 25), its own start or hers (`tools/levels/workshop18.py` to `workshop25.py`).
+- **Workshop 26 and the first stage, reliable alone.** The carry longer and turned; every toy practised in turn inside the whole chain
+  (practising one part or one toy alone broke the others, three times). In the body: A280 the stance taken up slowly after a movement,
+  A283 the cerebellum's module for a thing held, A284 a fall teaching the limbs little, A285 a held grip kept by force, A287 a hold
+  the thumb against a finger, A288 a thing its own arm cuts in front no whole sighting (A281, A282 tried and not kept; A286 off). The
+  chain by itself in 15 independent passes: 14 of 15, then 12 of 15 on new seeds, then 13 of 15 with A288 (the car 0 of 3 to 3 of 3).
+- **Workshops 27 and 28 and the rooms.** A stop where its hand reaches (not kept); pushes on its trunk inside the chain (`--bumps`); the
+  rooms' looks (`body/sim/looks.py`: photographed floors and rugs, CC0 from Poly Haven, fetched by `tools/levels/rooms_fetch.py`).
+- **The language workshops (the owner, 2026-10-30).** Its body held still, pictures before its eyes, her talk: the what pathway
+  (A289, `body/sim/what.py`), a fovea's code learned from scratch and the words that go with it found across her lines, replayed at
+  night; the picture lessons (`tools/levels/lessons.py`) from real photos (COCO, `photos_fetch.py`) and sim pictures of scanned real
+  objects (`sim_pictures.py`, each word checked by eye), tested only on pictures never shown. L1: re-finding a thing among four, 0.60 to
+  0.86 over twelve days. The pictures and the photos are not published.
+- **The front page** brought to 2026-10-30.
+
 ## 0.211.3 (2026-10-30): the test with the toy anywhere
 
 The test's thing asked for now lies at a place and a turn of its own each pass (`--pick-place random` in `tools/levels/workshop1.py`);

@@ -6963,3 +6963,463 @@ passes asking for the can, "can" 1.0 -> 0.55 toward the can, "go" 0.28 and "pick
 at 0.97-0.98. The lesson every tick its eyes rest on a thing with words held, through a fixation of a hundred ticks, is what drives
 both this and the drift above; a word mapped onto the thing attended in the second after it is heard, once (as A255 credits each word,
 CREDIT_LAG), is the form a child's word learning takes (Baldwin 1993; Smith and Yu 2008) and the likely remedy.
+
+### A264. A line's words credited once, together (2026-10-30; the owner: "do word fix then continue on")
+
+The eye layer's words (body/sim/gaze_layer.py) now learn once a line, not every tick: each word heard is held as pending; CREDIT_LAG
+ticks (6, 0.9 s) after the line's last word, every word of the line steps its associations toward the thing its eyes rest on then and
+away from the other things in its view, each word on its own, at WORD_EVENT_RATE (0.2) (`credit`). This is cross-situational counting:
+how often what its eyes settled on after a word was each thing (Smith and Yu 2008), the referent being the thing attended as the words
+are heard (Baldwin 1993), reached within about a second of its name (Allopenna, Magnuson and Tanenhaus 1998). Four rules were simulated
+on the eye layer alone on 10-30's scenes before one was kept: the old lesson every tick (A263's drift), one prediction error shared
+by the line's words (A263's overexpectation: the can's name 1.0 -> 0.55), each word at its own second (its eyes on a passing glance
+locked the request's words onto the drum), and the line credited once. The one kept: ten requests for the can, its eyes on it from
+the first word, the can's name 1.00 (0.32 under A263); thirty requests over five toys, every name 1.00, "go" off the drum it glanced
+at (0.87 before), "up" and "the" 0.30 or less toward any toy; a new name 0.8 after eight hearings. test_gaze_words.py (a line
+credited once; a name kept when its thing is reached before it is said; a new name learned in under ten hearings).
+
+What remains of the drift A263 left: words learned under it keep their associations until lines heard with all the things in view
+wear them away (the credit's step away from the others in view). In the brain as Workshop 17 left it "look" leaned 0.88 toward the
+can, "go" 0.97 toward the drum, "the" -0.53 away from the drum, and every name about -0.8 away from the can. Workshop 18's lines
+(docs/LEVELS.md) took the names' lean from the can to -0.3 and "look"'s spread over the toys named last.
+
+### A265. The things it sees, from its own camera (2026-10-30; the owner: "we arnt cheating right is model actually generalizing picking up objects of the name it knows?")
+
+Until now the layers that choose a toy and aim the reach read each toy's place, shape and middle from the simulator (the eye layer's
+"stand-in for its seeing them"). body/sim/seen.py replaces that stand-in, below the brain, from the head camera's colour image alone
+(the owner's decision 4: no depth channel, no stereo): figure from ground by hue and saturation against the floor's (Spelke 1990: a
+bounded, cohesive thing standing out from its ground), each thing's place by where its foot meets the floor (the angular declination
+below the horizon: Ooi, Wu and He 2001) and its middle's height by its own size, its width at that distance (size constancy), and its
+long way and shape on the floor (the grip's turn, A257). Each name it knows comes to have a look (hue, saturation, brightness, width)
+learned at the moment a line's words are credited (A264): the thing its gaze rests on (within FOVEA_HALF) is what the known thing the
+line names most looks like (the line's summed associations, PROTO_MIN or more). A thing it already knows by another name keeps it
+(mutual exclusivity: Markman and Wachtel 1988; 10-30, "look at the drum", its "look" 0.88 toward the can, would have taught the drum's
+look as the can's). A known thing seen keeps its place when out of view (Baillargeon 1987), and the thing in its hand is where its hand
+is, by its fingers' touch (GRIP_HOLD_N). On (`SEE_THINGS=1`, from Workshop 18 on) the eye layer's things are the known things seen,
+the anchor (A260) and the grip's turn read the thing as seen, and the room's record is a reading only (`room_pts`, for grading).
+
+Measured: on 32 images dumped from Workshop 13's room (standing, walking, squatting, lifting) every toy in view was found, the small
+toys' middles 0.5-1.1 cm from where they lay (the rounded and big 2.6-4.8 cm). With each toy's look learned from one standing image,
+116 sightings across those images: 107 named right, 0 wrong, 9 not recognised (the car's width seen across its long way, partial
+views). Two variants were measured and not kept: brightness as a ratio to the floor around the thing (lightness constancy: Wallach
+1948), 93 right, its spread wider (the brightness swings are which side of a toy is in view, not the robot's shadow); its size along
+its long way, 109 right (within the noise, its margins smaller). Workshop 18 (docs/LEVELS.md): the looks of all eight toys learned
+from their names alone, 63 of 64 sightings named right and none wrong in its second round; Workshop 13's test with its own seeing,
+"go pick up the cup", 5 of 5 lifted.
+
+Two bugs found on the way, both fixed: the looks' learning sat inside the held goal's block, which runs only once a named thing is in
+view, so before any look was known none could be learned; and with eight toys the find task's seven places left the can off the floor
+(FIND_SLOTS_8).
+
+### A266. A thing the words name holds the search (2026-10-30, Workshop 18's test)
+
+The born salience saccade (A186) is cut while the eyes rest on a valued thing; now it is also cut by how strongly the words held
+predict any thing the eye layer knows (`world._named_pull`: the largest of gaze_layer.predicted, 0 to 1). The goal held in mind biases
+the competition among the things in view toward the one it names (Desimone and Duncan 1995); the priority map that picks a saccade's
+goal sums what stands out with what is wanted (Bisley and Goldberg 2010), the colliculus's competing goals inhibiting one another
+(Munoz and Istvan 1998). Workshop 18's find test with its own seeing ("look at the <toy>", eight toys, no hand first): in 5 of 16
+passes its eyes did not reach the toy in 12 ticks, the born saccade throwing them 0.14-0.19 rad the other way on 9-14 of the 26 ticks
+after her line against the eye layer's pull at its 0.20 cap (0-4 such ticks in the 11 found). With A266: 16 of 16 found, 0-3 ticks
+after her line.
+
+### A267. A movement's last pose held (2026-10-30, Workshop 19)
+
+A movement run off to its end (body/sim/moves.py) now leaves its arms and hands where it brought them, held there (`moves.held`), until
+another movement starts or a pass begins afresh; its legs and waist go back to its stance. The motor system holds the posture a
+movement ends in by integrating the movement's command (Albert, Ramirez, Shadmehr et al. 2020), holding still and moving being distinct
+circuits (Shadmehr 2017). Until now the pick-up's arm went back to its resting tone and the brain's acts the tick its program ended: a
+toy held up before its eyes would have been let down, and "put it down" had nothing to put down. While a pose is held its homing
+teaches its program nothing (A248's lesson is for a movement under way), and it anchors no gaze (A260 is a reach's, under way:
+anchored on the toy in its hand, "bucket" never drew its eyes, its goal stayed the toy, and it walked on past the bucket).
+
+Tried 10-30 night and not kept: the legs and waist held too (the gait taking them while it walks), since in Workshop 22's test from
+the saved ends of pick-ups (no hands) it pitched forward standing with the toy held out and fell as its walk began. Held, the legs'
+targets jumped at the first tick from where the restored body stood to the program's last pose (falls at tick 4, a cup flung 2.4 m).
+The forward pitch belongs to the restored starts, not to holding: in a continuous pass (Workshop 13's pick-up, then "put it in the
+bucket", no hands) it stood holding the cup for 40 ticks without a fall. A pass restored from a saved moment does not carry all of a
+movement's momentary state (its equilibrium offsets, its muscles' commanded pose), so the carry is judged on continuous passes.
+
+### A268. A thing in its hand starts what it does with it (2026-10-30, Workshop 19)
+
+The starts' context (body/sim/start_layer.py) reads one more thing, after the words: whether a thing is in its hand, by its fingers'
+touch (`world._holding_hand`, GRIP_HOLD_N). Which movement a context releases is learned (the dorsal striatum's stimulus-response
+habits: Yin and Knowlton 2006), and what an object in hand affords is part of the context an action is chosen in (Cisek 2007): "put it
+down" with nothing in its hand should start nothing. Appended after the words so a brain saved before reads its weight as none.
+
+### A269. Its seeing places a thing from whole sightings (2026-10-30)
+
+A known thing's place (body/sim/seen.py `update`) moves only on a sighting of it whole: one cut by the image's edge is still
+recognised, but its lowest pixel is not its foot and it reads farther than it lies, so the last whole sighting's place is kept (as its
+shape already was). On Workshop 13's dumped images (123 sightings of toys in view) the edge-cut ones were off 3.6 cm at the median and
+9.5 cm at the 90th percentile and read 2.3 cm farther than they lay; whole ones 2.1 cm, 4.8 cm and 0.9 cm. Dry Workshop 13 with its own
+seeing and the asked-for toy at random places (A265, before this): its eyes on the toy asked every pass, the block 8 of 10 lifted as
+with the room's record, the car 6 of 10 (10 of 10 with it): walking up, the toy slid off the bottom of its view and it stopped 0.19-0.23
+m from the car's middle where with the room's record it stopped 0.24-0.27, its learned reach overshooting. With A269, the same ten
+places (dry_20261030_014913_seen_rand_car_a269): it stopped 0.24-0.28 m from the car and lifted it 9 of 10, the place 18 degrees to
+its left among them; the one miss the near place 17 degrees left (0.90 m).
+
+### A270. A new word for a new thing, under joint attention (2026-10-30, Workshop 20)
+
+With its own seeing (A265) a thing's identity is a look it learned for a name it knew; a thing it had never seen had no identity for
+her words to go to, so its look could never be learned (the eye layer's credit needs a known thing under its gaze, and a word's
+association needs a thing to be about). Now (body/sim/world.py `_novel_word`), at a line's credit, its gaze resting on a thing it
+does not recognise, turned there by her hand on its head (within JOINT_R, or half the thing's width, of where her hand turns its
+eyes: A259's joint attention), the line's last word that has never been mapped to any thing names it: the thing's look is learned
+under that word's form, and the credit that follows maps the word to it. A child maps a new word to the thing it does not know yet
+after a hearing or two (fast mapping: Carey and Bartlett 1978; a novel name taken for the novel object: Markman and Wachtel 1988),
+and to the thing the speaker attends to rather than to whatever its own eyes were on (Baldwin 1991, 1993); the name falls last in her
+line, where her focus puts it (Fernald and Mazzie 1991). Without the joint attention a never-mapped word heard while its eyes rest on
+something unknown ("put" or "down" in "put it down") would name that thing.
+
+Dry Workshop 20 (the bucket among four toys it knows, her hand turning its eyes to it, its name alone, ten passes): "bucket" became a
+word at its third hearing (word_forms.LEX_MIN) and named the bucket at that pass's credit; its pull toward the bucket 0.20, 0.36,
+0.49, 0.59, 0.67, 0.74, 0.79, 0.83 at the next; the bucket recognised 1 cm from its middle in every pass after, none of the toys
+mistaken.
+
+### A271. A look learned only from the thing shown, or the thing known (2026-10-30)
+
+A265 learned a thing's look at each credit from whatever thing its gaze rested on, when the line named a known thing strongly enough
+and the thing under its gaze was not recognised as another. Nothing stopped it once recognition failed. Found 10-30 night in a test of
+its seeing in other lights (`--vary-room`: the room's lights scaled 0.45-1.6, the floor tinted): in a new light nothing was recognised,
+and at each credit the named toy's look was re-learned from the unknown thing its eyes were on, the looks running off within three
+passes. Then in the saved brain: the same had happened in Workshops 19-21 in the room's own light (the toy in its hand, near its eyes
+and partly out of view, or the bucket, not recognised at the credit): the ball's learned hue 2 -> 76 deg, the block's 226 -> 189, the
+car's 26 -> 108, the bear's 26 -> 83, the bucket's 74 -> 113. And through them its words: the bucket, taken for the bear (the bear's
+look now near the bucket's), drew "bucket" toward the bear (0.42) and off the bucket (0.89 -> 0.46).
+
+Now (body/sim/world.py) a look is learned at a credit only (a) from the thing her hand on its head turned its eyes to (joint attention,
+A259: a teaching moment, the thing the line names most, however little, as her focus settles what it names), or (b) from a whole
+(not edge-cut) sighting of the thing it already recognises as the one the line names (PROTO_MIN or more): a known look refined, never
+moved onto another thing. Workshop 22's saving run (carrying to the bucket) was stopped without saving; the looks are re-taught by her
+hand and her naming (Workshop 18 again: docs/LEVELS.md), not written.
+
+And her naming corrects its seeing (ME_YIELD): re-teaching, the ball's half-relearned look (hue 54) took the duck (47) for the ball, so
+"duck" was credited toward the ball and mutual exclusivity kept the duck's look from being taught. Under her hand, a thing taken for
+another now yields that name when the line names the other strongly (PROTO_MIN or more) and the thing it was taken for hardly at all
+(ME_YIELD, 0.2, or less): the named thing's look is learned and the wrong place forgotten. Mutual exclusivity is a default a child gives
+up when an adult corrects it (Markman 1990). "look at the drum" with "look" leaning to the can is untouched by it: the line names the
+drum too (0.23).
+
+### A272. Brightness weighs less in recognising a thing (2026-10-30)
+
+A thing's look (body/sim/seen.py) is its hue, saturation, brightness and width, each scaled in the gap to a known look. Its
+brightness is the cue least constant under the room's light: in the varied room's lights (x0.45-1.6, the floor tinted) a thing's value
+swung with the light where its hue held. Cues are weighed by their reliability (Ernst and Banks 2002); brightness's scale is now 0.4
+(VAL_SCALE; 0.25 since A265). Measured offline on 116 sightings in Workshop 13's images (the room's light) and 169 in 24 images of the
+varied rooms, each look taken from one image in the room's light: in the varied rooms 129 named (0 wrong, 40 not recognised: most in
+the dimmest, x0.47 15 of 15 dark) at 0.25; 157 (0 wrong) at 0.4; at 0.5 and over the car began to be taken for the bear or the duck.
+In the room's own light 107 of 116 at both, none wrong. Two other readings of brightness were measured and not kept: against the
+image's brightest surfaces (the highest-luminance anchor: 79 of 169) and against the floor's (68, 2 wrong).
+
+### A273. A known thing's look learns only from a sighting that could be it (2026-10-30 night, Workshop 20 again)
+
+Found re-teaching the bucket's name (Workshop 20 again, saving): "bucket" then predicted the ball at 0.84 (Workshop 22's drift), and
+under her hand on the bucket A271's correction ("her naming corrects its seeing") took the bucket, recognised as the bucket, for the
+ball the line named: ten times the bucket's look was taught as the ball's (the ball's hue 10 -> 72 deg, its width 0.15 -> 0.34 m), and
+its eyes on that "ball" credited "bucket" to the ball (0.84 -> 0.98). A wrong word had rewritten a right look, and the wrong look then
+confirmed the wrong word.
+
+Now (body/sim/seen.py `could_be`, `learn`) a known thing's look steps only toward a sighting that could be it, its appearance within
+RECOG_D of the blob's (a thing's first sighting is its look), and A271's correction applies only when the thing named could be the
+thing seen. A word tells which of the things it could be a thing is (words individuate the objects perception leaves open: Xu 2002); a
+familiar object called by another's name is taken as misnamed, its kind kept (Koenig and Echols 2003). The case A271 was made for
+still corrects: a half-relearned look that took the duck for the ball lies within reach of the duck's own. Measured on the saved eye
+images with the looks before the drift: right recognitions lie at a median gap of 0.38-0.46 (90 % under 0.54-0.80), every wrong one
+at 0.75 or more with the right look nearly as near.
+
+The layers below the brain were sent back to their state at the start of that run (the save after Workshop 23's last run,
+legs_backups/legs_state_593665.pt; the bad state kept as legs_state_593925.pt there); the brain's own 260 ticks of the run were kept.
+Re-run with A273, ten passes: "bucket" -> the bucket 0.01 -> 0.83, -> the ball 0.84 -> 0.14; every look within 9 deg of Workshop
+18's.
+
+### A274. A line's words corrected together: cue competition (2026-10-30 night)
+
+A264 credits a line's words once, after its last, each word stepping on its own toward the thing its eyes rest on. Each word on its
+own, every word of a request keeps the last thing asked for: after Workshop 23's rotation "go", "pick", "up" and "the" stood ~0.6
+toward the can (the last toy asked for), "put", "it" and "in" 0.85 toward the ball (a look then taken for the bucket's). Summed as the
+eye layer's pull sums them, "go pick up the cup" predicted the can 2.18, the cup 1.48; seven of eight pick-up requests and "put it in
+the bucket" named the wrong thing. During Workshop 23 the passes still went right (14 of 15) because the can was mostly out of its
+view; in a real room everything is.
+
+Now (body/sim/gaze_layer.py `credit`) the line's prediction is corrected whole (Rescorla and Wagner 1972): each thing's error is what
+the line's words together predicted of it, so a name already predicting its thing leaves the article and the verbs nothing to learn
+(blocking: Kamin 1969; children's word learning follows it: Ramscar, Dye and Klein 2013), and words predicting a thing in view that is
+not the one looked at lose it together. The line's last word, where her focus puts the name (Fernald and Mazzie 1991), learns at full
+salience, the others at half (UNFOCAL_SAL, ours). A word's tie to a thing is held at 0 or more: with ties below 0 each name came to
+cancel "go"'s tie to the drum it had glanced at and "go" itself stayed at 0.56. A line whose last word names another thing it knows
+(NAME_KEEP) is not credited at all when its eyes are on something else and her hand does not show it (mutual exclusivity: the line is
+about that thing); A264 skipped only the last word, and under one error the other words took the name's miss as their own.
+
+On the eye layer alone from the saved ties (scratchpad rwsim.py): one round of five pick-up requests and five "put it in the bucket",
+every thing in view, and every request names its own thing again; "put it in the bucket" the bucket 1.0, the ball 0.42 -> 0.07 a round
+later; the request's words 0.14 or less after one round, 0.03 after two; every name 0.9 or more (a name dips while the words with it
+over-predict its thing, and comes back). The A264 tests hold (a name learned alone in a few hearings; ten requests for the can keep its
+name; thirty over five toys, the glanced-at drum not learned, now "go" < 0.1 and "up" and "the" < 0.1 where they stood under 0.4).
+
+With ties held at 0, "the" or "in", heard with every thing, come to have ties all 0, which A270 read as a word never mapped: under her
+hand on a thing it does not recognise, "the" could have been taken as its name. A270's new word is now one never credited in any line
+(no ties at all in the eye layer); a word it has heard credited and that names nothing is a word it knows.
+
+### A275. The things it knows are here, in view or not, at a word's credit (2026-10-30 night, Workshop 24)
+
+A264's credit stepped a line's words away from the other things in its view only. In Workshop 13's room (every toy on the floor, the
+one asked for ahead) the can lies mostly out of its view: through Workshop 24's first round the request's words kept their ties to the
+can (left by A264, ~0.6) through every request for another toy, and lost them only at the can's own request, by over-prediction, which
+took the can's own name down with them (0.98 -> 0.52). Now (body/sim/world.py) the credit's other things are every thing it has seen
+in this scene, in its view now or remembered where it last saw it (the eye layer's targets): where a thing it looked away from is, it
+knows (object permanence: Baillargeon 1987), and children learn words for things out of sight (Tomasello and Barton 1994; Ganea 2005).
+A request for the cup now teaches its words that they do not name the can, wherever the can is. In use from Workshop 24's second
+round's duck run on (the block's run before it started 8 s before the change and may have loaded either).
+
+### A276. A line credited when it is over (2026-10-30 night, Workshop 24)
+
+A264 credits a line's words once its last word is CREDIT_LAG (6 ticks) old. A learned word is heard letter by letter and is whole
+only at its closing boundary (body/sim/word_forms.py): at the end of "put it in the bucket" the six letters of "bucket" and its
+boundary took 7 ticks after "the", so the line was credited as "put it in the" with "the" as its last, focal word (A274: "the" ->
+whatever its eyes rested on at full salience), and "bucket" alone a line later, its eyes by then off the bucket. In Workshop 24's
+saves "bucket" -> the bucket stood at 0.834 through every put line while "the" -> the bucket went 0 -> 0.2 in one. Now
+(body/sim/gaze_layer.py `_due`) a line's credit falls due once its last word is CREDIT_LAG old and no word is being heard (the line
+is over): a listener takes an utterance in to its end (Allopenna, Magnuson and Tanenhaus 1998). Short learned names (the can's three
+letters) fitted inside CREDIT_LAG; the bucket's did not. Test: test_a_long_word_at_the_end_of_a_line_is_credited_with_the_line.
+
+Found with it, in the room: Workshop 13's room (and so Workshops 23 and 24's) laid out FIND_WORDS, seven toys without the can, on six
+slots: the can was never on the floor when another toy was asked for, and the drum was left off when the can was. "All" is now every
+toy it knows, the can too, on seven slots (W13_OTHERS: a seventh at 8 deg, 2.5 m, beyond the others and 0.57 m from Workshop 24's
+bucket).
+
+### A277. Her hand on its walk teaches only toward the thing it is going to (2026-10-30 night, Workshop 24)
+
+Workshop 24's carry: her hand on its walk command steered it to the bucket, and each tick her turn taught its steering layer its turn
+per radian of its held goal's bearing (10-28), her pace its pace layer, her stop the goal's stopping place. Its eyes, drawn by "put it
+in" (still 0.85 toward the ball) and freed as it set off, held the ball as its goal while she steered it to the bucket: its steering's
+gain fell 0.36 -> 0.02 within the first round (then -0.04 to 0.01), the ball's stopping place went 0.30 -> 0.38 m, its cruise speed
+0.30 -> 0.28. Without its own steering, its pick-ups went wrong: it walked past a car 0.3 m to one side, stalled 5-6 cm short of its
+stops (pelvis 0.31-0.33 m from the toy against 0.24-0.28) and its reach fell short; in the third round 1 of 4 toys lifted.
+
+Now (tools/levels/workshop1.py) her hand on its walk teaches its pace, steering and stops only while its held goal is the thing she
+takes it to (the toy asked for; the container in a put), and in Workshop 24 her hand on its head keeps its eyes on the bucket through
+the carry, off as its put-down begins, as a parent keeps a child's attention on where they are going; learning a movement toward a goal
+needs the goal attended (as a word needs its referent attended: Baldwin 1991). The brain was sent back to brain_after_w23 (the
+Workshop 24 brain moved to the Trash) and Workshop 24 begun again with A273-A277.
+
+### A278. A step begins from a steady stance (2026-10-30 night, Workshop 24's test)
+
+Workshop 24's test (no hands): it picked up the cup, the duck and the car, and its own start of the walk to the bucket came by itself
+5-8 ticks after it stood up holding the thing. Each walk lunged forward on long catching steps (the cup's pelvis 0.72 m in 9 ticks under
+a walk command of 0.05-0.18) and fell, 3 of 3. Two experiments, dry: her hand bringing its holding arm in close (0.15 m ahead, 0.80 m
+high) changed nothing; its walk's start held 25 ticks after it stood up, the cup was carried to the bucket, its own stop there and its
+own start of the put-down came, and the cup went in (its own start of a put-down had never come in a chain before); without her hand on
+its arm, held so, the cup again went in and the car was carried without a fall. Read from its centre of mass: standing it moves
+0.00-0.03 m/s; standing after a pick-up it sways 0.06-0.41 m/s for 30 ticks and more; the three walks that fell began with it moving
+forward 0.26-0.33 m/s, the three that did not began moving back or slowly forward (-0.16 to +0.05; one at 0.21).
+
+Now (body/sim/world.py `steady`) a step may begin only when its centre of mass has not moved forward along its heading faster than
+STEADY_V (0.15 m/s) on each of the last STEADY_TICKS (2) ticks, its own start of a walk and her start alike (tools/levels/workshop1.py).
+Gait is initiated by anticipatory postural adjustments that set the centre of mass moving forward from a controlled start (Crenna and
+Frigo 1991; Winter 1995), not while the body already falls forward. A born condition of starting to walk; nothing written into the
+brain. And no lesson of its starts on a walk's start while no step could begin (her teaching, tools/levels/workshop1.py): Workshop 25's
+first run (stopped unsaved) taught "not here" at every tick its own start fired while the gate held it back unsteady, and its own
+start, which came in its first three passes, came in none after. A learner is not corrected on a trial where the act was impossible.
+Open: why its stance sways 0.2 m after a pick-up or a stop (standing at the start it does not), growing over 40 ticks at the can.
+
+### A279. Her grip in the carry teaches its held grip (2026-10-30 night, Workshop 25)
+
+Her hands teach a movement's program at its phase, toward her pose, at her share (10-28), but only while the pick-up or put-down runs.
+From Workshop 24 her hand held its fingers closed round the thing through the carry (squeezing past where they held it at most
+GRIP_LOAD of each pain line), and nothing of it was learned: the grip it carries with is its pick-up's last pose, held (A267), taught
+last in Workshops 11-13. In the test after Workshop 25 the car slipped from its fingers as it stood and the duck on the walk. Now
+(tools/levels/workshop1.py) each tick of the carry her grip teaches the running movement's held pose for that hand (its program at phase
+1, the pose it keeps), toward her grip, at her share (her grip's gap from its own, `compensate`), as her hands teach any movement: as
+its own grip closes to hers her share and the lesson fall away.
+
+### A280. Its stance taken up at a finite rate after a movement (2026-10-30 morning, Workshop 26)
+
+The tests since Workshop 24 counted 15 things let go of in the chain "go pick up the X, put it in the bucket" (no hands); in 10 of them
+the walk fell 2 ticks before the thing left its hand (the fall let it go: the "slips" of LEVELS were mostly falls), 5 were slips.
+An instrument (workshop1 `--dump-grip`: the thing in its palm, the links touching it and their push, each tick) showed the can's grip
+holding 43-50 N through the walk until it fell. The fall's cause, in the can's ticks: at the pick-up's end its legs and waist went from
+the movement's last command to the stance layer's in one tick (`d.ctrl = q + step` with the step the whole difference): the waist's
+yaw 0.37 rad (the reach's trunk turn, A243, still in the command), the knees 0.2. The trunk untwisted 21 degrees in 0.3 s with the toy
+held up, its weight ran 18 cm forward over its feet, and the walk to the bucket begun from that sway turned it in place and it fell
+backward (the can, 4 of 5 tests).
+
+Now (body/sim/world.py `stance_take_up`, STANCE_RATE 0.05 rad a tick, 0.33 rad/s): as a movement hands a limb back to the stance
+layer, the limb's referent starts at the movement's last command and moves toward the stance no faster than STANCE_RATE a joint a tick
+(the waist's 0.37 rad in 8 ticks). A posture is changed by shifting the referent configuration at a finite rate (Feldman, Adamovich,
+Ostry and Flanagan 1990; Feldman 2015): a return from a movement to stance is a movement too. The walk's stop still hands the legs to
+the stance at once: taken up slowly there too (tried first), the block's and the cup's pick-ups, learned from that stance, both missed.
+
+The tests with it (chain_after_a280b_*, one pass a toy, no hands): the cup the whole way by itself; the can carried to the bucket
+without falling at the walk's start (it overshot to 0.16 m and fell at the stop); the car carried, its walk crawling 0.38-0.42 m off;
+the block lifted and slipped as its walk began (a thumb-and-index pinch, no third finger on it, its push easing 50 -> 37 N as it stood,
+spun out at 8 rad/s by the first step); the duck's reach short (as before). The forward sway after a pick-up is smaller but there
+(its weight 0.19 m forward at its most in the can's pass, then back).
+
+### A281. The balance reflexes under the stance layer (2026-10-30 morning): tried, not kept
+
+Held standing, the stance layer's legs are on bare servos at its set point: A195's postural tone (8 times the servos' stiffness) and
+the ankles' vestibular push give way to it (`stand_own`), so the sway after a pick-up meets no balance response. Vestibulospinal
+reflexes act in every upright stance (Horak and Macpherson 1996). (a) The whole postural reflex about the layer's stance: its walk
+stopped 2-5 cm elsewhere and both pick-ups tried missed. (b) The ankles' vestibular push alone on the layer's stance: the can's pick-up
+fell into her catch (0.99 of the trunk), the squat begun from an ankle command the push had moved (a movement takes up its limbs from
+their last command, A240b). Every skill on top of the stance was learned on the bare servos; a change of the standing law moves them
+all, so not now.
+
+### A283. The cerebellum's held-thing module (2026-10-30, Workshop 26)
+
+Workshop 26's first rotation (the carry fault fixed, its own legs carrying at last: her share 0.15-0.36) put 12 of 20 in the bucket
+with no fall on a carry, and the test after it (no hands) none of five: the block, the duck and the can not picked up, the cup and
+the car fallen. At every stop before a pick-up its weight now stood 8-12 cm back of its feet (its support margin 0 to -3 cm, her catch
+holding 0.12-0.37 of the trunk as the squat began), where before it stood within 3 cm. The layers below the brain moved little (the
+stance layer not at all, the pace layer's stops but the bucket's); its leg layer's network moved, and with it put back as Workshop 25
+left it the stops still leaned back. The brain's life with Workshop 25's cerebellum (its 17 entries) and everything else as Workshop 26
+left it: both pick-ups tried lifted, its weight at the stop +1.5 to +2.2 cm, no catch, and the duck the whole way in by itself. The
+cerebellum's limb readout (`pc_w`, 4,096 x 29) had moved by 95% of its size in the 20 passes: its climbing fibres (the servos'
+corrective torque) taught it the torques of carrying a toy held up, and with nothing held it went on giving them.
+
+Its mossy fibres carry the hands' touch, but each granule unit sums four fibres of 150, mostly the joints' angles and speeds, so a toy
+in its hand moves the granule code little and the two contexts share their Purkinje synapses. The cerebellum keeps internal models
+apart by the context that selects them: separate modules for separate tools (Imamizu, Kuroda, Miyauchi, Yoshioka and Kawato 2003),
+each module's output and learning weighted by its responsibility, which contextual cues predict (MOSAIC: Wolpert and Kawato 1998;
+Haruno, Wolpert and Kawato 2001); a held object recalls its own motor memory (Gordon, Westling, Cole and Johansson 1993).
+
+Now (body/core/cerebellum.py `_sub_held`, body/core/world.py `SubFrame.held`, body/sim/world.py HELD_TAU): a second limb readout `pc_h`,
+born as a copy of `pc_w` at its first use (`h_born`); each sub-step the world hands the holding responsibility h (a thing in a hand by
+its fingers' touch, GRIP_HOLD_N, smoothed over HELD_TAU 0.2 s); the torque is the blend (1 - h) pc_w + h pc_h of this code's rows, and
+the leak, the climbing fibres' lesson and the bound are each module's by its share (h = 0: the law as before, exactly; h = 1: the held
+module's alone, pc_w untouched). An older save loads with `pc_h` born beside its organ (persistence's A227 rule, widened). Tests:
+test_cerebellum.py (17, the new `test_a_thing_held_has_its_own_module`). The brain was sent back to the save as Workshop 25 left it
+(the Workshop 26 brain in the Trash) and Workshop 26 begun again with this.
+
+(Found while testing it: body/tests/test_sim_world.py `test_dopamines_adaptive_coding` fails on the committed 0.211.3 as well; not
+this change's.)
+
+### A282. Its own reach teaches where it stops (2026-10-30, Workshop 27): tried, not kept
+
+Where it stops for a thing (the pace layer's `stops`, the held goal's distance from its pelvis) was taught only by her hand stopping
+its walk where her plan reached (Workshops 11-25), and its own reach is not her plan's: from its learned stop the block's reach came down
+~5 cm short (0.265 m off), the duck's short, and from its stops by the bucket its own put-down fell short of the rim (0.45-0.47 m). A
+toddler learns how near to stop for a thing by reaching for it: infants judge what is within reach from their own reaching (Yonas and
+Hartman 1993; Rochat, Goubet and Senders 1999), and a reach's distance judgement is recalibrated by its outcome (Bourgeois and Coello
+2012). Now (body/sim/world.py `_reach_taught`, body/sim/pace_layer.py `reached`): as its own movement's reach ends (A253's reach end: the
+phase its program's fingers begin to close, or its hand at its lowest for a movement that does not close it), the movement's own hand's
+miss of its held goal along its heading (+: the goal beyond the hand) moves the stopping place for that goal nearer by RATE_REACH (0.5)
+of it, at most REACH_STEP_MAX (4 cm) a reach, never nearer than STOP_MIN (0.15 m); her plan carried by her hands teaches nothing here
+(`own_movement`). Found on the way: the hook first took every hand with a reach's end, and the idle hand's 0.50 m "miss" moved the
+bucket's stop; now the movement's own hand alone ("_l" its left). The workshop records each reach (`reach_misses` in the pass's line).
+Tests: test_pace_layer.py `test_its_own_reach_moves_where_it_stops`.
+
+Tried in Workshop 27's first form (its own walks and stops, the toy at a place and a turn of its own each pass, 20 passes): 3 in the
+bucket; the cup never picked up (0 of 4). Its signal mixed errors a stop cannot mend. The cup's reach ended 7 cm past the cup at every
+place (its forward model's hand, A253, 7 cm off its real one for the cup turned anyhow), so its stop for the cup went 0.29 -> 0.32 -> 0.36
+-> 0.40 m and its reach then came down 36 cm short; a put-down lowers the thing over the near side of a container's mouth, never its
+middle, so every put-down read short (8-37 cm, in the bucket or not) and its stop for the bucket ran 0.378 -> 0.15 m (STOP_MIN) in
+seven reaches. A reach that went right teaches nothing about where to stop, and a miss is the stop's only when it is the distance's.
+Taken out (the brain sent back to the save as Workshop 26 left it, the Workshop 27 brain in the Trash); a later form would teach only a
+reach that failed, against the place a hand that succeeds is in (a container's mouth, a thing's grasp), not a thing's middle.
+
+
+### A284. A fall teaches the cerebellum's limbs little, lying nothing (2026-10-30, the owner's plan's first stage)
+
+Measured (an instrument on a side copy: each 10 ms sub-step's climbing-fibre teacher, the servos' corrective torque, against the joints'
+limits): in standing, walking, a squat and a lift the largest joint's error is at most about half its limit (99th percentile 0.55, the
+mean over the joints 0.08), no joint at its limit; in the can's fall at the bucket (ticks 216-219) the largest at its limit, the mean
+0.12-0.30, joints at their limits. A fall's lessons wrote the limbs' readout, and the next pass of a run began from it: the cup's second
+pass tipped forward standing before its walk (a run's three passes 0 of 3, 9 falls). A body's error relevance falls with the error's
+size: large errors are likely another cause's than the internal model's, and adaptation discounts them (Wei and Kording 2009; Marko,
+Haith, Harran and Shadmehr 2012).
+
+Now (body/core/cerebellum.py `_relevant`, physiology CEREB `cereb_err_rel`, body/core/world.py `SubFrame.down`, body/sim/world.py
+DOWN_UP): with `cereb_err_rel` above 0 each joint's lesson is its error scaled by 1 / (1 + (|e| / (cereb_err_rel x its limit))^2)
+(at 0.5: an error a tenth of the limit taught 99%, half the limit 50%, at the limit 20%), and while the body is down (its torso's up
+axis under DOWN_UP 0.4: tilted past 66 degrees, lying, falling, lifted from the floor; its deepest squat 0.58) no limb lesson at all.
+Off by default (`cereb_err_rel` 0: every body born before it, the infant on its mat as before); on in tools/live/nb2_config.sh's CFG
+(0.5). Test: test_cerebellum.py `test_a_fall_teaches_little_and_lying_nothing` (18 pass). The cup's three passes in one run with it: 3
+of 3 in the bucket by itself, no falls (0 of 3 and 9 falls before).
+
+### A285. A thing held, its grip kept by force (2026-10-30, the first stage)
+
+A hand's closing joints under a movement (A250) were commanded to at most GRIP_SET of their pain line past where they are, but never
+past the program's angle (`min(want, q + lim)`): as a thing slid into the hand and the fingers wrapped toward that angle their push fell
+to nothing. Workshop 26's second round after the block's teaching let five things go on the walk, none in a fall: the cup's push 28 -> 11
+N over 30 ticks, its thumb creeping 1.30 -> 1.46 rad, the can's 30 -> 20 N, A244's slip unseen (it fires on a sudden fall of the push,
+not a creep). Holding is force-regulated: through the hold the grip force is kept at a level for the load (Johansson and Westling 1984).
+Now (body/sim/world.py HELD_PRESS, GRIP_OPEN_EPS): while a hand holds a thing (A244's peak push past GRIP_HOLD_N), each closing joint its
+movement keeps closed (its angle no more than GRIP_OPEN_EPS 0.05 rad open of where the finger is) presses the set force past where it
+is, whatever the program's angle; a program opening the hand has its angles (the put-down lets go: the can's put-downs, its own and
+hers, went in). Dry Workshop 26 (seed 506): the can 2 of 2 in (dropped once in that round before); the cup's push held at 24-26 N and it
+still slid out of its thumb-and-index pinch as its walk began (a round thing pressed at its side squeezed out: more force is not the
+whole of a grip). Under test (on and off, 15 independent passes each).
+
+### A286. The grasp waits for the hand (2026-10-30, the first stage)
+
+As its own pick-up's reach ends where its fingers begin to close (A253's closing reach end), the movement's own hand is measured against
+the goal where its eyes hold it: farther than GRASP_TOL (2.5 cm), the movement's phase is held (the transport going on, the fingers not
+yet closing) while the homing, past the reach's end on the hand itself, carries the hand toward it, at most GRASP_WAIT_MAX (8) ticks and
+only while the miss shrinks by GRASP_GAIN_MIN (3 mm) a tick; a hand already holding (a put-down's) never waits. The grasp's closure is
+coupled to the transport's end: when the object's place changes in a reach the transport is corrected and the grip's closure waits
+(Paulignan, MacKenzie, Marteniuk and Jeannerod 1991; Jeannerod 1981). body/sim/world.py `_grasp_waits`; env GRASP_WAIT=0 off. With A287
+it waits as designed (the block's reach 7 cm off: 2 ticks, its miss no longer shrinking, its homing at its limit); without A287 it never
+did, the block "held" by a thumb's touch.
+
+### A287. A hold is the thumb against a finger (2026-10-30, the first stage)
+
+`_holding_hand` (its seeing places a held thing where the hand is, A265; its starts read "holding", A268; A286) took a hand as holding a
+thing once its fingers' zones were pressed past GRIP_HOLD_N, whichever digits: as the block's reach came down its thumb alone touched the
+block's side, the block was "held", its place jumped onto the hand 5 cm off the block (logged: its eyes' point for the block within 1 cm of
+the block until that tick, then the hand's every tick after), its homing saw no miss and its fingers closed beside it. A grip opposes the
+thumb to the fingers (Napier 1956). Now each step the thumb's push and the other fingers' push are read apart (`_oppose`, the less of
+the two) and a hand holds a thing only with both at OPPOSE_N (0.5 N) or more. Test: test_moves.py `test_a_hold_is_the_thumb_against_a_finger`.
+After it the block's place stays on the block through the grasp (within 1-1.5 cm). The block's reach still came down 5-6 cm aside: its
+re-teaching from her plan (Workshop 11) had stood it 0.215 m off (her stop at 0.30, its walk carrying on), where its own walk stops 0.27 m
+off: taught again from her stop at 0.355 (standing ~0.27).
+
+A286 in the test after A287 (chain1s_a287_*: 7 of 15): the block lifted 3 of 3 (its grasp never waited: its hand 1.4 cm from its
+middle), but every can pick-up waited (its hand 8.1-8.7 cm aside of the can's middle: the round grip wraps the can from its side, and
+lifted it 12 of 12 from there before) and its homing pushed the can away in 2 of 3. The hand's grasp point is not each grip's middle.
+A286 is OFF by default (env GRASP_WAIT=8 to try it); its reference would be each thing's own grasp, where its successful grasps leave
+the hand to it (a grasp's motor memory is the object's: Gordon, Westling, Cole and Johansson 1993).
+
+
+### A288. Its own arm in front of a thing: no whole sighting (2026-10-30 evening, the first stage)
+
+Its seeing (A265, body/sim/seen.py) takes a known thing's place from each tick's blob, and only from a whole sighting: a blob cut by the
+image's edge leaves the place as it was. A blob cut by its own hand in front of it did not: in the first stage's second test (seeds 5-7)
+the car was lifted 0 of 3. As the left hand came down over the car its fingers cut the car's blob to pieces (559 -> 189 -> 34 px over
+ticks 88-100: the colour camera's images, `--dump-eyes`, read again through `blobs`), the pieces' middle slid toward it, the eyes' point
+for the car 5-6 cm short of the car at ticks 90-92 before any finger touched it (on seeds 2-3, which lifted it, within 3 cm until the
+fingers closed), the reach homed there (A253) and came down 6-8 cm short, the thumb alone on the car's near end, the car pinched and lost
+on the way up. A thing partly hidden by a nearer one is seen whole behind it, where it was (amodal completion: Kanizsa 1979; at four
+months, Kellman and Spelke 1983), and its own arm in its view is known as its own from its posture (premotor neurons coding the arm's
+place by sight and by posture alike: Graziano 1999). Now each tick its forearms' and hands' drawn parts (the bodies from the elbow out,
+geom group 2) are laid on the colour camera's image from its pose (`own_depth`: each part's bounding sphere a disc, the image holding the
+nearest part's near side's distance), and a blob with a part nearer its eyes than the blob's middle within OCC_PAD (2 px) of its outline
+is `occluded`: no whole sighting, the thing's place, outline and look (A265's learning) kept from the last whole one. A thing in its hand
+is where its hand is as before (`hold`). Test: test_seen.py `test_a_thing_cut_by_its_own_hand_in_front_keeps_its_place` (a grey hand
+held over a car's far half: the pieces' middle off by more than 1 cm, the sighting occluded, the place kept; its own part beyond the car
+cuts nothing).
+
+### A289. The what pathway and what its words mean (2026-10-30 night, the language workshops)
+
+The owner (10-30 evening): "get it so understand laungauge in relation to there objects and relationship between object using
+laungague and visuals", with real photos and videos mixed with the sim's, its body frozen for speed. Its eyes reach the brain as an 8 x 8
+retina over the fovea through ten born filters (body/sim/eyes.py, `see`), and its seeing below the brain knew a thing by one colour
+patch (A265). That carried nine bright toys on a plain floor; it cannot take in a cup on a cluttered table. A child's visual cortex grows
+object-selective codes from experience (the ventral stream: Kanwisher 2010; in infants, Deen et al. 2017), its views of one thing bound
+by their nearness in time (Foldiak 1991; Wallis and Rolls 1997; in newborn chicks, Wood and Wood 2018), and the words heard of a thing
+draw things into kinds (Waxman and Markow 1995; Lupyan 2007); which word goes with what it sees is found across hearings, never told
+(cross-situational learning: Yu and Smith 2007; Smith and Yu 2008). body/sim/what.py, below the brain beside the eye layer:
+
+- THE FOVEA: the patch its eyes rest on, 64 px square in colour.
+- THE CODE: four convolution stages (born random), a projection, 128 numbers of unit length.
+- ITS WORDS: for every word heard, how likely the word is heard while its eyes rest on what the code shows (a sigmoid a word on the code);
+  a form heard 3 times is a word (word_forms' LEX_MIN) and the words grow without end. A word's lift for a code is that likelihood over
+  how often the word is heard at all: "look" and "a", said with everything, lift nothing. Naming is the concept that lifts most.
+- THE DAY AND THE NIGHT: each glance kept (the patch, the words heard, the thing it was if it was seen before); at night the day's glances
+  and the earlier days' (6,000) replayed in batches: every glance of one thing drawn together and every other pushed apart (a contrastive
+  rule, temperature 0.2, on two looks at each: its eyes a little off, the other side, another light), and each glance's code toward the
+  words heard with it. Sleep replays the day into the cortex (McClelland, McNaughton and O'Reilly 1995; Wilson and McNaughton 1994).
+
+Its state is its own file beside the brain (what.pt). Test: body/tests/test_what.py (red disks and blue squares, "look, a ball!" and
+"that's a block" in turns: words made at their third hearing, after five nights 9 in 10 named right, "look" and "a" naming neither). Not
+yet read by the eye layer or the starts: the language workshops teach it first (docs/LEVELS.md).

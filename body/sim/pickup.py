@@ -499,12 +499,12 @@ CARRY_AHEAD, CARRY_SIDE, CARRY_Z = 0.28, 0.08, 0.90                # m: standing
                                                                    # of its pain line as it rises, as the hip's was)
 
 
-def up_path(w, q_bottom, q_stand, hand=1, thing=None, n_lift=3, n_rise=8, iters=150):
+def up_path(w, q_bottom, q_stand, hand=1, thing=None, n_lift=3, n_rise=8, iters=150, carry=True):
     """THE WAY UP, HOLDING IT (10-28 batch 2: the way down reversed swung its arm back past its knees as it rose, the wrist pressed at
     its pain line in 4 of 30 passes): from the squat's last pose its hand raised LIFT straight up, its body still (n_lift steps); then
     to standing with the thing held up before its eyes (the standing pose `q_stand` with its hand at the carry point, palm down), the
     joints' blend each step set back over its feet with its arms clear (n_rise steps) -> (the poses' qpos, from the bottom's first;
-    each step's report)"""
+    each step's report). `carry` False (Workshop 19, its hand empty after putting the thing down): to `q_stand` itself"""
     m = w.m
     db = mujoco.MjData(m); db.qpos[:] = q_bottom; mujoco.mj_forward(m, db)
     gp0 = hand_point(w, db, hand)
@@ -519,8 +519,11 @@ def up_path(w, q_bottom, q_stand, hand=1, thing=None, n_lift=3, n_rise=8, iters=
     mid = 0.5 * (ds.xpos[feet[0]] + ds.xpos[feet[1]])
     fwd = 0.5 * (ds.xmat[feet[0]].reshape(3, 3)[:, 0] + ds.xmat[feet[1]].reshape(3, 3)[:, 0]); fwd[2] = 0.0; fwd /= np.linalg.norm(fwd)
     side = np.array([-fwd[1], fwd[0], 0.0]) * (1.0 if hand == 0 else -1.0)
-    carry = np.array([mid[0], mid[1], 0.0]) + CARRY_AHEAD * fwd + CARRY_SIDE * side + np.array([0.0, 0.0, CARRY_Z])
-    q_carry, rep_c = squat_reach(w, carry, hand=hand, iters=3 * iters, d0=ds, pose=q_stand, w_pose=1.0, w_palm=W_PALM, hand_first=True)
+    carry_ = np.array([mid[0], mid[1], 0.0]) + CARRY_AHEAD * fwd + CARRY_SIDE * side + np.array([0.0, 0.0, CARRY_Z])
+    if carry:
+        q_carry, rep_c = squat_reach(w, carry_, hand=hand, iters=3 * iters, d0=ds, pose=q_stand, w_pose=1.0, w_palm=W_PALM, hand_first=True)
+    else:
+        q_carry, rep_c = squat_reach(w, None, hand=hand, iters=iters, d0=ds, pose=q_stand)
     q_lift = path[-1]
     for i_ in range(1, int(n_rise) + 1):                             # (to standing, holding it before it)
         s_ = i_ / float(n_rise); s_ = s_ * s_ * (3.0 - 2.0 * s_)

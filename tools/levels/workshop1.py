@@ -40,9 +40,11 @@ line in OUT/workshop1/passes.jsonl.
     python3 tools/levels/workshop1.py --out DIR [--passes N] [--no-save] --cfg $CFG
 """
 import argparse
+import glob
 import json
 import math
 import os
+import pickle
 import shutil
 import signal
 import sys
@@ -335,6 +337,35 @@ HAND_HOLD_ROUND_R = (0.0, 0.0) + HAND_HOLD_R[2:]   # palm (HAND_HOLD_R's thumb_1
 HAND_HOLD_ROUND_L = tuple(-x_ for x_ in HAND_HOLD_ROUND_R)   # thumb stops and only presses; round the cup nothing stops it, and its base
                                 # swung 0.01 to 0.52 rad as the cup went up and the cup slid out, 2 of 6 lifted, dropped at the top)
 
+PUT_TEXT = "put it down"        # WORKSHOP 19 (10-30): HER LINE, its pick-up's thing held up before its eyes (the roadmap's verbs mapped to
+                                # movements, "put it down" the first)
+PUT_NAME = "put"                # its program's name in the movement layer (its right hand's put-down; its left hand's: PUT_NAME + "_l")
+T_PDOWN, T_PSETTLE, T_POPEN, T_PLIFT, T_PUP, T_PHOLD = 30, 6, 6, 6, 30, 3   # ticks: down with the thing to the floor, still there, its
+T_PUT = T_PDOWN + T_PSETTLE + T_POPEN + T_PLIFT + T_PUP + T_PHOLD           # hand opening, its empty hand lifted, up to standing, held
+                                # (the pick-up's way down and up at its pace; ours)
+T_PUT_WAIT = 3                  # ticks: after her line her hands begin the put-down (ours)
+T_PUT_TEST = 40                 # ticks: the test, no start of its own so long after her line: what it did is its answer (ours)
+T_PUT_AFTER = 8                 # ticks it stands after the put-down, the thing settling, before the pass ends (ours)
+PUT_AHEAD, PUT_SIDE = 0.27, 0.06   # m: her plan sets the thing down this far ahead of its feet's middle, to its hand's side: about where it
+                                # picks a thing up (Workshop 13: its pelvis stops 0.22-0.27 m before the thing; ours)
+PUT_DROP = 0.01                 # m: her plan's hand stops with the thing this far over the floor, then opens (ours)
+N_OWN_PUT = 20                  # shown this many times, she follows its own put-down (N_OWN's law; ours)
+VARY_LIGHT = (0.45, 1.6)        # --vary-room: the room's lights scaled by a factor drawn from this range each pass (ours)
+VARY_FLOOR = {"wood": (1.0, 1.0, 1.0), "grey": (0.72, 0.72, 0.72), "blue": (0.62, 0.72, 0.95), "dark": (0.5, 0.45, 0.42)}   # the floor's
+                                # texture tinted (MuJoCo's material colour times the oak texture; ours)
+THEN_AHEAD, THEN_SIDE = 1.0, -0.15   # --then-into: the container this far beyond the thing it picks up, along its way, and to its right (ours)
+THEN_ROOM, THEN_CLEAR = (2.1, 1.8), 0.45   # m: --then-far (Workshop 26): the container's middle within these of the room's middle (the room
+                                    # 2.6 x 2.3 each way), and its way there from its stop for the thing this far clear of every other toy (ours)
+BUMP_WATCH = 20                     # ticks: Workshop 28: a push's answer read this long after it (3 s; ours): a fall in it is the push's
+BUMP_SWAY = 8                       # ticks: its sway and its step read over the push's first this many, in the push's phase (1.2 s; ours)
+CHAIN_UP = 0.3                      # m: --then-into: the thing this far off the floor at the pick-up's end, she goes on to her next request
+STALL_NEAR, STALL_TICKS = 0.06, 8   # m, ticks: her stop of its walk to a container within STALL_NEAR of her place once it has come no nearer
+                                    # in STALL_TICKS (ours: Workshop 24's crawl stall 1 cm outside her place)
+PUT_LET_GO = 0.05               # m: put down, not dropped: the thing left its hand this near where it rests (10-30: a block slipping from a
+                                # fingertip pinch on the way down tumbled 0.75 m and read as put down; ours)
+PUT_INTO_TEXT = "put it in the {}"   # WORKSHOP 21: her line, a container on the floor where it puts things down (--into)
+INTO_CLEAR = 0.04               # m: her plan's way down brings the thing this far over the container's rim before it goes in (ours)
+
 
 def toy_rest_up(world, body):
     """how far over the floor a toy's origin lies when it rests upright (its lowest point's depth under its origin, at its pose now:
@@ -354,11 +385,16 @@ DESCRIBE_TEXT = "the {} is {}"   # WORKSHOP 14'S LINE once its eyes are on the t
 FIND_SLOTS = ((-30.0, 1.05), (-20.0, 1.35), (-10.0, 1.0), (0.0, 1.3), (10.0, 1.0), (20.0, 1.35), (30.0, 1.05))   # deg, m: the toys'
                                 # places on the floor from its start, an arc in its eyes' view (its field 88 deg across: A42), neighbours
                                 # 0.36 m apart; each pass the toys shuffled over them
+FIND_SLOTS_8 = ((-35.0, 1.05), (-25.0, 1.35), (-15.0, 1.0), (-5.0, 1.3), (5.0, 1.0), (15.0, 1.35), (25.0, 1.05), (35.0, 1.3))   # (eight
+                                # toys, Workshop 18 on: the arc widened by 10 deg, neighbours 0.32-0.46 m apart, the last 9 deg inside
+                                # its field's edge; 10-30, seven places left the can, the eighth toy, off the floor)
 PLACE_ANGLE, PLACE_RANGE, PLACE_CLEAR = 35.0, (0.9, 1.7), 0.3   # --pick-place random: deg either side of its way ahead (its eyes' image
                                                                # reaches 44), m away, m from each of the other toys' places (ours)
-W13_OTHERS = ((-40.0, 1.0), (-28.0, 1.5), (-18.0, 1.85), (18.0, 1.85), (28.0, 1.5), (40.0, 1.0))   # deg, m: WORKSHOP 13's other toys
-                                # from its start, the thing she names straight ahead at the pick task's distance: 0.7 m and more from it
-                                # and 0.6 m off its way there, all in its eyes' view as it stands
+W13_OTHERS = ((-40.0, 1.0), (-28.0, 1.5), (-18.0, 1.85), (18.0, 1.85), (28.0, 1.5), (40.0, 1.0), (8.0, 2.5))   # deg, m: WORKSHOP 13's
+                                # other toys from its start, the thing she names straight ahead at the pick task's distance: 0.7 m and more
+                                # from it and 0.6 m off its way there, all in its eyes' view as it stands. 10-30 night, the seventh (beyond,
+                                # 0.57 m from Workshop 24's bucket): with the can its eighth toy one was always left off the floor, the can
+                                # whenever another was asked for (the drum when the can was), never seen as another toy's name was learned
 T_TEST_STAND, T_TEST_STOP = 80, 40   # ticks: the test's pass over when it has not set off, or not begun a pick-up once stopped (ours)
 T_FIND = 12                     # ticks after her line its eyes have to go to the thing before her hand on its head turns them (ours:
                                 # a heard name pulls its eyes within 1-3 ticks once learned; 10-28 night, at 30 ticks the words held were
@@ -377,8 +413,9 @@ def toy_rest_up0(m, body):
 
 
 def toys_layout(names, start, rng):
-    """the toys `names` on FIND_SLOTS from `start` (x, y; facing +x), shuffled by `rng` -> {name: (x, y)}"""
-    slots_ = [FIND_SLOTS[i_] for i_ in rng.permutation(len(FIND_SLOTS))[:len(names)]]
+    """the toys `names` on FIND_SLOTS (FIND_SLOTS_8 for more than seven) from `start` (x, y; facing +x), shuffled by `rng` -> {name: (x, y)}"""
+    sl_ = FIND_SLOTS if len(names) <= len(FIND_SLOTS) else FIND_SLOTS_8
+    slots_ = [sl_[i_] for i_ in rng.permutation(len(sl_))[:len(names)]]
     return {n_: (float(start[0]) + d_ * math.cos(math.radians(a_)), float(start[1]) + d_ * math.sin(math.radians(a_))) for n_, (a_, d_) in zip(names, slots_)}
 
 
@@ -452,9 +489,10 @@ def main(argv=None):
     ap.add_argument("--t-walk-max", type=int, default=T_WALK_MAX, help="ticks: the most a pass walks")
     ap.add_argument("--look-ticks", type=int, default=0, help="ticks it stands looking before its own go can begin the walk (its go in "
                     "them kept: it sets off at their end)")
-    ap.add_argument("--task", choices=("walk", "name", "pick", "find"), default="walk", help="a pass's task: walk into the circle (Workshops 1 "
+    ap.add_argument("--task", choices=("walk", "name", "pick", "find", "put"), default="walk", help="a pass's task: walk into the circle (Workshops 1 "
                     "and 2), or stand still while she shows a thing and says its word, its own tries at the word after (the naming workshops), "
-                    "pick a thing up off the floor (11, 12), or find the thing she names among the toys it knows (12b)")
+                    "pick a thing up off the floor (11, 12), find the thing she names among the toys it knows (12b), or put down the thing "
+                    "it holds up (19)")
     ap.add_argument("--pick-turn", type=float, default=0.0, help="the pick task: the thing turned this far (deg, about the vertical) from "
                     "how it lies in the room (a test of a thing turned)")
     ap.add_argument("--pick-side", type=float, default=0.0, help="the pick task: she walks it up with the thing this far (m) to its left "
@@ -486,12 +524,48 @@ def main(argv=None):
                     "this far from the block")
     ap.add_argument("--rescore", action="store_true", help="the name task: its best try at the word heard afresh first (her reaction "
                     "changed since it was scored)")
+    ap.add_argument("--dump-grip", action="store_true", help="an instrument (10-30 morning, Workshop 26): each tick of a pass, its hand on the pass's thing (where the thing sits in its palm, the links touching it and their push, its fingers' angles and commands, its grip's raise) into the pass's grip.jsonl")
+    ap.add_argument("--dump-eyes", default="", help="an instrument (10-30, A265's design): ticks of a pass (comma-separated) at which its three cameras' images and poses are saved beside the frames (eyes_TICK.npz), with the toys' places for grading only")
     ap.add_argument("--pick-place", choices=("ahead", "random"), default="ahead", help="the pick task: the thing asked for straight ahead "
                     "at --pick-d (ahead), or each pass at a place and a turn of its own (random: PLACE_RANGE m away within PLACE_ANGLE deg "
                     "of its way ahead, PLACE_CLEAR from the other toys' places, turned any way; the test of finding it anywhere)")
     ap.add_argument("--rise-hers", action="store_true", help="the pick task, its own movement followed: from its lift's top on, her hands "
                     "bring its reaching arm up along her plan's way up to her carry point (pickup.up_path from its own pose there), and the "
                     "arm learns that way up; the rest, its grip and its lift too, followed as ever (Workshop 17)")
+    ap.add_argument("--save-end", default="", help="the pick task: a folder where each pass that picked its thing up keeps the moment its "
+                    "pick-up ended (the world's state, the hand, the thing: Workshop 19's starts)")
+    ap.add_argument("--start-states", default="", help="the put task: pick-ups' ends kept by --save-end (a glob), a pass starting from each "
+                    "in turn")
+    ap.add_argument("--put-text", default=PUT_TEXT, help="the put task: her line")
+    ap.add_argument("--vary-room", action="store_true", help="a test of its seeing in another room's light: each pass the room's lights "
+                    "scaled by a factor of its own (VARY_LIGHT) and the floor tinted one of VARY_FLOOR (10-30: its looks were learned "
+                    "under one light, on one floor)")
+    ap.add_argument("--into", default="", help="the put task: a container (a thing's name: the bucket) set on the floor where it puts things "
+                    "down, her line PUT_INTO_TEXT, her plan's hand over its middle (Workshop 21)")
+    ap.add_argument("--into-far", type=float, default=0.0, help="the put task with --into: the container this far (m) before its feet instead, "
+                    "walked to holding the thing (her hands, or its own starts, steering and pace: Workshop 22)")
+    ap.add_argument("--into-angle", type=float, default=0.0, help="the put task with --into-far: the container within this many degrees of its "
+                    "way ahead, a place of its own each pass")
+    ap.add_argument("--prompt-start", type=int, default=0, help="the pick task as a test (--no-hands): its own start of the pick-up not "
+                    "come this many ticks after it stood still at the thing, her hand starts it (the hand on the thing's side), and its starts "
+                    "learn from each tick it could begin (Workshop 23b: the start relearned, nothing else of hers)")
+    ap.add_argument("--then-into", default="", help="the pick task: once it stands holding the thing up, she says \"put it in the <thing>\" "
+                    "(a container set THEN_AHEAD beyond the thing it picks up), and the pass goes on as the put task's (Workshop 22's walk "
+                    "to it holding the thing, its put-down): the two requests in one pass (with --no-hands, the test of the whole)")
+    ap.add_argument("--then-hands", action="store_true", help="--then-into with --no-hands: in the put part her hand where Workshop 22's "
+                    "taught, its body its own: her hand on its walk command (steering it to the container, stopping it --then-stop-at "
+                    "off), her start of its walk and of its put-down when its own does not come T_PUT_WAIT after her line (its own "
+                    "first if it comes), her hand on its head turning its eyes to the container as she says the line (Workshop 24)")
+    ap.add_argument("--then-stop-at", type=float, default=0.38, help="m: --then-into: her stop of its walk to the container (Workshop 22's)")
+    ap.add_argument("--then-far", default="", help="--then-into (Workshop 26): the container 'min,max' m beyond the thing each pass, within "
+                    "--then-angle degrees of its way, clear of the other toys and of its way there (default: THEN_AHEAD on, THEN_SIDE right)")
+    ap.add_argument("--then-angle", type=float, default=0.0, help="--then-far: degrees either side of its way")
+    ap.add_argument("--bumps", default="", help="Workshop 28 (10-30 evening): a push on its trunk 'min,max' N (horizontal, at the torso's "
+                    "centre of mass, one tick, a direction at random), at random moments of --bump-phases, each read for BUMP_WATCH ticks after it")
+    ap.add_argument("--bump-phases", default="stand,stop,held,walk", help="--bumps: the phases a push may come in (stand, walk, stop, held, "
+                    "pick, put)")
+    ap.add_argument("--bump-gap", type=int, default=30, help="ticks: --bumps: the least between two pushes (the next one GAP-2 GAP after)")
+    ap.add_argument("--then-walk-max", type=int, default=80, help="ticks: --then-into: the most its walk to the container takes (Workshop 22's)")
     ap.add_argument("--eyes-at", choices=("all", "start", "walk"), default="all", help="her hand on its head the whole pass (all), or only "
                     "while it stands at the start (start: then its eyes are its own), or while it stands and walks, off as the pick-up "
                     "begins (walk: its eyes then anchored on the thing by the movement, A260)")
@@ -515,6 +589,8 @@ def main(argv=None):
                     "to find where two passes part)")
     ap.add_argument("--cfg", nargs="*", default=[], help="k=v overrides of the body's constants (NB2's: tools/live/nb2_config.sh)")
     args = ap.parse_args(argv)
+    args0_ = dict(stop_at=args.stop_at, t_walk_max=args.t_walk_max)   # (--then-into: the chain's part sets these; each pass begins, and is
+                                                                       # read, with them as given)
     if args.moves_from and not args.no_save:
         ap.error("--moves-from is for a dry run only (--no-save)")
     title = args.name.upper().replace("WORKSHOP", "WORKSHOP ")          # (its lines' name: "WORKSHOP 1")
@@ -584,7 +660,15 @@ def main(argv=None):
             print(f"   her description once its eyes are on the thing: {({w_: DESCRIBE_TEXT.format(w_, ' and '.join(desc_[w_])) for w_ in desc_clips_})}", flush=True)
         print(f"THE FIND TASK: {find_words_} on the floor, her line '{args.find_text}' ({find_ticks_} ticks of her voice); her hand on its "
               f"head {args.t_find} ticks after her line if its eyes are not on the thing; the pass {args.t_hold} ticks after they are", flush=True)
-    if args.task == "pick":                                           # THE PICK TASK: her words as she says them, and the pick-up's pose
+    if args.task == "put":                                            # (WORKSHOP 19: the pick-ups' ends it starts from; the pick task's
+        put_starts_ = []                                               # readings of its hand and the thing kept)
+        for f_ in sorted(glob.glob(args.start_states)):
+            with open(f_, "rb") as fh_:
+                put_starts_.append(dict(pickle.load(fh_), path=f_))
+        if not put_starts_:
+            raise SystemExit(f"--start-states {args.start_states}: no pick-up's end")
+        args.pick_toy = put_starts_[0]["toy"]
+    if args.task in ("pick", "put"):                                  # THE PICK TASK: her words as she says them, and the pick-up's pose
         from body.sim.voice.playback import Utterance as UTT_
         from body.sim import pickup as PU_
         pick_text_ = PICK_TEXT if args.pick_toy == PICK_TOY else f"go pick up the {args.pick_toy}"   # (her words for the pass's thing)
@@ -596,7 +680,8 @@ def main(argv=None):
             mujoco.mju_mulQuat(pick_quat_, np.array([math.cos(ht_), 0.0, 0.0, math.sin(ht_)]), q0t_)
         clip_ = lane.conduct.voice.clip(pick_text_); words_ticks_ = int(math.ceil(len(clip_.pcm) / 2400))
         args.word = args.pick_toy                                      # (its frames name the thing)
-        others_ = [n_ for n_ in (FIND_WORDS if args.toys == "all" else [t_ for t_ in args.toys.split(",") if t_.strip()]) if n_ != args.pick_toy]
+        others_ = [n_ for n_ in (FIND_WORDS + ("can",) if args.toys == "all" else [t_ for t_ in args.toys.split(",") if t_.strip()]) if n_ != args.pick_toy]
+        # (10-30 night: "all" is every toy it knows, the can too, Workshop 16's: until then the can never lay in the room as another was asked for)
         blk_body_ = world.m.body("toy_" + args.pick_toy).id
         rest_up_ = toy_rest_up(world, blk_body_)                       # (the thing's middle this far over the floor at rest)
         bnames_ = [world.m.body(i_).name for i_ in range(world.m.nbody)]
@@ -616,6 +701,20 @@ def main(argv=None):
         print(f"THE PICK TASK: '{pick_text_}' ({words_ticks_} ticks of her voice); the {args.pick_toy} {args.pick_d} m ahead; stopped "
               f"its walk eased to a stop {args.stop_at} m off; down {T_DOWN}, still {T_SETTLE}, grip {T_GRIP}, lift {T_LIFT}, up {T_UP}, hold {T_HOLD} ticks: the movement "
               f"'{MOVE_NAME}' {T_PICK} ticks", flush=True)
+    if args.then_into:                                                # (the chain: the put task's line and container)
+        args.into = args.then_into; put_starts_ = []
+    if args.task == "put" or args.then_into:                          # THE PUT TASK (Workshop 19): her line as she says it
+        from body.sim.lang import lexicon as LXP_
+        from body.sim import extras as EXB_
+        if args.into and args.put_text == PUT_TEXT:
+            args.put_text = PUT_INTO_TEXT.format(args.into)         # (Workshop 21: "put it in the bucket")
+        put_clip_ = lane.conduct.voice.clip(args.put_text)
+        put_ticks_ = max(int(math.ceil(len(put_clip_.pcm) / 2400)), sum(len(LXP_.symbols_for(w2_)) for w2_ in args.put_text.split()))
+        into_body_ = world.m.body("toy_" + args.into).id if args.into else None
+        her_put_squat_ = {}                                            # (the bottom she showed last, each hand's)
+        print(f"THE PUT TASK: '{args.put_text}' ({put_ticks_} ticks of her voice); {len(put_starts_)} pick-ups' ends "
+              f"{[os.path.basename(s_['path']) for s_ in put_starts_]}; her hands begin {T_PUT_WAIT} ticks after her line: down {T_PDOWN}, "
+              f"still {T_PSETTLE}, open {T_POPEN}, lift {T_PLIFT}, up {T_PUP}, hold {T_PHOLD} ticks: the movement '{PUT_NAME}' {T_PUT} ticks", flush=True)
                                                                        # (DT.build turns the life's walk and reach hands off: the reach
                                                                        # stays off, the walk's is hers, `HerPace`)
     world.grasp_whole = bool(int(os.environ.get("P8_GRASP_WHOLE", "0")))
@@ -661,8 +760,10 @@ def main(argv=None):
             world.word_forms.load_state(st_["word_forms"])             # (A254: the words it learned, the same)
         if st_.get("concepts") is not None:
             world.concepts.load_state(st_["concepts"])                 # (A255: what it heard of each thing, the same)
+        if st_.get("seen") is not None:
+            world.seen.load_state(st_["seen"])                         # (A265: how each thing it knows looks, the same)
         legs_kept = {k_: v_ for k_, v_ in st_.items() if k_ not in ("legs", "arms", "stand", "eyes", "pace", "steer", "voice", "moves", "starts",
-                                                                    "word_forms", "concepts")}   # (its life's teacher shares: as they came)
+                                                                    "word_forms", "concepts", "seen")}   # (its life's teacher shares: as they came)
     if args.moves_from:                                                # (troubleshooting, a dry run: its movement layer as a pass left it)
         world.moves.load_state(json.load(open(args.moves_from)))
         print(f"   its movement layer read from {args.moves_from}: {({n_: p_['runs'] for n_, p_ in world.moves.programs.items()})} runs", flush=True)
@@ -689,7 +790,7 @@ def main(argv=None):
         """the leg layer saved beside the brain (atomic), and its dated copy (the newest LEGS_KEEP kept)"""
         if args.no_save or getattr(world, "legs", None) is None:
             return
-        torch.save(dict(legs=world.legs.state(), arms=world.arms.state(), stand=world.stand.state(), eyes=world.eye_layer.state(), pace=world.pace.state(), steer=world.steer.state(), voice=world.voice.state(), moves=world.moves.state(), starts=world.starts.state(), word_forms=world.word_forms.state(), concepts=world.concepts.state(), **legs_kept),
+        torch.save(dict(legs=world.legs.state(), arms=world.arms.state(), stand=world.stand.state(), eyes=world.eye_layer.state(), pace=world.pace.state(), steer=world.steer.state(), voice=world.voice.state(), moves=world.moves.state(), starts=world.starts.state(), word_forms=world.word_forms.state(), concepts=world.concepts.state(), seen=world.seen.state(), **legs_kept),
                    legs_p + ".tmp")
         os.replace(legs_p + ".tmp", legs_p)
         bk_ = os.path.join(args.brain, "legs_backups"); os.makedirs(bk_, exist_ok=True)
@@ -821,7 +922,7 @@ def main(argv=None):
     def thing_point():
         """the pass's thing where it is now: the pick task's toy, its middle (10-29 evening: read at the floor point where it lay, its
         gaze on the toy in its hand read as 10-30 deg off it); else the circle's centre, or the toy's place on the floor"""
-        if args.task == "pick":
+        if args.task in ("pick", "put"):
             return np.asarray(d.xipos[m.body("toy_" + args.pick_toy).id], float)
         cx_, cy_ = V["centre"]
         return np.array([cx_, cy_, floor_top])
@@ -923,13 +1024,13 @@ def main(argv=None):
                                                                        # at her share of its lean (a movement's: its lean off the pose's own,
                                                                        # 10-28: a squat's 55-60 deg read as a fall, her righting whole)
             c_r_ = 1.0 if (tol <= 0 or V.get("whole")) else min(1.0, max(0.0, (tilt_ - LEAN_OWN) / (LEAN_CATCH - LEAN_OWN)))   # her share: none
-            if V.get("phase") == "pick" and not V.get("whole") and tol > 0:   # (the pick-up, her plan's or its own: her catch by its weight at
+            if V.get("phase") in ("pick", "put") and not V.get("whole") and tol > 0:   # (the pick-up, her plan's or its own: her catch by its weight at
                 c_r_ = min(1.0, max(0.0, (MARGIN_CATCH - w.support_margin()) / (MARGIN_CATCH - MARGIN_OUT)))   # its feet's edge: its trunk's lean its own)
             gh.right_floor = c_r_; V["c_trunk"].append(c_r_)           # within the lean it walks with alone, whole at LEAN_CATCH (its heading
                                                                        # steered by her hand on its walk command, `HerPace`)
             if gh.holds_pose():                                        # HER HOLD ON ITS STANDING BY THE GAP: the hold's lift and lead and
                 gh.s = 1.0 if V.get("whole") else max(V["c_stand"], c_r_)   # righting at her share of its stand (or of its lean, the more)
-                if V.get("phase") == "pick" and not V.get("whole"):   # (A240, 10-28: in the pick-up her hold is her catch alone: her hands
+                if V.get("phase") in ("pick", "put") and not V.get("whole"):   # (A240, 10-28: in the pick-up her hold is her catch alone: her hands
                     gh.s = c_r_                                        # move its joints, its own tone, equilibrium reaction and cerebellum
                                                                        # bear and balance it; her lift and lead had carried and balanced her
                                                                        # squat, which it could not copy: with them off it fell 8 of 8)
@@ -998,7 +1099,7 @@ def main(argv=None):
                 V["legs_href"] = ref_.copy(); V["sag"] = sag_
             cs_ = 1.0 if (tol <= 0 or V.get("whole")) else (0.0 if "stand" in let_go else V["c_stand"])
             tl_ = V["own_legs"] + cs_ * (ref_ - V["own_legs"])
-            if V.get("phase") in ("stop", "pick"):                    # (her hands' push on its legs and waist, the pick task: no harder
+            if V.get("phase") in ("stop", "pick", "held", "put", "after"):   # (her hands' push on its legs and waist, the pick task: no harder
                 tl_ = (np.clip(tl_, *legs_ends) if w.move_tone_on()   # than HER_LOAD of a joint's pain line. A240: in a movement she moves
                        else her_gentle(w.d.qpos[legs_qadr], V["own_legs"], tl_, legs_gentle, *legs_ends))   # its commanded pose, short of its
                                                                        # range's ends, its own tone carrying it out under the tendon organ's
@@ -1017,8 +1118,19 @@ def main(argv=None):
             V["eff"].setdefault(ar_, [0.0, 0.0])
             V["eff"][ar_][0] += float(np.abs(kp2_ * (V["arm_tgt"][ix2_] - V["own_arm"][ix2_])).sum())
             V["eff"][ar_][1] += float(np.abs(kp2_ * (V["own_arm"][ix2_] - w.d.qpos[held_qadr[ix2_]]) - kv2_ * w.d.qvel[held_dof[ix2_]]).sum())
+        if V["hold"] and args.no_hands and V.get("carry_grip") is not None:   # (WORKSHOP 24: HER HAND ROUND ITS FINGERS AS IT CARRIES THE
+            hn3_ = V["side"]["hand"]; ix3_ = parts[hn3_]               # THING, from its standing up holding it to its put-down: where its own
+            g3_, sg3_ = V["carry_grip"]; own3_ = V["own_arm"][ix3_]    # close less than hers, hers, at most GRIP_LOAD of each finger's pain
+            t3_ = np.where(sg3_ > 0, np.maximum(own3_, g3_), np.where(sg3_ < 0, np.minimum(own3_, g3_), own3_))   # line past where they
+            t3_ = np.clip(t3_, held_ends[0][ix3_], held_ends[1][ix3_])  # held it then; its arm and the rest its own. 10-30 night: its own
+            _, c3_, _ = compensate(own3_, t3_, tol) if tol > 0 else (t3_, 1.0, 0.0)
+            V["carry_teach"] = (hn3_, t3_.copy(), float(c3_))          # (her grip's pose and her share, for its held pose's lesson)
+            if w.arm_tone_on(hn3_):                                    # fingertip pinch let the block and the car go on its first steps)
+                w.move_ref[held_aid[ix3_]] = t3_
+            else:
+                w.d.ctrl[held_aid[ix3_]] = t3_
         if V["hold"] and not (args.no_hands and not V.get("whole")):   # (the test: her hands off its arms and hands)
-            ht_ = V["arm_tgt"] if V.get("phase") not in ("stop", "pick") else her_gentle(w.d.qpos[held_qadr], V["own_arm"], V["arm_tgt"], held_gentle, *held_ends)
+            ht_ = V["arm_tgt"] if V.get("phase") not in ("stop", "pick", "held", "put", "after") else her_gentle(w.d.qpos[held_qadr], V["own_arm"], V["arm_tgt"], held_gentle, *held_ends)
             for nm2_ in ("arm_l", "arm_r"):                            # (A240: an arm its referent tone holds: her hands move its commanded
                 if nm2_ in parts and w.arm_tone_on(nm2_):              # pose short of its range's ends, its tone carrying it out under the
                     ix2_ = parts[nm2_]                                 # tendon organ's cap, its servo's target the tone's)
@@ -1041,12 +1153,19 @@ def main(argv=None):
                 alll_ = float(np.abs(kpl_ * (ownl_ - w.d.qpos[gh.e_qadr]) - kvl_ * w.d.qvel[gh.e_dof]).sum()
                               + np.abs(kpw_ * (ownw_ - w.d.qpos[gh.w_qadr]) - kvw_ * w.d.qvel[gh.w_dof]).sum())
                 V["eff"].setdefault("legs", [0.0, 0.0]); V["eff"]["legs"][0] += herl_; V["eff"]["legs"][1] += alll_
+        elif V.get("carry_legs") and gh.walk and gh.use_expert and gh.ticks > GH.LIFT_TICKS:   # (WORKSHOP 26, 10-30: HER HANDS ON ITS LEGS IN
+            ownl_ = np.clip(gh.s_target, gh.e_lo, gh.e_hi); refl_ = np.clip(gh.e_target, gh.e_lo, gh.e_hi)   # THE CARRY BY THE GAP, as in any
+            ownw_ = np.clip(gh.w_target, gh.w_lo, gh.w_hi)                                                   # walk of hers: the leg layer's gap
+            V["gap_legs"].append(float(np.mean(np.concatenate([(refl_ - ownl_) ** 2, ownw_ ** 2]))))         # from the gait. Workshops 24-26
+                                                                       # measured it only under her whole hands, so in the carry her share
+                                                                       # stayed 1.0: the gait walked it every step, its own legs never carried
+                                                                       # a thing, and its carrying walks in the tests ran forward and fell)
         if V.get("dbg") is not None and len(V["dbg"]["q"]) < int(args.debug_steps):
             dd_ = V["dbg"]; dd_["q"].append(w.d.qpos.copy()); dd_["v"].append(w.d.qvel.copy()); dd_["c"].append(w.d.ctrl.copy())
             dd_["f"].append(w.d.qfrc_applied.copy()); dd_["x"].append(w.d.xfrc_applied.copy()); dd_["w"].append(w.d.qacc_warmstart.copy())
             dd_["b"].append(w.m.actuator_biasprm[:, :3].copy()); dd_["g"].append(w.m.actuator_gainprm[:, :1].copy()); dd_["gp"].append(w.m.geom_pos.copy())
         if V["capturing"]:
-            if V.get("phase") == "walk" and V.get("arrive_sp") is None and V.get("centre") is not None:   # THERE, READ AT EVERY PHYSICS
+            if V.get("phase") == "walk" and V.get("arrive_sp") is None and V.get("centre") is not None and args.task != "put" and not V.get("chain_picked"):   # THERE, READ AT EVERY PHYSICS
                 sp2_ = [sole_points(w.m, w.d, b_) for b_ in feet]          # STEP: EACH FOOT SET DOWN INSIDE THE CIRCLE (by its own edge),
                 for i2_, s2_ in enumerate(sp2_):                           # the two not always at once: it walks through it, its pass ending
                     if in_circle(s2_, V["centre"])[0] and min(q_[2] for q_ in s2_) - floor_top < FOOT_DOWN:   # without a stop (10-28: read
@@ -1083,7 +1202,7 @@ def main(argv=None):
             if legs_keep_ is not None:
                 world.legs.load_state(legs_keep_)
             world.moves.load_state(moves_keep_)
-            world.arms.load_state(arms_keep_); world.stand.load_state(stand_keep_); world.eye_layer.load_state(eyes_keep_); world.pace.load_state(pace_keep_); world.steer.load_state(steer_keep_)   # (the layers'
+            world.arms.load_state(arms_keep_); world.stand.load_state(stand_keep_); world.eye_layer.load_state(eyes_keep_); world.pace.load_state(pace_keep_); world.steer.load_state(steer_keep_); world.seen.forget()   # (the layers'
                                                                        # learning kept too)
             mujoco.mj_forward(m, d)
 
@@ -1095,6 +1214,8 @@ def main(argv=None):
     for p_ in range(int(args.passes)):
         if stop_now[0]:
             break
+        for k9_, v9_ in args0_.items():
+            setattr(args, k9_, v9_)
         if int(L.sleep_pressure) + bedtime >= wake_:                  # ITS NIGHT NEAR: no pass begins; it stands, held, until it has slept
             n0_, t0_ = int(L.nights), time.time()                     # (the brain saves itself at the night's end)
             stand_at_start()
@@ -1185,12 +1306,41 @@ def main(argv=None):
             if args.no_hands:                                          # (the test: its eyes ahead on the floor, its own; her hand off its head)
                 world.gaze = W.clamp_gaze(E.gaze_at(m, d, np.array([START[0] + 1.15, START[1], floor_top])))
                 her_gaze.target = None
+            if args.then_into:                                         # (the chain: the container beyond the thing, held there until used)
+                into_at_ = np.array([float(blk_[0]) + THEN_AHEAD, float(blk_[1]) + THEN_SIDE, floor_top + toy_rest_up0(m, into_body_)])
+                if args.then_far:                                      # (WORKSHOP 26: farther off and to a side each pass, a carry of its
+                    f6_ = [float(x_) for x_ in str(args.then_far).split(",")]   # own length and turn: placed in the room, clear of every other
+                    rng6_ = np.random.default_rng([args.seed, 2626, p_])        # toy and of its way there from where it stops for the thing)
+                    u6_ = np.array([float(blk_[0]) - START[0], float(blk_[1]) - START[1]]); u6_ /= float(np.linalg.norm(u6_))   # (its way
+                    st6_ = np.array([float(blk_[0]), float(blk_[1])]) - 0.27 * u6_                                           # to the thing)
+                    oth6_ = [np.asarray(v_[:2], float) for v_ in (V.get("others") or {}).values()]
+                    for _ in range(500):
+                        d6_ = float(rng6_.uniform(f6_[0], f6_[-1])); a6_ = math.radians(float(rng6_.uniform(-1.0, 1.0)) * float(args.then_angle))
+                        c6_ = np.array([float(blk_[0]), float(blk_[1])]) + d6_ * np.array([math.cos(a6_) * u6_[0] - math.sin(a6_) * u6_[1],
+                                                                                            math.sin(a6_) * u6_[0] + math.cos(a6_) * u6_[1]])
+                        sg6_ = c6_ - st6_; L6_ = float(np.linalg.norm(sg6_))
+                        way6_ = min((float(np.linalg.norm(o_ - (st6_ + sg6_ * float(np.clip((o_ - st6_) @ sg6_ / (L6_ * L6_), 0.0, 1.0)))))
+                                     for o_ in oth6_), default=9.0)
+                        if abs(c6_[0]) <= THEN_ROOM[0] and abs(c6_[1]) <= THEN_ROOM[1] and way6_ >= THEN_CLEAR:
+                            into_at_[:2] = c6_
+                            break
+                    V["then_at"] = [rnd(d6_, 2), rnd(math.degrees(a6_), 1)]
+                into_q_ = np.array([1.0, 0.0, 0.0, 0.0])
+                world.pin_toy(args.into, into_at_, quat=into_q_, ticks=2)
             pick_fk_ = mujoco.MjData(m)                                # (a scratch body: the reference's own pose read for her hold)
             cmd_fk_ = mujoco.MjData(m)                                 # (and one for where its own arm's targets and hers put its hand)
             grip_kp_ = m.actuator_gainprm[held_aid[parts["hand_r"]], 0]   # (its right hand's servos and their pain lines: her grip)
             grip_line_ = np.asarray(world.tau_hold, float)[world.eff_slices["hand_r"]]
             grip_load_ = np.array([GRIP_LOAD if "thumb" in j3_ else GRIP_LOAD_FINGER for j3_ in dict(G1S.EFFECTORS)["hand_r"]])   # (balanced:
                                                                        # its two fingers no stronger together than its thumb)
+        V["room"] = None; V["chain_picked"] = None; V["carry_grip"] = None; V["carry_teach"] = None; V["goal_at_pick"] = None; V["prompted"] = None
+        if args.vary_room:                                             # (a test in another room's light: its lights scaled, its floor tinted)
+            rngr_ = np.random.default_rng([args.seed, 3131, p_])
+            lf_ = float(rngr_.uniform(*VARY_LIGHT)); fl_ = list(VARY_FLOOR)[int(rngr_.integers(len(VARY_FLOOR)))]
+            for fld_, v_ in world.light_day.items():
+                getattr(m, fld_)[...] = np.asarray(v_) * lf_
+            m.mat_rgba[m.material("floor").id, :3] = VARY_FLOOR[fl_]
+            V["room"] = dict(light=rnd(lf_, 2), floor=fl_)
         mujoco.mj_forward(m, d)
         V.update(hold=True, capturing=True, step=0, i=0, k=0, phase="stand", pass_dir=pd_, centre=(cx_, cy_), arrive_sp=None, stepped=[False, False], **{"pass": p_})
         V["side"] = pick_side(1)                                       # (its reaching hand: the right until the pick-up's start chooses)
@@ -1199,14 +1349,65 @@ def main(argv=None):
                                                                        # her hand's fix on its arm, none yet; no movement yet)
         V.update(comp={}, eff={}, gap_legs=[], c_legs=1.0, tick_first=True, own_arm=held_q0.copy(), arm_tgt=held_q0.copy(), c_ticks=[],
                  cb_sum=[0.0, 0.0, 0], c_trunk=[], c_stand=1.0, gap_stand=[], legs_w=None, whole=False)
+        if args.task == "put":                                        # WORKSHOP 19, THE PUT TASK: a pick-up of its own as it ended, the thing
+            st_ = put_starts_[p_ % len(put_starts_)]                   # held up before its eyes (--start-states, in turn): that moment's world,
+            keep9_ = dict(legs=world.legs.state() if getattr(world, "legs", None) is not None else None, arms=world.arms.state(),   # the layers'
+                          stand=world.stand.state(), eyes=world.eye_layer.state(), pace=world.pace.state(), steer=world.steer.state(),   # learning
+                          moves=world.moves.state())                   # kept (stand_at_start's way)
+            world.load_state(st_["state"])
+            if keep9_["legs"] is not None:
+                world.legs.load_state(keep9_["legs"])
+            world.arms.load_state(keep9_["arms"]); world.stand.load_state(keep9_["stand"]); world.eye_layer.load_state(keep9_["eyes"])
+            world.pace.load_state(keep9_["pace"]); world.steer.load_state(keep9_["steer"]); world.moves.load_state(keep9_["moves"])
+            world.seen.forget(); world.goal.clear()
+            if world.moves.known(st_["move"]):                         # (its pick-up's last pose held: moves.held)
+                world.moves.running = dict(name=st_["move"], k=int(st_["T"]), T=int(st_["T"]), held=True)
+            world._held_name = st_["toy"]                              # (the thing in its hand: the one it picked up)
+            mujoco.mj_forward(m, d)
+            args.pick_toy = args.word = st_["toy"]; blk_body_ = m.body("toy_" + st_["toy"]).id; rest_up_ = toy_rest_up0(m, blk_body_)
+            cx_, cy_ = float(d.xpos[blk_body_][0]), float(d.xpos[blk_body_][1])
+            d.mocap_pos[circle_mid] = [cx_, cy_, -1.0]
+            her_gaze.target = None
+            V["centre"] = (cx_, cy_)
+            V["side"] = dict(pick_side(int(st_["side_h"]), st_["toy"]), move=PUT_NAME + ("_l" if int(st_["side_h"]) == 0 else ""))
+            if args.then_hands:                                        # (WORKSHOP 25: her grip on its fingers as it carries the thing, as in
+                hq3_ = d.qpos[held_qadr[parts[V["side"]["hand"]]]].copy()   # Workshop 24's carry)
+                op3_, cl3_ = np.asarray(V["side"]["open"], float), np.asarray(V["side"]["hold"], float); sg3_ = np.sign(cl3_ - op3_)
+                gk3_ = m.actuator_gainprm[held_aid[parts[V["side"]["hand"]]], 0]
+                gl3_ = np.asarray(world.tau_hold, float)[world.eff_slices[V["side"]["hand"]]]
+                ld3_ = np.array([GRIP_LOAD if "thumb" in j3_ else GRIP_LOAD_FINGER for j3_ in dict(G1S.EFFECTORS)[V["side"]["hand"]]])
+                V["carry_grip"] = (hq3_ + sg3_ * ld3_ * gl3_ / gk3_, sg3_)
+            V["put"] = dict(toy=st_["toy"], start=os.path.basename(st_["path"]), k_line=None, k_end=None, k0=None, own=None, own_move=None,
+                            her=None, go=None, q_rest=np.asarray(st_["q_rest"], float), follow=False, end=None)
+            V.update(phase="held", follow=True, ref_legs=d.qpos[legs_qadr].copy(), ref_arm=None, ref_q=d.qpos.copy(), grip=None, hand_miss=None,
+                     feet0=world.feet_middle()[:2].copy())
+            if into_body_ is not None:                                 # (WORKSHOP 21: the container on the floor where it puts things down,
+                Rp8_ = d.xmat[world.pelvis_id].reshape(3, 3)            # PUT_AHEAD before its feet's middle, PUT_SIDE to its hand's side,
+                fw8_ = np.array([float(Rp8_[0, 0]), float(Rp8_[1, 0]), 0.0]); fw8_ /= float(np.linalg.norm(fw8_))   # square to its way)
+                sd8_ = np.array([-fw8_[1], fw8_[0], 0.0]) * (1.0 if int(st_["side_h"]) == 0 else -1.0)
+                mid8_ = world.feet_middle(); c8_ = np.array([float(mid8_[0]), float(mid8_[1]), 0.0]) + PUT_AHEAD * fw8_ + PUT_SIDE * sd8_
+                if float(args.into_far) > 0.0:                         # (WORKSHOP 22: farther off, walked to holding the thing)
+                    a8_ = math.radians(float(np.random.default_rng([args.seed, 2222, p_]).uniform(-1.0, 1.0)) * float(args.into_angle))
+                    w8_ = np.array([math.cos(a8_) * fw8_[0] - math.sin(a8_) * fw8_[1], math.sin(a8_) * fw8_[0] + math.cos(a8_) * fw8_[1], 0.0])
+                    c8_ = np.array([float(mid8_[0]), float(mid8_[1]), 0.0]) + float(args.into_far) * w8_
+                yaw8_ = math.atan2(float(fw8_[1]), float(fw8_[0]))
+                into_at_ = np.array([float(c8_[0]), float(c8_[1]), floor_top + toy_rest_up0(m, into_body_)])
+                into_q_ = np.array([math.cos(yaw8_ / 2.0), 0.0, 0.0, math.sin(yaw8_ / 2.0)])
+                world.pin_toy(args.into, into_at_, quat=into_q_, ticks=2)
+                mujoco.mj_forward(m, d)
+                V["put"]["into"] = [rnd(float(x_), 3) for x_ in into_at_]
+            gh.z_ref = None; gh.up_ref = None; gh.squatting = False
+            pick_fk_ = mujoco.MjData(m); cmd_fk_ = mujoco.MjData(m)
+            grip_kp_ = m.actuator_gainprm[held_aid[parts[V["side"]["hand"]]], 0]
+            grip_line_ = np.asarray(world.tau_hold, float)[world.eff_slices[V["side"]["hand"]]]
         agree = {nm_: [0, 0, 0] for nm_ in HELD}                        # (its own act the harness's, its own act a rest, ticks)
         comp_pass = {nm_: [] for nm_ in HELD + ("legs", "walk", "stand", "trunk", "gaze")}
-        own_go = {ph2_: [0, 0] for ph2_ in ("stand", "walk", "stop", "pick")}  # its own walk act a go, by phase (ticks)
+        own_go = {ph2_: [0, 0] for ph2_ in ("stand", "walk", "stop", "pick", "held", "put", "after")}  # its own walk act a go, by phase (ticks)
         arm_err_ = []                                                  # the arm layer's gap from her pose at each lesson (RMS, rad)
         stand_err_ = []                                                # the stance layer's, the same
         move_err_ = []                                                 # the movement layer's, the same (the pick task)
         comp_pick = {}                                                 # her share in the pick-up, the walk to it and its stop, by part
-        gaze_errs = {ph2_: [] for ph2_ in ("stand", "walk", "stop", "pick")}    # deg: its own gaze from the circle's centre, by phase
+        gaze_errs = {ph2_: [] for ph2_ in ("stand", "walk", "stop", "pick", "held", "put", "after")}    # deg: its own gaze from the circle's centre, by phase
         her_pace.want = None
         V["dbg"] = {k_: [] for k_ in ("q", "v", "c", "f", "x", "w", "b", "g", "gp")} if args.debug_steps else None
         V["rows"] = open(os.path.join(pd_, "rows.jsonl"), "w", buffering=1)
@@ -1217,21 +1418,52 @@ def main(argv=None):
         tap.take()
         falls0, paid, t0, acts = int(gh.falls), None, time.time(), None
         ph_, k_, k_walk0_, started_, arrived_ = "stand", -1, None, None, None
+        chain_ = False                                                 # (--then-into: the put task's part of the pass begun)
+        if args.task == "put":
+            ph_ = "held"                                               # (Workshop 19: it stands holding the thing up)
         arr_sp_ = None                                                 # (both feet's sole points at the arrival: the pass's reading)
         word_end_, tries_, trying_, named_, said_ = None, [], False, None, None   # (the name task: her word's last tick, its tries)
         words_end_p_, k_stop_, pick_, picked_ = None, None, None, None   # (the pick task: her words' end, the stop, the pick-up)
         V["goals"] = []; V["goal_last"] = None; V["own_pick"] = None; V["slow_n"] = 0; V["gd_hist"] = []   # (the test's readings, each pass afresh)
         V["walk_over"] = False                                         # (Workshop 15: the pass over at its stop)
+        V["bumps"] = []; V["bump_track"] = None; V["bump_w"] = None     # (Workshop 28: the pushes of the pass, the one being read, the wrench on
+        V["bump_rng"] = np.random.default_rng(int(args.seed) * 1009 + int(p_)); V["bump_next"] = 3 + int(args.bump_gap)   # its trunk)
         V["own_start"] = {}; V["her_start"] = {}; V["start_rate"] = {}; world.starts.reset()   # (the starts: the tick its own signal would
                                                                        # start each, hers, and its rate at hers)
         while True:                                                    # THE PASS'S CLOCK: T_STAND standing (or less: its own go begins the
             k_ += 1                                                    # walk); walking until both feet are down inside the circle, THERE: the
             ph0_ = ph_
-            if args.task == "pick" and (pick_ is not None and (pick_.get("skipped") or k_ - pick_["k0"] >= T_PICK)
-                                        or (ph_ == "walk" and k_ - k_walk0_ >= args.t_walk_max)):   # (the pick task: up again, or
+            if (args.then_into and args.task == "pick" and not chain_ and pick_ is not None and not pick_.get("skipped")
+                    and k_ - pick_["k0"] >= T_PICK and (world._holding_hand() is not None   # THE CHAIN: up again holding the thing, on to her
+                                                        or float(d.xpos[blk_body_][2]) - floor_top > CHAIN_UP)):   # (as she sees it: up in its
+                                                        # hand; 10-30 night, a cup held 6 cm off its grasp read under its touch's line)
+                chain_ = True; ph_ = "held"                            # next request: the put task's held, walk, stop, put and after
+                args.stop_at = float(args.then_stop_at); args.t_walk_max = int(args.then_walk_max)   # (the container's stop and walk)
+                if args.then_hands:                                    # (Workshop 24: her grip on its fingers for the carry, squeezing at
+                    hq3_ = d.qpos[held_qadr[parts[V["side"]["hand"]]]].copy()   # most GRIP_LOAD of each pain line past where they hold it)
+                    op3_, cl3_ = np.asarray(V["side"]["open"], float), np.asarray(V["side"]["hold"], float); sg3_ = np.sign(cl3_ - op3_)
+                    gk3_ = m.actuator_gainprm[held_aid[parts[V["side"]["hand"]]], 0]
+                    gl3_ = np.asarray(world.tau_hold, float)[world.eff_slices[V["side"]["hand"]]]
+                    ld3_ = np.array([GRIP_LOAD if "thumb" in j3_ else GRIP_LOAD_FINGER for j3_ in dict(G1S.EFFECTORS)[V["side"]["hand"]]])
+                    V["carry_grip"] = (hq3_ + sg3_ * ld3_ * gl3_ / gk3_, sg3_)
+                V["chain_picked"] = dict(k=k_, toy=args.pick_toy, z=rnd(float(d.xpos[blk_body_][2]) - floor_top, 3), move=V["side"]["move"])
+                h8_ = int(V["side"]["h"])
+                V["side"] = dict(V["side"], move=PUT_NAME + ("_l" if h8_ == 0 else ""))
+                V["put"] = dict(toy=args.pick_toy, start="chain", k_line=None, k_end=None, k0=None, own=None, own_move=None, her=None, go=None,
+                                q_rest=np.asarray(pick_["q_stand"], float), follow=False, end=None, k_say=k_ + int(args.look_ticks or 3))
+                V.update(phase="held", follow=True, ref_legs=d.qpos[legs_qadr].copy(), ref_arm=None, ref_q=d.qpos.copy(), grip=None, hand_miss=None,
+                         move_ph=None)
+                gh.z_ref = None; gh.up_ref = None; gh.squatting = False
+                world.own_movement = True
+            if args.task == "pick" and not chain_ and (pick_ is not None and (pick_.get("skipped") or k_ - pick_["k0"] >= T_PICK)
+                                                       or (ph_ == "walk" and k_ - k_walk0_ >= args.t_walk_max)):   # (the pick task: up again, or
                 break                                                  # its walk too long)
             if args.task == "find" and V["find"]["end"] is not None and k_ >= V["find"]["end"]:   # (the find task: its eyes held on the thing)
                 break
+            if (args.task == "put" or chain_) and ((V["put"]["end"] is not None and k_ >= V["put"]["end"])   # (the put task: put down and stood after it,
+                                       or (ph_ == "held" and V["put"]["k_end"] is not None
+                                           and k_ - max(V["put"]["k_end"], V["put"].get("k_at") or 0) >= T_PUT_TEST)):   # or no start (since
+                break                                                  # her line, or since it stood at the container)
             if args.task == "pick" and V["walk_over"]:                # (Workshop 15: its walk stopped before the thing, the pass over)
                 break
             if args.no_hands and ((ph_ == "stand" and k_ >= T_TEST_STAND) or (ph_ == "stop" and V.get("k_held") is not None and pick_ is None
@@ -1250,7 +1482,7 @@ def main(argv=None):
                                                                        # its body's frame, 0.7 cm under the car's, a grip below its centre of
                                                                        # mass let the car tip over it), and its own start of its walk
                 own_go_ = (ph_ == "stand" and words_end_p_ is not None and k_ >= max(args.look_ticks, words_end_p_ - words_ticks_)
-                           and world.starts.step("walk", world.start_context()))
+                           and world.steady() and world.starts.step("walk", world.start_context()))   # (A278: from a steady stance)
                 if own_go_ and V["own_start"].get("walk") is None:
                     V["own_start"]["walk"] = k_
                 if world.goal.name != V.get("goal_last"):              # (the goals its eyes set, in turn: the test's reading)
@@ -1265,9 +1497,11 @@ def main(argv=None):
                 if args.eyes_at == "start":
                     her_gaze.target = None                         # (her hand off its head as it sets off: its eyes its own)
             V["k"] = k_; V["phase"] = ph_
+            V["carry_legs"] = bool(args.no_hands and args.then_hands and (chain_ or args.task == "put") and ph_ in ("walk", "stop"))
             if args.task in ("pick", "find") and ph0_ == "stand" and not args.no_hands:   # THE STARTS LEARN (body/sim/start_layer.py, 10-28 night): each tick
                 x7_ = world.start_context()                            # its walk could start (standing, before its walk), the context and
-                p7_ = world.starts.lesson("walk", x7_, ph_ == "walk")  # whether her hand started it; its own signal read alongside (it starts
+                p7_ = (world.starts.lesson("walk", x7_, ph_ == "walk") if (ph_ == "walk" or world.steady()) else None)   # whether her hand
+                                                                       # started it (A278: not while no step could begin); its own signal read alongside (it starts
                 if world.starts.step("walk", x7_) and V["own_start"].get("walk") is None:   # nothing itself while she teaches: the tick it
                     V["own_start"]["walk"] = k_                        # would have, against hers)
                 if ph_ == "walk":
@@ -1275,7 +1509,7 @@ def main(argv=None):
             gl_ = V["gap_legs"]; V["gap_legs"] = []                    # HER SHARE AT THE LEGS THIS TICK: the leg layer's gap from the gait's
             if gl_:                                                    # over the last tick (none yet: her hands whole); standing, the pose's
                 g_ = math.sqrt(float(np.mean(gl_)))
-                V["c_legs"] = 0.0 if args.no_hands else (min(1.0, g_ / tol) if tol > 0 else 1.0)
+                V["c_legs"] = 0.0 if (args.no_hands and not (args.then_hands and (chain_ or args.task == "put") and ph_ in ("walk", "stop"))) else (min(1.0, g_ / tol) if tol > 0 else 1.0)
                 comp_pass["legs"].append([V["c_legs"], g_])
             gs_ = V["gap_stand"]; V["gap_stand"] = []                  # HER SHARE ON ITS STANDING THIS TICK: its own legs' and waist's
             if gs_:                                                    # targets' gap from the pose over the last tick (none yet: hers whole)
@@ -1293,29 +1527,40 @@ def main(argv=None):
                 gh.ticks = GH.LIFT_TICKS + GH.WALK_START + 1           # (no hand-down ramp: her share is the gap's from the first tick)
                 gh.right_floor = 1.0                                   # her trunk righting whole while the legs are partly its own
                 her_pace.want = (V_WALK, 0.0)                          # her hand on its walk command: her pace, straight on
-                if args.no_hands:                                      # (the test: its gait from standing on its own legs' layer, its
-                    gh.s = 0.0; V["c_legs"] = 0.0; gh.right_floor = 0.0; her_pace.want = None   # pace and steering its own)
-                her_pace.band = float(W.LOCO_SETTINGS[0][-1]) if args.task == "pick" else 0.0
+                if args.no_hands and not (args.then_hands and (chain_ or args.task == "put")):   # (the test: its gait from standing on its own legs' layer, its
+                    gh.s = 0.0; V["c_legs"] = 0.0; gh.right_floor = 0.0; her_pace.want = None   # pace and steering its own; WORKSHOP 24's
+                                                                       # walk to the container Workshop 22's, her hands on its legs by the gap
+                                                                       # and on its walk command: its own carrying walks fell or dropped the
+                                                                       # thing in each of Workshop 22's tests)
+                her_pace.band = float(W.LOCO_SETTINGS[0][-1]) if args.task in ("pick", "put") else 0.0
             if ph_ == "walk" and her_pace.want is not None and (float(her_pace.want[0]) > 0.0 or args.task == "pick"):   # HER HAND STEERS
                 Rp_ = d.xmat[world.pelvis_id].reshape(3, 3); xy_ = d.xpos[world.pelvis_id][:2]   # IT TO THE CIRCLE: the turn she wants on its
-                ay_ = cy_ + (PICK_DY - float(args.pick_side) if args.task == "pick" else 0.0)   # walk command, toward the (the pick task: the
-                beside_ = args.task == "pick" and PICK_DY > 0.0          # block, on its line; --pick-side, toward the point beside it: 10-29,
+                ay_ = cy_ + (PICK_DY - float(args.pick_side) if (args.task == "pick" and not chain_) else 0.0)   # walk command, toward the (the
+                beside_ = args.task == "pick" and not chain_ and PICK_DY > 0.0   # pick task: the block, on its line; --pick-side, toward the
+                                                                       # point beside it (the chain's walk to the container: the put task's): 10-29,
                                                                        # walked along a line beside it to the stop, its stopping steps
                                                                        # carried it 18 cm further across)
                 ax_ = cx_ + (PICK_AIM_AHEAD if beside_ else 0.0)       # (A240, the pick task beside the block: along her line, aimed
                 b_ = GH._wrap(math.atan2(ay_ - float(xy_[1]), ax_ - float(xy_[0])) - math.atan2(float(Rp_[1, 0]), float(Rp_[0, 0])))   # far down it)
                 v_her_ = V_WALK
-                if args.task == "pick":                                # (the pick task, 10-28: SHE EASES ITS WALK OFF before the block by its
+                if args.task in ("pick", "put"):                       # (the pick task, 10-28: SHE EASES ITS WALK OFF before the block by its
                     d_her_ = math.hypot(cx_ - float(xy_[0]), cy_ - float(xy_[1]))   # own pace layer's law, to CRAWL of her pace over the last
                     dr_ = d_her_ - float(args.stop_at)                  # D_SLOW, then to a stop at her place, the command's biggest step a tick
                     v_ref_ = 0.0 if dr_ <= 0.0 else V_WALK * min(1.0, max(W.PL.CRAWL, dr_ / W.PL.D_SLOW))   # at most: her walk to the block the
                     nxt_ = float(gh.cmd_v) * GH.COMMAND_DECAY           # one its own layer walks once it has learned where to stop)
                     stp_ = float(W.LOCO_SETTINGS[0][-1])
                     v_her_ = v_ref_ if v_ref_ >= nxt_ else max(nxt_ - stp_, v_ref_)   # (setting off, her pace at once, as ever; easing
+                    dh9_ = V.get("dp_hist") or []              # (WORKSHOP 24: come no nearer the container in STALL_TICKS short of her
+                    if ((chain_ or args.task == "put") and args.then_hands and len(dh9_) > STALL_TICKS and dh9_[-1 - STALL_TICKS] - dh9_[-1] < 0.005   # stop, her hand on its walk
+                            and dh9_[-1] > float(args.stop_at) + STALL_NEAR):   # nudges it on at her walking pace: 10-30 night, at her crawl
+                        v_her_ = V_WALK                        # 0.58 m off its right foot stood 40 ticks and the walk ran out)
                                                                        # off, no faster than its own layer can: 10-28, her start limited too
                                                                        # read as a stop at 1.19 m and its learned stop held its walks back)
-                her_pace.want = (v_her_, max(-0.6, min(0.6, DM.K_W * b_)) if (args.task != "pick" or v_her_ >= 0.95 * V_WALK or beside_)
+                her_pace.want = (v_her_, max(-0.6, min(0.6, DM.K_W * b_)) if (args.task != "pick" or chain_ or v_her_ >= 0.95 * V_WALK or beside_)
                                  else None)                            # centre (A240: beside the block she steers to the stop too: let go at
+                                                                       # (Workshop 22, the put task: she steers to the stop all the way: 10-30,
+                                                                       # let go at the crawl its own steering held the bucket 0.3 rad to its
+                                                                       # left to the stop, and the cup, set down before its feet, missed it)
                                                                        # the crawl, its own steering turned it onto the block it looked at),
                                                                        # K_W a rad of the bearing (the pick task, 10-28: slowing it, her hand
                                                                        # on its speed alone, its turn its own: at the crawl her tolerance is
@@ -1376,11 +1621,13 @@ def main(argv=None):
                     lane.utt = UTT_(clip_, int(world.tick)); words_end_p_ = k_ + words_ticks_   # the pick-up: down into the squat
                 if pick_ is None and not args.no_hands:                # (pickup.squat_path: its hand palm down on the block, its feet where
                     world.pin_toy(args.pick_toy, blk_, quat=pick_quat_, ticks=2)         # they stopped, its weight over them), the grip, up again; her
+                if args.then_into and not chain_:                      # (the chain: the container held where she set it)
+                    world.pin_toy(args.into, into_at_, quat=into_q_, ticks=2)
                 if (args.no_hands and ph_ == "stand") or (V.get("others") and ph_ == "stand"):   # (the test: the toys held only while it stands,
                     world.pin_toy(args.pick_toy, blk_, quat=pick_quat_, ticks=2)         # then lying free where they are)
                     for n_, pt_ in (V.get("others") or {}).items():
                         world.pin_toy(n_, np.array(pt_), ticks=2)
-                if ph_ == "walk":                                      # hands move it all, by the gap; her hold follows the pose
+                if ph_ == "walk" and not chain_:                       # hands move it all, by the gap; her hold follows the pose
                     pxy_ = d.xpos[world.pelvis_id][:2]
                     dp_ = math.hypot(float(blk_[0]) - float(pxy_[0]), float(blk_[1]) - float(pxy_[1]))
                     if args.no_hands:                                  # THE TEST: its own walk eased to a stop (the pace layer's, near its
@@ -1398,7 +1645,7 @@ def main(argv=None):
                             V["stop_d_pelvis"] = dp_                   # to stop for it (within the pace layer's STOP_ZONE: 10-29, at its
                                                                        # crawl's 0.1 m/s its gait barely carried it, and it stalled 5 cm
                                                                        # short of its stopping place, crawling on)
-                    elif dp_ <= float(args.stop_at) and not V.get("stop_taught"):   # HER HAND STOPS ITS WALK HERE: where it stops for the
+                    elif dp_ <= float(args.stop_at) and not V.get("stop_taught") and world.goal.name == args.pick_toy:   # HER HAND STOPS ITS WALK HERE: where it stops for the
                         V["stop_taught"] = world.pace.stopped_at(world.goal.name, world.goal_distance(), float(her_pace.c)) \
                             if (world.goal.name is not None and world.goal_distance() is not None) else -1.0   # block, taught at her share
                         if world.goal.name is not None:                # (A252: and the side it came up to it on: the goal's lateral place
@@ -1411,7 +1658,7 @@ def main(argv=None):
                     if not args.no_hands and ((float(gh.cmd_v) < 0.4 * W.PL.STOP_V and dp_ <= float(args.stop_at) + 0.03) or dp_ < float(args.stop_at) - 0.08):   # ITS WALK EASED
                         ph_, k_stop_ = "stop", k_; her_pace.want = (0.0, None); gh.stop(T_STOP_PICK)   # TO REST near the block (or past it): the gait
                         V["stop_d_pelvis"] = dp_                       # asked to stand still, then the pose held
-                elif ph_ == "stop":
+                elif ph_ == "stop" and not chain_:
                     if (not gh.pose_hold and int(getattr(gh, "stop_left", 0)) <= 0
                             and all(min(q_[2] for q_ in sole_points(m, d, b_)) - floor_top < FOOT_DOWN for b_ in feet)):
                         gh.walk_block(world, False); V["k_held"] = k_  # (its stop stepped out, both feet down: the pose held, it stands still
@@ -1426,6 +1673,17 @@ def main(argv=None):
                         for nm9_ in (MOVE_NAME + "_l", MOVE_NAME):     # its threshold)
                             if world.starts.step(nm9_, x9_):
                                 V["own_pick"] = nm9_; V["own_start"][nm9_] = k_; break
+                        if V.get("own_pick") is None and args.prompt_start and k_ - V["k_held"] >= int(args.prompt_start):   # HER PROMPT
+                            R7_ = d.xmat[world.pelvis_id].reshape(3, 3)   # (Workshop 23b: its own start not come so long after it stood
+                            rel7_ = np.asarray(d.xpos[blk_body_][:2], float) - world.feet_middle()[:2]   # still at the thing: her hand
+                            side7_ = float(rel7_ @ R7_[:2, 1]) * (1.0 if PICK_HAND_PREF == 0 else -1.0)   # starts the pick-up, the hand
+                            h7_ = PICK_HAND_PREF if side7_ > -PICK_SIDE_MARGIN else 1 - PICK_HAND_PREF       # on the thing's side, as
+                            if not world.moves.known(MOVE_NAME + ("_l" if h7_ == 0 else "")):                # her hands would; a hand
+                                h7_ = 1 - h7_                                                              # with a pick-up of its own)
+                            V["own_pick"] = MOVE_NAME + ("_l" if h7_ == 0 else ""); V["prompted"] = k_
+                        if args.prompt_start:                          # (its starts learn each tick it could begin: its own start or her
+                            for nm9_ in (MOVE_NAME + "_l", MOVE_NAME):  # prompt, the hand begun)
+                                world.starts.lesson(nm9_, x9_, V.get("own_pick") == nm9_)
                     if (gh.pose_hold and V.get("k_held") is not None and ((not args.no_hands and k_ - V["k_held"] >= T_STILL_PICK   # down, or at most T_BOTH_MAX
                             and (both_ or k_ - V["k_held"] >= T_STILL_PICK + T_BOTH_MAX)) or (args.no_hands and V.get("own_pick") is not None))):   # ticks: 10-28, begun with a sole carrying 20 N
                                                                        # of its 340, the unloaded foot shuffled and its feet drifted 10 cm)
@@ -1510,6 +1768,9 @@ def main(argv=None):
                             rise_, _ = PU_.up_path(world, path_[min(len(path_) - 1, T_RISE0)], d.qpos.copy(), hand=SD_["h"],   # its grip's end,
                                                    thing=blk_body_, n_lift=0, n_rise=UP_RISE_N)   # the lessons there moved its grip's own
                                                                        # bumps 0.04-0.17 rad and its last 3 of 10 passes lifted an empty hand)
+                        V["goal_at_pick"] = (None if world.goal.point is None else   # (a reading: where its eyes' goal lay as the pick-up
+                                             [rnd(float(world.goal.point[i9_]) - float(d.xipos[blk_body_][i9_]), 3) for i9_ in range(min(3, len(world.goal.point)))])   # began,
+                                                                       # against the thing's middle: its seeing's error then)
                         pick_ = dict(k0=k_, path=path_, up=up_, follow=follow_, rep=rep_, q_stand=d.qpos.copy(), stop_short=round(float(blk_[0]) - float(np.mean(
                             [d.xpos[b_][0] for b_ in feet])), 3), rise=rise_)
                         if not args.no_hands and (rep_["hand"] > PLAN_MISS or rep_["com"] > PLAN_COM or rep_["deepest"] < -PLAN_OVERLAP):
@@ -1522,7 +1783,11 @@ def main(argv=None):
                             world.moves.start(SD_["move"], T_PICK, {l_: d.qpos[np.asarray(world.qadr)[world.eff_slices[l_]]].copy()
                                                                   for l_ in W.MOVE_LIMBS})   # THE MOVEMENT BEGINS WITH HER HANDS: its program
                                                                        # (born holding the stance it starts from) carries its limbs, and runs off
-                if ph0_ == "stop" and gh.pose_hold and V.get("k_held") is not None and not V["her_start"].get("pick") and not V["walk_over"]:   # THE STARTS LEARN:
+                if (ph0_ == "stop" and gh.pose_hold and V.get("k_held") is not None and not V["her_start"].get("pick") and not V["walk_over"]
+                        and not args.no_hands):                        # THE STARTS LEARN (her hands teaching; 10-30 night: in the test and
+                                                                       # her prompt's teaching its own starts are read, and taught, above: here
+                                                                       # a second step of its signal each tick fired its start unread, the can's
+                                                                       # pick-up never begun, and taught "no pick-up" in the test's own pass):
                     x8_ = world.start_context()                        # each tick a pick-up could start (its walk stopped before the thing,
                     for nm8_ in (MOVE_NAME, MOVE_NAME + "_l"):         # standing still), each hand's: whether her hands began it this tick
                         st8_ = ph_ == "pick" and V["side"]["move"].split(":")[0] == nm8_   # (the hand's movement, whatever the thing)
@@ -1652,13 +1917,226 @@ def main(argv=None):
                     V["ref_legs"] = qr_[aq_legs_].copy(); V["ref_arm"] = ra_; V["ref_q"] = qr_.copy()
                     gh.z_ref = float(pick_fk_.xipos[gh.b][2]); gh.up_ref = pick_fk_.xmat[gh.pelvis].reshape(3, 3)[:, 2].copy()
                     gh.lead = np.asarray(pick_fk_.xipos[gh.b][:2], float).copy(); gh.steady = None
+            if args.task == "put" or chain_:                          # THE PUT TASK'S CLOCK (Workshop 19): her line as it stands holding the
+                P_ = V["put"]                                          # thing up; her hands begin the put-down T_PUT_WAIT after it (the test:
+                nh9_ = args.no_hands and not (args.then_hands and (chain_ or args.task == "put"))   # (Workshop 24: her decisions in the chain's put part)
+                if k_ == P_.get("k_say", max(1, int(args.look_ticks))):   # its own start), her plan's way down, its hand opening at the floor,
+                    lane.utt = UTT_(put_clip_, int(world.tick)); P_["k_line"] = k_; P_["k_end"] = k_ + put_ticks_   # its empty hand up, standing
+                    if args.then_hands and (chain_ or args.task == "put") and into_body_ is not None:   # (WORKSHOP 24: her hand on its head turns its eyes to the
+                        her_gaze.target = (float(d.xpos[into_body_][0]), float(d.xpos[into_body_][1]), floor_top)   # container as she says
+                                                                       # it, joint attention, as the naming workshops did; off as it walks)
+                if (ph_ in ("held", "walk", "stop") and world._holding_hand() is None and float(d.xpos[blk_body_][2]) - floor_top < 0.15
+                        and P_.get("dropped") is None):
+                    P_["dropped"] = k_; P_["dropped_in"] = ph_; P_["end"] = k_ + 2   # (the thing fell from its hand before the put-down
+                    if ph_ in ("walk", "stop"):                        # began, standing or carried: no put-down; 10-30, a block in a
+                        her_pace.want = (0.0, None); gh.stop(T_STOP_PICK)   # fingertip pinch slipped out as it stood, another as it walked)
+                if ph_ == "held" and into_body_ is not None and not P_.get("k0"):   # (the container held where she set it until the
+                                                                       # put-down begins)
+                    world.pin_toy(args.into, into_at_, quat=into_q_, ticks=2)
+                far9_ = bool(into_body_ is not None and math.hypot(float(d.xpos[into_body_][0]) - float(d.xpos[world.pelvis_id][0]),
+                                                                    float(d.xpos[into_body_][1]) - float(d.xpos[world.pelvis_id][1])) > float(args.stop_at) + 0.15)
+                if ph_ == "held" and far9_ and P_["k_line"] is not None and P_.get("dropped") is None:   # WORKSHOP 22: THE CONTAINER FARTHER OFF:
+                    x9_ = world.start_context()                        # first the walk to it, holding the thing (her hands T_PUT_WAIT after
+                    wgo_ = None                                        # her line, or its own start of its walk: the test)
+                    if (nh9_ or (args.then_hands and (chain_ or args.task == "put"))) and world.steady():   # (A278: a step begins from a steady stance, its own
+                        wgo_ = "its own" if world.starts.step("walk", x9_) else None   # start and hers alike)
+                    if wgo_ is None and not nh9_ and P_["k_end"] is not None and k_ >= P_["k_end"] + T_PUT_WAIT and world.steady():
+                        wgo_ = "hers"
+                    if not nh9_:                                       # (the starts learn: her line, a thing in its hand, the container far:
+                        if wgo_ is not None or world.steady():         # the walk; no put-down or pick-up here. A278: no lesson on its walk's
+                            world.starts.lesson("walk", x9_, wgo_ is not None)   # start while no step could begin: 10-30 night, its start held
+                                                                       # back unsteady was taught "not here" and stopped coming after 3 passes)
+                        for nm9_ in (PUT_NAME, PUT_NAME + "_l", MOVE_NAME, MOVE_NAME + "_l"):
+                            world.starts.lesson(nm9_, x9_, False)
+                    if wgo_ is not None:
+                        ph_, k_walk0_ = "walk", k_ + 1                 # (the gait begins next tick: the walk's start, as the pick task's)
+                        pass                                           # (Workshop 24: her hand stays on its head, its eyes on the container,
+                                                                       # through the walk, as she walks it there: A277)
+                        P_["walk"] = k_; P_["walk_go"] = wgo_; V["gd_hist"] = []; V["slow_n"] = 0; V["dp_hist"] = []
+                        cx_, cy_ = float(d.xpos[into_body_][0]), float(d.xpos[into_body_][1])
+                elif ph_ == "walk" and k_ >= (k_walk0_ or 0):          # (its walk to the container: her hand eases it off to a stop with its
+                    pxy_ = d.xpos[world.pelvis_id][:2]                 # pelvis STOP_AT from it, as the pick task's; the test: its own stop)
+                    dp_ = math.hypot(cx_ - float(pxy_[0]), cy_ - float(pxy_[1]))
+                    if nh9_:
+                        at9_ = bool(world.start_context()[W.SL.FEATURES.index("at")] > 0.0)
+                        gd9_ = world.goal_distance(); st9_ = (world.pace.stops or {}).get(world.goal.name)
+                        V.setdefault("gd_hist", []).append(10.0 if gd9_ is None else float(gd9_))
+                        stall9_ = at9_ and len(V["gd_hist"]) > 8 and V["gd_hist"][-9] - V["gd_hist"][-1] < 0.01
+                        there9_ = at9_ and st9_ is not None and gd9_ is not None and gd9_ <= float(st9_)
+                        V["slow_n"] = (V.get("slow_n", 0) + 1) if ((float(gh.cmd_v) < 0.4 * W.PL.STOP_V or there9_ or stall9_) and k_ - k_walk0_ > 8) else 0
+                        if V["slow_n"] >= 2 or k_ - k_walk0_ >= int(args.t_walk_max):
+                            ph_ = "stop"; gh.stop(T_STOP_PICK); P_["stop_d"] = rnd(dp_, 3)
+                    else:
+                        V.setdefault("dp_hist", []).append(float(dp_))  # (WORKSHOP 24: near her place and come no nearer in STALL_TICKS:
+                        near9_ = bool(dp_ <= float(args.stop_at) + STALL_NEAR and len(V["dp_hist"]) > STALL_TICKS   # she stops it there;
+                                      and V["dp_hist"][-1 - STALL_TICKS] - float(dp_) < 0.005)   # 10-30 night, at her crawl its legs stepped in
+                                                                       # place 1 cm outside her place, drifted back, and the walk ran out)
+                        if (dp_ <= float(args.stop_at) or near9_) and not P_.get("stop_taught") and world.goal.name == args.into:   # (where it stops
+                                                                       # for the container, taught at her share, its goal the container: A277)
+                            P_["stop_taught"] = (world.pace.stopped_at(world.goal.name, world.goal_distance(), float(her_pace.c))   # at her share)
+                                                 if (world.goal.name is not None and world.goal_distance() is not None) else -1.0)
+                        if dp_ <= float(args.stop_at) or near9_ or k_ - k_walk0_ >= int(args.t_walk_max):   # (her hand stops it at her place, its
+                            ph_ = "stop"; her_pace.want = (0.0, None); gh.stop(T_STOP_PICK); P_["stop_d"] = rnd(dp_, 3)   # stride then carrying it on:
+                                                                       # 10-30, stopped only once eased below the walk's threshold, it stepped
+                                                                       # on to 0.20-0.21 m and the thing went beyond the bucket's far wall)
+                elif ph_ == "stop":                                    # (its stop stepped out, both feet down: it stands holding the thing
+                    if (not gh.pose_hold and int(getattr(gh, "stop_left", 0)) <= 0   # at the container, and the put-down may begin)
+                            and all(min(q_[2] for q_ in sole_points(m, d, b_)) - floor_top < FOOT_DOWN for b_ in feet)):
+                        gh.walk_block(world, False); ph_ = "held"; P_["k_at"] = k_; her_pace.want = None
+                        V.update(follow=True, ref_legs=d.qpos[legs_qadr].copy(), ref_arm=None, ref_q=d.qpos.copy(), grip=None)
+                        gh.z_ref = None; gh.up_ref = None; gh.squatting = False
+                if ph_ == "held" and not far9_ and P_["k_line"] is not None and P_.get("dropped") is None:
+                    x9_ = world.start_context()
+                    for nm9_ in (PUT_NAME + "_l", PUT_NAME):           # (its own starts, either hand's: the first to its threshold)
+                        if world.starts.step(nm9_, x9_) and P_["own"] is None:
+                            P_["own"] = k_; P_["own_move"] = nm9_
+                    go_ = None
+                    if nh9_ or (args.then_hands and (chain_ or args.task == "put")):           # (Workshop 24: its own start first if it comes, else hers T_PUT_WAIT
+                        go_ = "its own" if P_["own"] is not None else None   # after her line and its stop at the container)
+                    if go_ is None and not nh9_ and P_["k_end"] is not None and k_ >= (max(P_["k_end"], P_.get("k_at") or 0) if chain_ else P_["k_end"]) + T_PUT_WAIT:
+                        go_ = "hers"
+                    if not nh9_:                                       # THE STARTS LEARN: each tick the put-down could start, each hand's
+                        for nm9_ in (PUT_NAME, PUT_NAME + "_l", MOVE_NAME, MOVE_NAME + "_l"):   # put-down and pick-up: whether her hands
+                            p9_ = world.starts.lesson(nm9_, x9_, go_ is not None and nm9_ == V["side"]["move"])   # began this one now
+                            if go_ is not None and nm9_ == V["side"]["move"]:
+                                P_["rate"] = rnd(p9_, 3)
+                    if go_ is not None:                                # THE PUT-DOWN BEGINS
+                        mv9_ = P_["own_move"] if go_ == "its own" else V["side"]["move"]
+                        gl9_ = world.goal.name if nh9_ else (args.into or None)   # (A249's movement for the thing: put in a
+                        if gl9_ is not None and gl9_ != args.pick_toy:  # container, its own program, born from the put-down; the thing
+                            mv9_ = world.movement_for(mv9_, gl9_)     # in its hand no goal of its own; the test's thing its own goal,
+                                                                       # her start's the one she named: 10-30 night, Workshop 24, its eyes
+                                                                       # on the ball as she began it, "put_l:ball" set the block beside
+                                                                       # the bucket)
+                        V["side"] = dict(V["side"], move=mv9_)
+                        P_["go"] = go_; P_["k0"] = k_; P_["in_hand"] = world._holding_hand() is not None
+                        if args.then_hands and (chain_ or args.task == "put"):
+                            her_gaze.target = None                     # (her hand off its head as the put-down begins: its eyes its own)
+                            V["carry_grip"] = None                     # (and off its fingers: its put-down opens them)
+                        if go_ == "hers":
+                            P_["her"] = k_
+                        follow9_ = bool(world.moves.known(mv9_) and world.moves.programs[mv9_]["runs"] >= N_OWN_PUT and not args.her_plan) or args.no_hands
+                        P_["follow"] = follow9_; h9_ = V["side"]["h"]
+                        if follow9_:                                   # (its own put-down followed: her refs its own program's poses, stood
+                            pth9_ = []                                 # on its feet; her hands only on its sagging legs, her catch)
+                            for kk9_ in range(T_PUT + 1):
+                                q9_ = d.qpos.copy()
+                                if world.moves.known(mv9_):
+                                    for l_ in W.MOVE_LIMBS:
+                                        q9_[np.asarray(world.qadr)[world.eff_slices[l_]]] = world.moves.pose(l_, kk9_ / float(T_PUT), name=mv9_)
+                                pth9_.append(PU_.place_base(world, q9_, d.qpos)[0])
+                            P_["own_path"] = pth9_
+                        else:                                          # HER PLAN: the thing set down PUT_AHEAD before its feet's middle, to
+                            Rp9_ = d.xmat[world.pelvis_id].reshape(3, 3)   # its hand's side, its hand PUT_DROP over where the thing rests
+                            fw9_ = np.array([float(Rp9_[0, 0]), float(Rp9_[1, 0]), 0.0]); fw9_ /= float(np.linalg.norm(fw9_))
+                            sd9_ = np.array([-fw9_[1], fw9_[0], 0.0]) * (1.0 if h9_ == 0 else -1.0)
+                            mid9_ = world.feet_middle()
+                            place9_ = np.array([float(mid9_[0]), float(mid9_[1]), floor_top]) + PUT_AHEAD * fw9_ + PUT_SIDE * sd9_
+                            off9_ = PU_.hand_point(world, d, h9_) - np.asarray(d.xpos[blk_body_], float)   # (her eyes: where the thing sits
+                            tgt9_ = place9_ + np.array([0.0, 0.0, rest_up_ + PUT_DROP]) + off9_                # in its hand)
+                            if into_body_ is not None:                 # (WORKSHOP 21: over the container's middle, the thing let go just
+                                ci9_ = np.asarray(d.xpos[into_body_], float)   # under its rim: it drops in)
+                                rim9_ = float(ci9_[2]) + EXB_.BUCKET_WALL + EXB_.BUCKET_H
+                                tgt9_ = np.array([float(ci9_[0]), float(ci9_[1]), rim9_ - 0.5 * EXB_.BUCKET_H + rest_up_]) + off9_
+                                place9_ = np.array([float(ci9_[0]), float(ci9_[1]), floor_top])
+                            hold9_ = d.qpos[held_qadr[parts[V["side"]["hand"]]]].copy()   # (its fingers as they hold it)
+                            ik9_ = dict(PU_.IK_RANGE)
+                            for tw_ in TWIST_TIERS:                    # (as little turn of its trunk as the reach needs: A240)
+                                PU_.IK_RANGE["waist_yaw"] = (-tw_[0], tw_[0]); PU_.IK_RANGE["hip_yaw"] = (-tw_[1], tw_[1])
+                                pd9_, rp9_ = PU_.squat_path(world, tgt9_, hand=h9_, n=PATH_N, hand_q=hold9_, thing=None, seed_q=her_put_squat_.get(h9_))
+                                if rp9_[-1]["hand"] <= TWIST_MISS:
+                                    break
+                            qb9_ = np.asarray(pd9_[-1], float).copy()  # (the bottom, its hand open: the way up from there, its empty hand
+                            qb9_[held_qadr[parts[V["side"]["hand"]]]] = np.asarray(V["side"]["open"], float)   # lifted clear of the thing,
+                            qr9_ = PU_.place_base(world, P_["q_rest"], d.qpos)[0]   # then to standing as before the pick-up, its arms down)
+                            up9_, _ = PU_.up_path(world, qb9_, qr9_, hand=h9_, thing=blk_body_, n_lift=UP_LIFT_N, n_rise=UP_RISE_N, carry=False)
+                            PU_.IK_RANGE.clear(); PU_.IK_RANGE.update(ik9_)
+                            her_put_squat_[h9_] = np.asarray(pd9_[-1], float).copy()
+                            P_.update(path=pd9_, up=up9_, hold_q=hold9_, place=[rnd(float(x_), 3) for x_ in place9_], plan_miss=rnd(rp9_[-1]["hand"], 3),
+                                      twist=list(tw_))
+                        world.moves.start(mv9_, T_PUT, {l_: d.qpos[np.asarray(world.qadr)[world.eff_slices[l_]]].copy() for l_ in W.MOVE_LIMBS})
+                        ph_ = "put"                                    # (its program, born holding the pose it starts from, carries its limbs)
+                if ph_ == "put" and P_.get("release_z") is None and P_.get("in_hand") and world._holding_hand() is None:
+                    P_["release_z"] = rnd(float(d.xpos[blk_body_][2]) - floor_top - rest_up_, 3); P_["release_k"] = k_ - P_["k0"]   # (where the
+                                                                       # thing left its hand, over where it rests: let go at the floor, or dropped)
+                if ph_ == "put":                                       # THE PUT-DOWN'S POSE THIS TICK, for her hands and her hold
+                    kk_ = k_ - P_["k0"]
+                    if kk_ >= T_PUT:
+                        ph_ = "after"; P_["end"] = k_ + T_PUT_AFTER   # (put down: it stands, the thing settling)
+                        V.update(move_ph=None, ref_legs=d.qpos[legs_qadr].copy(), ref_arm=None, ref_q=d.qpos.copy(), follow=True, grip=None)
+                        gh.z_ref = None; gh.up_ref = None; gh.squatting = False
+                    else:
+                        V["move_ph"] = kk_ / float(T_PUT)
+                        V["follow"] = bool(P_["follow"]); world.own_movement = V["follow"]; V["grip"] = None; V["hand_miss"] = None
+                        op9_ = np.asarray(V["side"]["open"], float)
+                        if P_["follow"]:
+                            pth_ = P_["own_path"]; np_ = len(pth_) - 1; u_ = float(min(kk_, np_ - 1)); hand_ = None
+                        else:
+                            hq9_ = np.asarray(P_["hold_q"], float)
+                            t2_ = T_PDOWN + T_PSETTLE; t3_ = t2_ + T_POPEN
+                            if kk_ < t2_:                              # (down, holding it; then still at the floor)
+                                pth_ = P_["path"]; np_ = len(pth_) - 1; u_ = min(float(np_), np_ * (kk_ + 1) / float(T_PDOWN)); hand_ = hq9_
+                            elif kk_ < t3_:                            # (its hand opening at the floor)
+                                pth_ = P_["path"]; np_ = len(pth_) - 1; u_ = float(np_)
+                                hand_ = hq9_ + min(1.0, (kk_ - t2_ + 1) / float(T_POPEN)) * (op9_ - hq9_)
+                            else:                                      # (its empty hand lifted, then up to standing)
+                                pth_ = P_["up"]; np_ = len(pth_) - 1; ku_ = kk_ - t3_
+                                u_ = (UP_LIFT_N * min(1.0, (ku_ + 1) / T_PLIFT) if ku_ < T_PLIFT
+                                      else UP_LIFT_N + (np_ - UP_LIFT_N) * min(1.0, (ku_ - T_PLIFT + 1) / T_PUP))
+                                hand_ = op9_
+                        i_ = min(int(u_), np_ - 1); f_ = u_ - i_
+                        qr_ = pth_[i_] + f_ * (pth_[i_ + 1] - pth_[i_])
+                        fq_ = int(m.jnt_qposadr[m.joint("floating_base_joint").id]) + 3
+                        qr_[fq_:fq_ + 4] /= float(np.linalg.norm(qr_[fq_:fq_ + 4]))
+                        aq_legs_ = m.jnt_qposadr[m.actuator_trnid[legs_aid, 0]]; aq_held_ = m.jnt_qposadr[m.actuator_trnid[held_aid, 0]]
+                        ra_ = qr_[aq_held_].copy()
+                        if hand_ is not None:
+                            ra_[parts[V["side"]["hand"]]] = np.asarray(hand_, float)
+                        pick_fk_.qpos[:] = qr_; mujoco.mj_kinematics(m, pick_fk_)
+                        V["arm_fix"] = np.zeros(len(parts["arm_r"])); V["rise_arm"] = None
+                        V["ref_legs"] = qr_[aq_legs_].copy(); V["ref_arm"] = ra_; V["ref_q"] = qr_.copy()
+                        gh.z_ref = float(pick_fk_.xipos[gh.b][2]); gh.up_ref = pick_fk_.xmat[gh.pelvis].reshape(3, 3)[:, 2].copy()
+                        gh.lead = np.asarray(pick_fk_.xipos[gh.b][:2], float).copy(); gh.steady = None; gh.squatting = True
             frame = world.frame()
+            if args.dump_eyes and k_ in {int(x_) for x_ in str(args.dump_eyes).split(",") if x_.strip()} and getattr(world, "eyes", None) is not None:
+                img9_ = np.flipud(np.asarray(world.eyes.buf)).copy(); ew9_, eh9_ = world.eyes.w, world.eyes.h; cw9_, ch9_ = world.eyes.cw, world.eyes.ch
+                cam9_ = {}
+                for s9_ in "LRC":
+                    c9_ = m.camera(f"eye_{s9_}").id
+                    cam9_[f"pos_{s9_}"] = d.cam_xpos[c9_].copy(); cam9_[f"mat_{s9_}"] = d.cam_xmat[c9_].reshape(3, 3).copy(); cam9_[f"fovy_{s9_}"] = float(m.cam_fovy[c9_])
+                toys9_ = [n_ for n_ in FIND_WORDS + ("can",) if f"toy_{n_}" in [m.body(i9_).name for i9_ in range(m.nbody)]]
+                np.savez_compressed(os.path.join(pd_, f"eyes_{k_:04d}.npz"), L=img9_[:, :ew9_], R=img9_[:, ew9_:2 * ew9_],
+                                    C=img9_[eh9_ - ch9_:, 2 * ew9_:2 * ew9_ + cw9_], floor_top=floor_top, gaze=np.asarray(world.gaze, float),
+                                    truth_names=np.array(toys9_), truth_pos=np.array([d.xipos[m.body(f"toy_{n_}").id] for n_ in toys9_]),
+                                    body_pos=np.array([d.xpos[i9_] for i9_ in range(m.nbody)]), body_names=np.array([m.body(i9_).name for i9_ in range(m.nbody)]),
+                                    **cam9_)
+            if args.dump_grip and V.get("side") and blk_body_ is not None:   # (an instrument, 10-30 morning: its hand on the thing each tick,
+                hn8_ = V["side"]["hand"]; h8_ = 0 if hn8_ == "hand_l" else 1   # read for Workshop 26's grip: where the thing sits in its palm,
+                pb8_ = int(world.palm_body[h8_]); Rp8_ = d.xmat[pb8_].reshape(3, 3)   # which of its links touch it and how hard, its fingers'
+                vb8_ = np.zeros(6); vp8_ = np.zeros(6)                          # angles and commands, the slip's raise of its grip)
+                mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_BODY, int(blk_body_), vb8_, 0)
+                mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_BODY, pb8_, vp8_, 0)
+                ct8_ = []; fc8_ = np.zeros(6)
+                for c8_ in range(d.ncon):
+                    con8_ = d.contact[c8_]; b1_, b2_ = int(m.geom_bodyid[con8_.geom1]), int(m.geom_bodyid[con8_.geom2])
+                    if blk_body_ in (b1_, b2_):
+                        o8_ = b2_ if b1_ == blk_body_ else b1_
+                        mujoco.mj_contactForce(m, d, c8_, fc8_)
+                        ct8_.append([m.body(o8_).name, rnd(float(fc8_[0]), 2)])
+                if V.get("grip_dir") != V["pass_dir"]:
+                    V["grip_f"] = open(os.path.join(V["pass_dir"], "grip.jsonl"), "w", buffering=1); V["grip_dir"] = V["pass_dir"]
+                V["grip_f"].write(json.dumps(dict(
+                    k=k_, phase=V.get("phase"), move=(world.moves.running or {}).get("name"), held=bool(world.moves.held()), hand=hn8_,
+                    z=rnd(float(d.xipos[blk_body_][2]) - floor_top, 3), rel=[rnd(x_, 3) for x_ in Rp8_.T @ (d.xipos[blk_body_] - d.xpos[pb8_])],
+                    v=rnd(float(np.linalg.norm(vb8_[3:] - vp8_[3:])), 3), w=rnd(float(np.linalg.norm(vb8_[:3] - vp8_[:3])), 2),
+                    q=[rnd(x_, 3) for x_ in d.qpos[held_qadr[parts[hn8_]]]], ctrl=[rnd(x_, 3) for x_ in d.ctrl[held_aid[parts[hn8_]]]],
+                    boost=rnd(float(world._grip_boost[h8_]), 3), push=rnd(float(world._grip_ext[h8_]), 2), con=ct8_)) + "\n")
             L._forced_acts = None; L._label_acts = None                # (every act its own: her hands on its body only)
             V["tick_first"] = True; eff0_ = {k2_: list(v2_) for k2_, v2_ in V["eff"].items()}
             harness_ = harness_acts(d.qpos[held_qadr], held_q0, parts)  # THE HARNESS'S ACTS (a reading beside its own: the arms and the hands
                                                                         # back to her pose)
             her_pace.used = False
-            if ph_ == "walk" and (V.get("arrive_sp") is not None or all(in_circle(sole_points(m, d, b_), (cx_, cy_))[0]
+            if ph_ == "walk" and args.task != "put" and not chain_ and (V.get("arrive_sp") is not None or all(in_circle(sole_points(m, d, b_), (cx_, cy_))[0]
                                      and min(q_[2] for q_ in sole_points(m, d, b_)) - floor_top < FOOT_DOWN for b_ in feet)):   # THERE: both
                 arrived_ = k_                                          # feet down inside the circle (by the foot's own edge), at a physics step
                 arr_sp_ = V.get("arrive_sp") or [[np.array(q_, float) for q_ in sole_points(m, d, b_)] for b_ in feet]   # of the tick before
@@ -1666,8 +2144,44 @@ def main(argv=None):
                                                                        # read where it arrived: the gait steps on through the treat's tick)
                 own_share = 1.0 - float(np.mean(V["c_ticks"])) if V["c_ticks"] else 0.0   # (its own share: 1 - her share c, by joints)
                 paid = round(PAY_MIN + (1.0 - PAY_MIN) * own_share, 4); world.press_lever(paid)
+            if args.bumps and V["bump_track"] is None and k_ >= V["bump_next"] and ph_ in set(args.bump_phases.split(",")):   # WORKSHOP 28:
+                lo_b_, hi_b_ = (float(x_) for x_ in args.bumps.split(","))      # A BUMP: a push on its trunk this tick, at the torso's centre of
+                fb_ = float(V["bump_rng"].uniform(lo_b_, hi_b_)); ab_ = float(V["bump_rng"].uniform(-math.pi, math.pi))   # mass, a direction at
+                tb_ = int(m.body("torso_link").id)                             # random (its heading's frame: 0 ahead, +90 deg from its left)
+                yb_ = math.atan2(float(d.xmat[world.pelvis_id][3]), float(d.xmat[world.pelvis_id][0]))
+                wb_ = np.zeros(6); wb_[0] = fb_ * math.cos(yb_ + ab_); wb_[1] = fb_ * math.sin(yb_ + ab_)
+                d.xfrc_applied[tb_] += wb_; V["bump_w"] = (tb_, wb_, int(getattr(world, "faults_recovered", 0)))
+                fm_b_ = world.feet_middle()[:2].copy(); cm_b_ = d.subtree_com[world.pelvis_id][:2].copy()
+                V["bump_track"] = dict(k=k_, ph=ph_, n_=fb_, deg=math.degrees(ab_), f0=fm_b_, lean0=cm_b_ - fm_b_, falls0=int(gh.falls),
+                                       sway=0.0, step=0.0, n=0, held0=world._holding_hand() is not None, z0=float(d.subtree_com[world.pelvis_id][2]))
             acts = run.step(frame)
-            if ph_ == "pick" and V.get("move_ph") is not None and world.moves.known(V["side"]["move"]):   # HER HANDS TEACH THE MOVEMENT LAYER
+            if V.get("bump_w") is not None:                            # (the push off after its tick; a fault's roll-back cleared the row: then
+                tb_, wb_, fr_ = V["bump_w"]; V["bump_w"] = None          # nothing to take off)
+                if int(getattr(world, "faults_recovered", 0)) == fr_:
+                    d.xfrc_applied[tb_] -= wb_
+            bt_ = V.get("bump_track")
+            if bt_ is not None:                                        # (its answer read: its centre of mass over its feet against before the
+                fm_b_ = world.feet_middle()[:2]                         # push, its feet's middle moved (a step), a fall, the thing let go)
+                ln_b_ = d.subtree_com[world.pelvis_id][:2] - fm_b_
+                if bt_["n"] < BUMP_SWAY and ph_ == bt_["ph"] and not bt_.get("moved"):   # (its sway read over the push's first BUMP_SWAY
+                    bt_["sway"] = max(bt_["sway"], float(np.linalg.norm(ln_b_ - bt_["lean0"])))   # ticks, in its phase: 10-30, the push as
+                    bt_["step"] = max(bt_["step"], float(np.linalg.norm(fm_b_ - bt_["f0"]))) if bt_["ph"] != "walk" else 0.0   # it stood
+                else:                                                  # holding the cup up read 22 cm of sway, its own turn to the bucket
+                    bt_["moved"] = True                                # on her line 5 ticks later; its falls read for BUMP_WATCH)
+                bt_["n"] += 1
+                if bt_["n"] >= BUMP_WATCH or int(gh.falls) > bt_["falls0"]:
+                    V["bumps"].append(dict(k=bt_["k"], ph=bt_["ph"], n=rnd(bt_["n_"], 1), deg=rnd(bt_["deg"], 0), sway=rnd(bt_["sway"], 3),
+                                           step=rnd(bt_["step"], 3), fell=int(gh.falls) > bt_["falls0"],
+                                           let_go=bool(bt_["held0"] and world._holding_hand() is None)))
+                    V["bump_track"] = None; V["bump_next"] = k_ + int(args.bump_gap) + int(V["bump_rng"].integers(0, max(1, int(args.bump_gap))))
+            ct9_ = V.get("carry_teach")                                # HER GRIP TEACHES ITS HELD GRIP (10-30 night, Workshops 24-25): her
+            if (ct9_ is not None and V.get("carry_grip") is not None and ct9_[2] > 0.0 and world.moves.running is not None   # hand round
+                    and world.moves.held() and world.moves.known(world.moves.running["name"])):   # its fingers through the carry, its held pose
+                world.moves.lesson(ct9_[0], ct9_[1], ct9_[2], phase=1.0, name=world.moves.running["name"])   # (its pick-up's last, which it
+                                                                       # keeps as it carries: A267) steps toward her grip at her share, as her
+                                                                       # hands teach any movement; its own pinch, never taught past Workshop 13's,
+                                                                       # let the car and the duck go in the test as she no longer held them)
+            if ph_ in ("pick", "put") and V.get("move_ph") is not None and world.moves.known(V["side"]["move"]):   # HER HANDS TEACH THE MOVEMENT LAYER
                 for l_ in W.MOVE_LIMBS:                                 # (10-28): at the movement's phase each limb's program steps toward her
                     if l_ in parts:                                     # pose there at her share at that limb (the arm and stance layers' law,
                         if l_ == V["side"]["arm"] and V.get("follow") and V.get("rise_arm") is None:   # any movement). ITS REACHING ARM LEARNS HER
@@ -1692,10 +2206,10 @@ def main(argv=None):
                     if c_l_ > 0.0:                                      # (followed, her push on its sagging legs and waist teaches its drive
                         move_err_.append(world.moves.lesson(l_, ref_l_, c_l_, phase=V["move_ph"], name=V["side"]["move"],   # alone: the pose kept)
                                                             drive=bool(V.get("follow")) and l_ not in parts))
-            if getattr(world, "_stand_own", False) and not V.get("whole") and float(V["c_stand"]) > 0.0 and ph_ not in ("stop", "pick"):   # STANCE:
+            if getattr(world, "_stand_own", False) and not V.get("whole") and float(V["c_stand"]) > 0.0 and ph_ not in ("stop", "pick", "held", "put", "after"):   # STANCE:
                 for lb_, ix2_ in stance_ix.items():                    # held standing, the legs and the waist carried by the layer below the
                     stand_err_.append(world.stand.lesson(lb_, 0.0, stand_ref[ix2_], float(V["c_stand"])))   # brain, which steps toward her pose
-            if getattr(world, "_arms_phase", None) is not None and ph_ not in ("stop", "pick"):   # HER HANDS TEACH THE ARM LAYER (10-28): the
+            if getattr(world, "_arms_phase", None) is not None and ph_ not in ("stop", "pick", "held", "put", "after"):   # HER HANDS TEACH THE ARM LAYER (10-28): the
                 for nm_, ix_ in parts.items():                          # are carried by the layer below the brain; where her hands pushed them
                     c3_ = float(V["comp"].get(nm_, [0.0])[0])           # toward her pose this tick, the layer steps toward that pose at her
                     if c3_ > 0.0:                                       # share (as the leg layer copies the gait's push: arms.ArmLayer)
@@ -1703,11 +2217,17 @@ def main(argv=None):
             if her_gaze.used and float(her_gaze.c) > 0.0:              # HER HAND ON ITS HEAD TEACHES THE EYE LAYER (10-28): the circle's
                 for nm3_ in world.eye_layer.targets:                    # priority steps up at her share of the turn (the pass's thing: the
                     world.eye_layer.lesson(nm3_, float(her_gaze.c))     # circle, or the name task's toy; 10-28: "disc" was written here)
-            if her_pace.used and her_pace.want is not None and float(her_pace.c) > 0.0 and world.pace_own():   # HER HAND ON ITS WALK
+            her_to_ = (args.into or None) if (args.task == "put" or chain_) else (args.pick_toy if args.task == "pick" else None)
+            on_her_ = her_to_ is None or world.goal.name == her_to_    # (A277, 10-30 night: her hand on its walk teaches its pace, steering and
+                                                                       # stops only while its goal is the thing she takes it to: in Workshop 24's
+                                                                       # carry its eyes went to the ball as she steered it to the bucket, and its
+                                                                       # turn per rad of its goal's bearing fell 0.36 -> 0.02 in a round; its
+                                                                       # walks then went past their toys or stalled short)
+            if her_pace.used and her_pace.want is not None and float(her_pace.c) > 0.0 and world.pace_own() and on_her_:   # HER HAND ON ITS WALK
                 world.pace.lesson(float(her_pace.want[0]), float(her_pace.c), world.goal.name, world.goal_distance())   # COMMAND TEACHES
                                                                        # THE PACE LAYER (10-28): its drive steps
                                                                        # toward her speed, its strength up, at her share
-            if her_pace.used and her_pace.want is not None and her_pace.want[1] is not None and float(her_pace.c) > 0.0 and world._goal_b is not None:   # AND THE STEERING
+            if her_pace.used and her_pace.want is not None and her_pace.want[1] is not None and float(her_pace.c) > 0.0 and world._goal_b is not None and on_her_:   # AND THE STEERING
                 world.steer.lesson(float(her_pace.want[1]), float(world._goal_b), float(her_pace.c))   # LAYER (10-28): its turn per rad of
                                                                        # the held goal's bearing toward hers, its strength up, at her share
             drv_ = her_driven(V["comp"]) if args.driven else ()       # HER HANDS DROVE IT: shown at the next frame as the world's (A230)
@@ -1773,6 +2293,9 @@ def main(argv=None):
                            margin=rnd(world.support_margin(), 3),
                            pilot=rnd(float(np.sqrt(np.mean(world.pilot[V["side"]["arm"]] ** 2))), 3),
                            pilot_v=[rnd(float(x4_), 3) for x4_ in world.pilot[V["side"]["arm"]]] + [rnd(float(world.pilot["waist"][world.waist_yaw_k]), 3)],
+                           gwait=(None if getattr(world, "_grasp_wait_st", None) is None else list(world._grasp_wait_st[1:])),
+                           gtarget=(None if world.goal.name is None or world.eye_layer.targets.get(world.goal.name) is None
+                                    else [rnd(float(x_), 3) for x_ in world.eye_layer.targets[world.goal.name]]),
                            pred=None if getattr(world, "_pilot_pred", None) is None else [rnd(float(x4_), 3) for x4_ in world._pilot_pred],   # (A253)
                            turn=None if getattr(world, "_grip_turn_err", None) is None else rnd(float(world._grip_turn_err), 3),   # (A257: its grip's turn left)
                            twist=rnd(float(world._twist[V["side"]["h"]]), 2), boost=rnd(float(world._grip_boost[V["side"]["h"]]), 3),   # (A258: a held
@@ -1793,7 +2316,7 @@ def main(argv=None):
                                                                        # joints: angle, commanded pose, motor torque N m)
                            probe=(None if not world.probe_rows else [[rnd(min(r6_[c6_] for r6_ in world.probe_rows), 1), rnd(max(r6_[c6_] for r6_ in world.probe_rows), 1)]
                                                                      for c6_ in range(8)]))   # (PROBE=joint: its torque's parts, min/max)
-                      if args.task == "pick" else None),
+                      if args.task in ("pick", "put") else None),
                 cues={c2_: [rnd(float(x2_), 3) for x2_ in np.asarray(frame.obs[c2_], float).ravel()] for c2_ in ("named_periph", "gaze_periph",
                       "salient_periph", "hand_periph", "face_periph") if hasattr(frame, "obs") and c2_ in frame.obs},   # (the born cues)
                 effort={k2_: [rnd(v2_[0] - eff0_.get(k2_, [0.0, 0.0])[0], 1), rnd(v2_[1] - eff0_.get(k2_, [0.0, 0.0])[1], 1)]
@@ -1811,7 +2334,7 @@ def main(argv=None):
                 cw_.append((15, float(V["c_stand"])))
             if V["c_trunk"]:                                           # and the trunk's three (its lean's two, its heading) every tick
                 ct_ = float(np.mean(V["c_trunk"])); cw_.append((3, ct_)); comp_pass["trunk"].append([ct_, 0.0])
-            if ph_ == "pick":                                          # (her share in the pick-up alone, by part: the movement's own)
+            if ph_ in ("pick", "put"):                                 # (her share in the pick-up alone, by part: the movement's own)
                 for nm_, (c2_, _) in V["comp"].items():
                     comp_pick.setdefault(nm_, []).append(float(c2_))
                 comp_pick.setdefault("stand", []).append(float(V["c_stand"]))
@@ -1836,9 +2359,11 @@ def main(argv=None):
         V["rows"].close(); ticks_f.close()
         if tap.wav is not None:
             tap.wav.close(); tap.wav = None
+        for k9_, v9_ in args0_.items():
+            setattr(args, k9_, v9_)
         sp_end_ = arr_sp_ if arr_sp_ is not None else [sole_points(m, d, b_) for b_ in feet]   # (where it arrived; else where it ended)
         inn_ = [in_circle(sp2_, (cx_, cy_)) for sp2_ in sp_end_]
-        line_ = dict(pass_=p_, life_t=int(L.ticks), in_circle=bool(arrived_ is not None or all(i_[0] for i_ in inn_)), far=[rnd(i_[1]) for i_ in inn_],
+        line_ = dict(pass_=p_, life_t=int(L.ticks), room=V.get("room"), in_circle=bool(arrived_ is not None or all(i_[0] for i_ in inn_)), far=[rnd(i_[1]) for i_ in inn_],
                      feet=[[rnd(np.mean([q[0] for q in sp2_]) - cx_), rnd(np.mean([q[1] for q in sp2_]) - cy_)] for sp2_ in sp_end_],
                      falls=int(gh.falls) - falls0, paid=paid, frames=V["i"], wall=round(time.time() - t0, 1),
                      her_push={k2_: rnd(v2_[0] / max(v2_[0] + v2_[1], 1e-9)) for k2_, v2_ in V["eff"].items()},
@@ -1855,6 +2380,7 @@ def main(argv=None):
                                      runs=int(world.moves.programs[V["side"]["move"]]["runs"]) if world.moves.known(V["side"]["move"]) else 0),
                      c_pick={k2_: rnd(np.mean(v2_)) for k2_, v2_ in comp_pick.items() if v2_},
                      pace_stops={k2_: rnd(v2_, 3) for k2_, v2_ in world.pace.stops.items()}, stop_d_pelvis=rnd(V.get("stop_d_pelvis"), 3),
+                     bumps=list(V.get("bumps") or []),
                      stance_layer=dict(lessons=len(stand_err_), err=rnd(np.mean(stand_err_), 4) if stand_err_ else None, on=bool(world.stand_layer)),
                      eye_layer=dict(p=rnd(max([world.eye_layer.p.get(n4_, 0.0) for n4_ in world.eye_layer.targets] or [0.0]), 4),
                                     of=list(world.eye_layer.targets), on=bool(world.eye_layer_on)),
@@ -1864,13 +2390,50 @@ def main(argv=None):
                                       goal=world.goal.name, goal_off=None if world.goal.point is None else rnd(math.hypot(world.goal.point[0] - cx_, world.goal.point[1] - cy_), 3)),
                      cereb_tau=[rnd(V["cb_sum"][0] / max(1, V["cb_sum"][2])), rnd(V["cb_sum"][1] / max(1, V["cb_sum"][2]))],
                      gaze_err={ph2_: rnd(np.mean(v2_), 1) for ph2_, v2_ in gaze_errs.items() if v2_})
+        if args.task == "put" or chain_:                             # THE PUT-DOWN'S READING: the thing on the floor and out of its hand, it
+            P_ = V["put"]                                              # standing
+            V["ref_legs"] = None; V["ref_arm"] = None; V["follow"] = False; V["grip"] = None; gh.z_ref = None; gh.up_ref = None; gh.squatting = False
+            bz_ = float(d.xpos[blk_body_][2]) - floor_top
+            hd_ = float(np.linalg.norm(np.asarray(d.xpos[blk_body_], float) - PU_.hand_point(world, d, V["side"]["h"])))
+            upr_ = float(d.xmat[blk_body_].reshape(3, 3)[2, 2])       # (its own up against the room's: 1 upright)
+            pz_ = float(d.xpos[world.pelvis_id][2]) - floor_top
+            held9_ = world._holding_hand() is not None
+            put_ok_ = bool(P_["k0"] is not None and P_.get("in_hand") and bz_ < rest_up_ + 0.03 and hd_ > 0.05 and not held9_ and pz_ > 0.6
+                           and int(gh.falls) - falls0 == 0 and P_.get("release_z") is not None and float(P_["release_z"]) < PUT_LET_GO)
+            in9_ = None
+            if into_body_ is not None:                                 # (Workshop 21: in the container: within its inner square, under its
+                Rb9_ = d.xmat[into_body_].reshape(3, 3); rb9_ = Rb9_.T @ (np.asarray(d.xpos[blk_body_], float) - np.asarray(d.xpos[into_body_], float))   # rim)
+                in9_ = bool(abs(float(rb9_[0])) < EXB_.BUCKET_IN and abs(float(rb9_[1])) < EXB_.BUCKET_IN and float(rb9_[2]) < EXB_.BUCKET_H
+                            and hd_ > 0.05 and not held9_)
+                put_ok_ = bool(in9_ and P_["k0"] is not None and P_.get("in_hand") and pz_ > 0.6 and int(gh.falls) - falls0 == 0)
+            R9_ = d.xmat[world.pelvis_id].reshape(3, 3); rel9_ = np.asarray(d.xpos[blk_body_][:2], float) - world.feet_middle()[:2]
+            line_.update(chain=V.get("chain_picked"), put=dict(toy=P_["toy"], start=P_["start"], go=P_.get("go"), her=P_.get("her"), own=P_.get("own"), own_move=P_.get("own_move"),
+                                  k_line=P_["k_line"], k_end=P_["k_end"], rate=P_.get("rate"), follow=bool(P_.get("follow")),
+                                  plan_miss=P_.get("plan_miss"), place=P_.get("place"), placed=put_ok_, thing_z=rnd(bz_, 3), thing_hand=rnd(hd_, 3),
+                                  upright=rnd(upr_, 3), held=held9_, pelvis_z=rnd(pz_, 3),
+                                  where=[rnd(float(rel9_ @ R9_[:2, 0]), 3), rnd(float(rel9_ @ R9_[:2, 1]), 3)], into=args.into or None,
+                                  in_it=in9_, move=V["side"]["move"], dropped=P_.get("dropped"), dropped_in=P_.get("dropped_in"), in_hand=P_.get("in_hand"),
+                                  walk=P_.get("walk"), walk_go=P_.get("walk_go"), stop_d=P_.get("stop_d"), k_at=P_.get("k_at"),
+                                  release_z=P_.get("release_z"), release_k=P_.get("release_k"),
+                                  into_at=(None if into_body_ is None else [rnd(float(x_), 3) for x_ in ((np.asarray(d.xpos[into_body_][:2], float)
+                                           - world.feet_middle()[:2]) @ R9_[:2, :2])]),   # (the container from its feet at the end, ahead and left)
+                                  goal=world.goal.name, then_at=V.get("then_at")),
+                         c_pick={k2_: rnd(np.mean(v2_)) for k2_, v2_ in comp_pick.items() if v2_})
+            if world.moves.programs:                                   # (its movement layer as the pass left it: a reading)
+                json.dump(world.moves.state(), open(os.path.join(pd_, "moves.json"), "w"))
         if args.task == "pick":                                       # THE PICK-UP'S READING: the block off the floor and in its hand
             V["ref_legs"] = None; V["ref_arm"] = None; V["follow"] = False; V["grip"] = None; gh.z_ref = None; gh.up_ref = None; gh.squatting = False
             bz_ = float(d.xpos[blk_body_][2]) - floor_top; hd_ = float(np.linalg.norm(np.asarray(d.xpos[blk_body_], float) - PU_.hand_point(world, d, V["side"]["h"])))
             picked_ = bool(pick_ is not None and bz_ > 0.15 and hd_ < 0.10)
+            if picked_ and args.save_end:                              # (WORKSHOP 19's starts: this moment kept, the thing held up)
+                os.makedirs(args.save_end, exist_ok=True)
+                with open(os.path.join(args.save_end, f"end_{args.pick_toy}_{os.path.basename(os.path.normpath(args.out))}_{p_:03d}.pkl"), "wb") as fh_:
+                    pickle.dump(dict(state=world.save_state(), toy=args.pick_toy, move=V["side"]["move"], T=T_PICK, side_h=int(V["side"]["h"]),
+                                     q_rest=np.asarray(pick_["q_stand"], float)), fh_)
             if args.no_hands or V.get("others"):                       # (the test's reading: every toy off the floor at the end, the goals
                 lifted_ = [n_ for n_ in [args.pick_toy] + list(V.get("others") or {}) if float(d.xpos[m.body("toy_" + n_).id][2]) - floor_top > 0.15]
                 line_["test"] = dict(asked=args.pick_toy, place=V.get("place"), lifted=lifted_, goals=V.get("goals"), own_start=dict(V["own_start"]),   # its eyes set,
+                                     prompted=V.get("prompted"),
                                      walked=k_walk0_ if ph_ != "stand" else None, stop_d=V.get("stop_d_pelvis"),   # its starts;
                                      move=(V.get("side") or {}).get("move"), recalled=dict(world.recalled),   # A256: the movement it ran
                                      like={n_: rnd(world.concepts.likeness(args.pick_toy, n_), 3) for n_ in world.concepts.count if n_ != args.pick_toy},   # and
@@ -1881,6 +2444,7 @@ def main(argv=None):
             if world.moves.programs:                                   # (its movement layer as the pass left it: a reading)
                 json.dump(world.moves.state(), open(os.path.join(pd_, "moves.json"), "w"))
             line_.update(in_circle=None, picked=picked_, block_z=rnd(bz_, 3), block_hand=rnd(hd_, 3), plan_skipped=bool(pick_ is not None and pick_.get("skipped")),
+                         goal_at_pick=V.get("goal_at_pick"),
                          reaim=None if (pick_ is None or pick_.get("reaim") is None) else dict(hand=rnd(pick_["reaim"]["rep"]["hand"], 3),
                                                                                                twist=pick_["reaim"]["twist"]),
                          stop_short=None if pick_ is None else pick_["stop_short"], pose=None if pick_ is None else {k3_: (rnd(v3_, 3) if isinstance(v3_, float)
@@ -1902,15 +2466,46 @@ def main(argv=None):
                          desc=F_.get("desc"), learned={f_: i_ for f_, i_ in world.word_forms.ids.items()},   # (A254, A255: the words it has
                          profile={(world.word_forms.form(w_) or str(w_)): rnd(v_, 3) for w_, v_ in world.concepts.profile(F_["word"]).items()},   # learned;
                          like={n_: rnd(world.concepts.likeness(F_["word"], n_), 3) for n_ in F_["pts"] if n_ != F_["word"]})   # what it heard of the thing)
+        if world.see_things:                                           # (A265: how each thing it knows looks, as it stands; what it saw last)
+            line_["seen"] = {n_: [rnd(pr_["hue"], 1), rnd(pr_["sat"], 3), rnd(pr_["val"], 3), rnd(pr_["width"], 3), int(pr_["n"])]
+                             for n_, pr_ in world.seen.proto.items()}
+            line_["seen_now"] = [[b_.get("name"), [rnd(x_, 3) for x_ in b_["centre"]]] for b_ in world.seen.now]
+            if args.task == "find":                                    # (a reading, to grade its seeing: where the room laid each toy)
+                line_["room_pts"] = {n_: [rnd(x_, 3) for x_ in pt_] for n_, pt_ in V["find"]["pts"].items()}
         with open(passes_p, "a") as f_:
             f_.write(json.dumps(line_) + "\n")
         done_ += 1
-        if args.task == "pick":
-            print(f"PASS {p_}: {'PICKED UP' if picked_ else ('HER PLAN MISSED: not taken down' if line_.get('plan_skipped') else 'not picked up')} (the block {line_['block_z']} m up, {line_['block_hand']} m from its "
+        if chain_ and line_.get("put"):
+            pu_ = line_["put"]
+            print(f"PASS {p_}: THE CHAIN: the {args.pick_toy} PICKED UP (tick {(line_.get('chain') or {}).get('k')}), then "
+                  + (f"DROPPED ({pu_.get('dropped_in')}, tick {pu_['dropped']})" if pu_.get('dropped') is not None
+                     else f"{'PUT IN THE ' + pu_['into'].upper() if pu_['in_it'] else 'NOT in the ' + str(pu_['into'])}")
+                  + f"; walk to it: {pu_.get('walk_go')} (tick {pu_.get('walk')}), stopped {pu_.get('stop_d')} m off; put-down begun: {pu_['go']} "
+                  f"(its own start {pu_['own']}); the {args.into} at {pu_.get('into_at')} from its feet{'' if not pu_.get('then_at') else ' (set ' + str(pu_['then_at'][0]) + ' m on, ' + str(pu_['then_at'][1]) + ' deg)'}; falls {line_['falls']}; "
+                  f"{line_['frames']} frames in {line_['wall']} s"
+                  + ("" if not line_.get("bumps") else "; bumps " + " ".join(f"{b_['ph']}:{b_['n']}N/{b_['sway']}m/{b_['step']}"
+                                                                           + ("/FELL" if b_['fell'] else "") + ("/LET-GO" if b_['let_go'] else "")
+                                                                           for b_ in line_["bumps"])), flush=True)
+        elif args.task == "pick":
+            print(f"PASS {p_}: {'PICKED UP' if picked_ else ('HER PLAN MISSED: not taken down' if line_.get('plan_skipped') else 'not picked up')} (the {args.pick_toy} {line_['block_z']} m up, {line_['block_hand']} m from its "
                   f"grasp); stopped {line_['stop_short']} m short (pelvis {line_['stop_d_pelvis']}); falls {line_['falls']}; paid {paid}; her share "
                   f"in the pick-up, the walk and its stop {line_['c_pick']}; the movement layer err {line_['move_layer']['err']} (runs "
                   f"{line_['move_layer']['runs']}; {'ITS OWN MOVEMENT FOLLOWED' if (line_.get('pose') or {}).get('own') else 'her plan'}, its own legs' targets at the bottom {line_.get('own_vs_hers')} rad off her squat); pace stops "
-                  f"{line_['pace_stops']}; over the pass {line_['c_mean']}; {line_['frames']} frames in {line_['wall']} s", flush=True)
+                  f"{line_['pace_stops']}; over the pass {line_['c_mean']}; {line_['frames']} frames in {line_['wall']} s"
+                  + ("" if not line_.get("bumps") else "; bumps " + " ".join(f"{b_['ph']}:{b_['n']}N/{b_['sway']}m/{b_['step']}"
+                                                                           + ("/FELL" if b_['fell'] else "") for b_ in line_["bumps"])), flush=True)
+        elif args.task == "put":
+            pu_ = line_["put"]
+            print(f"PASS {p_}: the {pu_['toy']} " + (f"DROPPED ({pu_.get('dropped_in')}, tick {pu_['dropped']}): " if pu_.get('dropped') is not None else "")
+                  + (f"{'PUT IN THE ' + pu_['into'].upper() if pu_['in_it'] else 'NOT in the ' + pu_['into']} " if pu_.get('into') else "")
+                  + f"{'PUT DOWN' if pu_['placed'] else 'NOT put down'} ({pu_['thing_z']} m up, {pu_['thing_hand']} m from "
+                  f"its grasp, upright {pu_['upright']}, still in its hand {pu_['held']}, at {pu_['where']} from its feet, let go {pu_.get('release_z')} m "
+                  f"over its rest at tick {pu_.get('release_k')}); begun: {pu_['go']} (her "
+                  f"line's end {pu_['k_end']}, hers {pu_['her']}, its own {pu_['own']} {pu_['own_move']}, its rate at hers {pu_['rate']}); "
+                  + (f"walked to it: {pu_['walk_go']} (tick {pu_['walk']}), stopped {pu_['stop_d']} m off, there at {pu_['k_at']}; " if pu_.get('walk') is not None else "")
+                  + f"{'its own movement followed' if pu_['follow'] else 'her plan'} (her plan's miss {pu_['plan_miss']}); standing {pu_['pelvis_z']}; "
+                  f"falls {line_['falls']}; her share in the put-down {line_['c_pick']}; the movement layer err {line_['move_layer']['err']} (runs "
+                  f"{line_['move_layer']['runs']}); {line_['frames']} frames in {line_['wall']} s", flush=True)
         elif args.task == "find":
             print(f"PASS {p_}: '{line_['word']}' " + (f"ITS EYES WENT THERE {line_['found']} ticks after her line" if line_['found'] is not None
                   else f"not found: her hand on its head after {line_['her']} ticks") + f"; the words' prediction of it {line_['pred']} (the "
