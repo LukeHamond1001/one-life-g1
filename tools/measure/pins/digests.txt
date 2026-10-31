@@ -567,3 +567,12 @@ the rows begun again under A202t's looks) without a re-pin, in its work section 
 unchanged. Bisected over the body's commits since acece494: a479aeee and ef92d202 give the last pin exactly, c8810d04 and every later
 commit (0be6331c, 2fb6dd81, 0254c5e2, the cleanup bb87fcb4) the new one. Level 1's own change (body/sim/ghost.py room_turns, on by
 default) lies outside the stub world: the tree with it gives the same digests.
+The workshops' body (2026-10-28 to 10-30, A230 to A289; re-taken 2026-10-30 on level1's 2fd3f37f): the sim pin re-taken. It had moved
+over the workshops without a re-pin, in its organs, its cfg and its constants: threaded dd5b1ad009812415e76abdc3 (was
+a233c0cf2a4888ee1deac61e; organs 16d6a534c4d2, was ac7e78be3d9e; cfg f3aa436c5832, was 2c359b22d0c9; store a3a706da3969, optim
+32ae709f94d0, rng 066195ecb1e4 and work a56a1566de2a unchanged), one-thread 2b3611d6e795b0c9ac36d2af (was 0f5e52fa6a6bc96fbf042a0f),
+consts af958116bf31 (was ed20f0327da0). Not bisected: the changes to the core under the stub world are the cerebellum's module for a
+thing held (A283: pc_h and h_born in its state) and its errors' relevance (A284: cereb_err_rel in the cfg, 0 by default in SIM_CFG);
+the rest of the workshops' changes lie in body/sim below the brain, outside the stub world. The threaded pin the same under
+PYTHONHASHSEED 1 and 4242. The language profiles (default, served) can no longer run here: their data (data/stories_valid.txt,
+data/watch2.pt) went with the owner's cleanup of 2026-10-30; the language digest 7c54199e3c72cf77d45a8e94 stands as last taken.

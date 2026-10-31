@@ -3,6 +3,18 @@
 Each release is the life's code at a dawn, with the number of days lived as its minor version. The ledger
 (`docs/SIM_DESIGN.md`) holds every change with the day it landed and the measurement that justified it; this page groups them.
 
+## 0.212.1 (2026-10-30): the workshops' procedures in the tree, the indexes, the sim pin
+
+- **The procedures the results rest on**, until now outside the tree: `tools/levels/test_chain.sh`, the chain test as independent single
+  passes (the first stage's bar); `tools/levels/rounds.sh`, whole-chain practice rounds, every toy in turn (never one alone); and their
+  readings, `lines_check.py` (each request line's thing), `words_check.py` (the looks and the words), `eyes_check.py` (its seeing on its
+  own images, with which A288 was found), `stance_at_pick.py`, `bumps_summary.py`.
+- **The indexes**: `tools/README.md`'s levels row and `docs/README.md`'s line for `LEVELS.md` name the workshops and the language
+  workshops, not Level 1 alone.
+- **The sim pin re-taken** (`tools/measure/pins/digests.txt`): it had moved over the workshops' body without a re-pin, in its organs, cfg
+  and constants (the cerebellum's module for a thing held, A283, and its errors' relevance, A284). The language profiles' data is no
+  longer kept; their last digest stands.
+
 ## 0.212.0 (2026-10-30): its own seeing, the chain to the bucket, the first stage, and the language workshops begun
 
 Not a dawn of the life: the code as it stands on the night of 2026-10-30. In groups, with their records (`docs/LEVELS.md`;
